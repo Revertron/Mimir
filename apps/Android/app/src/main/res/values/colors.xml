@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="gray_DD">#FFDDDDDD</color>
+    <color name="gray_AA">#FFAAAAAA</color>
+    <color name="gray_80">#FF808080</color>
+    <color name="gray_60">#FF606060</color>
+    <color name="gray_40">#FF404040</color>
+    <color name="teal_200">#FF03A5CA</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="light_gray">#FFE0E0E0</color>
+    <color name="middle_gray">#FF808080</color>
+    <color name="semi_gray">#FF404040</color>
+    <color name="dark_gray">#FF303030</color>
+
+    <color name="message_outgoing_light_normal">#FFA0C0FF</color>
+    <color name="message_outgoing_light_pressed">#FF80A0FF</color>
+
+    <color name="message_outgoing_dark_normal">#FF305090</color>
+    <color name="message_outgoing_dark_pressed">#FF4565A5</color>
+
+    <color name="transparent">#00000000</color>
+</resources>

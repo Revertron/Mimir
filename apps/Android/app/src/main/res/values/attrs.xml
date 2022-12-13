@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="textEditBackgroundColor" format="reference" />
+    <attr name="textEditTextColor" format="reference" />
+    <attr name="chatBackgroundColor" format="reference" />
+    <attr name="iconColor" format="color" />
+</resources>

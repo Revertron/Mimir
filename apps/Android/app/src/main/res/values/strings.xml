@@ -1,0 +1,45 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">Mimir</string>
+    <string name="channel_name_service">Main service</string>
+    <string name="channel_description_service">Connectivity service</string>
+    <string name="channel_name_messages">Messages</string>
+    <string name="channel_description_messages">Messages channel</string>
+    <string name="state_disabled">Disabled</string>
+    <string name="state_enabled">Enabled</string>
+    <string name="action_settings">Settings</string>
+    <string name="menu_plus">Plus</string>
+    <string name="contact_name">Contact name:</string>
+    <string name="contact_pubkey">Public key:</string>
+    <string name="contact_address">Contact address:</string>
+    <string name="contact_name_hint">Lady Sif</string>
+    <string name="contact_rename_hint">Loki</string>
+    <string name="contact_address_hint" tools:ignore="TypographyEllipsis">200:xxx...</string>
+    <string name="contact_pubkey_hint" tools:ignore="TypographyEllipsis">0123456789ABCDEF...</string>
+    <string name="add_contact">Add contact</string>
+    <string name="add_contact_address">Add address</string>
+    <string name="contact_add">Add</string>
+    <string name="cancel">Cancel</string>
+    <string name="message">Message</string>
+    <string name="my_public_key">My public key:</string>
+    <string name="my_name_title">My name:</string>
+    <string name="save_button">Save</string>
+    <string name="accounts">Accounts</string>
+    <string name="my_name_hint">Thor Odinson</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="saved">Saved</string>
+    <string name="menu_reply">Reply</string>
+    <string name="menu_copy">Copy</string>
+    <string name="menu_forward">Forward</string>
+    <string name="menu_delete">Delete</string>
+    <string name="menu_resend">Resend</string>
+    <string name="empty_name">You need to enter some name!</string>
+    <string name="wrong_public_key">Wrong public key</string>
+    <string name="remove_contact">Delete contact and chat</string>
+    <string name="rename">Rename</string>
+    <string name="rename_contact">Rename contact</string>
+    <string name="not_yet_implemented">Not yet implemented</string>
+    <string name="contact_added">New contact added</string>
+    <string name="contact_already_added">Contact with that key already added</string>
+    <string name="contact_addition_error">Error adding contact</string>
+    <string name="empty_uri">Empty URI</string>
+</resources>

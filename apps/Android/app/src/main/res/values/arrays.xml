@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="avatar_gray">
+        <item>@color/gray_DD</item>
+        <item>@color/gray_80</item>
+        <item>@color/gray_AA</item>
+        <item>@color/gray_80</item>
+        <item>@color/gray_DD</item>
+    </string-array>
+</resources>

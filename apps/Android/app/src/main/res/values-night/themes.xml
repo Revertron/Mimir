@@ -1,0 +1,24 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.Mimir" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/gray_60</item>
+        <item name="colorPrimaryVariant">@color/gray_40</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/teal_200</item>
+        <item name="colorSecondaryVariant">@color/teal_200</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <!-- Customize your theme here. -->
+        <item name="android:textColorPrimary">@color/white</item>
+        <item name="textEditBackgroundColor">@color/dark_gray</item>
+        <item name="textEditTextColor">@color/light_gray</item>
+        <item name="chatBackgroundColor">@color/semi_gray</item>
+        <item name="iconColor">@color/white</item>
+
+        <item name="editTextStyle">@style/EditTextStyle</item>
+        <!--<item name="toolbarStyle">@style/MimirToolbar</item>-->
+    </style>
+</resources>
