@@ -11,11 +11,12 @@ import androidx.appcompat.view.ContextThemeWrapper
 import androidx.appcompat.widget.*
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
 
 
-class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener {
+class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener, StorageListener {
 
     companion object {
         const val TAG = "MainActivity"
@@ -31,6 +32,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         if (intent?.hasExtra("no_service") != true) {
             startService()
         }
+        getStorage().listeners.add(this)
     }
 
     override fun onResume() {
@@ -40,6 +42,11 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this)
+    }
+
+    override fun onDestroy() {
+        getStorage().listeners.remove(this)
+        super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -94,6 +101,16 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val contact = v.tag as Contact
         showContactPopupMenu(contact, v)
         return true
+    }
+
+    override fun onMessageReceived(id: Long, contactId: Long, message: String): Boolean {
+        runOnUiThread {
+            val contacts = (application as App).storage.getContactList()
+            val adapter = ContactsAdapter(contacts, this, this)
+            val recycler = findViewById<RecyclerView>(R.id.contacts_list)
+            recycler.adapter = adapter
+        }
+        return false
     }
 
     @Suppress("NAME_SHADOWING")

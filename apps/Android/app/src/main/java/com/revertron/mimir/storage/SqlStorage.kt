@@ -22,23 +22,19 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey TEXT, name TEXT)"
         const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, expiration INTEGER)"
-        const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, incoming BOOL, delivered BOOL, time INTEGER, type INTEGER, message TEXT)"
+        const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, incoming BOOL, delivered BOOL, time INTEGER, type INTEGER, message TEXT, read BOOL)"
     }
 
-    data class Message(val id: Long, val contact: Long, val incoming: Boolean, var delivered: Boolean, val time: Long, val type: Int, val message: String)
+    data class Message(val id: Long, val contact: Long, val incoming: Boolean, var delivered: Boolean, val time: Long, val type: Int, val message: String, val read: Boolean)
 
     val listeners = mutableListOf<StorageListener>()
     private val notificationManager = NotificationManager(context)
     private val androidId: Int = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.hashCode() ?: 0
-
-    init {
-        test()
-    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(CREATE_ACCOUNTS)
@@ -48,19 +44,9 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        TODO("Not yet implemented")
-    }
-
-    fun test() {
-        val cursor = readableDatabase.query("ips", arrayOf("id", "client", "address", "expiration"), "", emptyArray(), null, null, null)
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(0)
-            val client = cursor.getInt(1)
-            val addr = cursor.getString(2)
-            val exp = cursor.getLong(3)
-            Log.i(TAG, "IPS: $id, $client, $addr, $exp")
+        if (newVersion > oldVersion && newVersion == 2) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN read BOOL DEFAULT 1");
         }
-        cursor.close()
     }
 
     fun addContact(pubkey: String, name: String): Long {
@@ -135,6 +121,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             put("time", time)
             put("type", type)
             put("message", message)
+            put("read", !incoming)
         }
         return this.writableDatabase.insert("messages", null, values).also {
             var processed = false
@@ -172,6 +159,15 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         notificationManager.onMessageDelivered(id, delivered)
     }
 
+    fun setMessageRead(contactId: Long, id: Long, read: Boolean) {
+        val values = ContentValues().apply {
+            put("read", read)
+        }
+        if (this.writableDatabase.update("messages", values, "id = ? AND contact = ?", arrayOf("$id", "$contactId")) > 0) {
+            Log.i(TAG, "Message $id read = $read")
+        }
+    }
+
     fun getMessages(pubkey: String): List<Message> {
         val id = getContactId(pubkey)
         if (id <= 0) {
@@ -179,7 +175,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
         val list = mutableListOf<Message>()
         val db = this.readableDatabase
-        val columns = arrayOf("id", "incoming", "delivered", "time", "type", "message")
+        val columns = arrayOf("id", "incoming", "delivered", "time", "type", "message", "read")
         val cursor = db.query("messages", columns, "contact = ?", arrayOf(id.toString()), null, null, "time", "")
         while (cursor.moveToNext()) {
             val messId = cursor.getLong(0)
@@ -188,8 +184,9 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val time = cursor.getLong(3)
             val type = cursor.getInt(4)
             val message = cursor.getString(5)
+            val read = cursor.getInt(6) != 0
             //Log.i(TAG, "$message ::: $messId")
-            list.add(Message(messId, id, incoming, delivered, time, type, message))
+            list.add(Message(messId, id, incoming, delivered, time, type, message, read))
         }
         cursor.close()
         return list
@@ -205,8 +202,31 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return list
     }
 
+    private fun getUnreadCount(userId: Long): Int {
+        val db = this.readableDatabase
+        val cursor =
+            db.query("messages", arrayOf("count(read)"), "contact = ? AND read = false", arrayOf("$userId"), null, null, null)
+        val count = if (cursor.moveToNext()) {
+            cursor.getInt(0)
+        } else {
+            -1
+        }
+        cursor.close()
+        return count
+    }
+
+    fun getLastMessage(userId: Long): String? {
+        var result: String? = null
+        val cursor = readableDatabase.query("messages", arrayOf("message"), "contact = ? AND incoming = true", arrayOf("$userId"), null, null, "time DESC", "1")
+        if (cursor.moveToNext()) {
+            result = cursor.getString(0)
+        }
+        cursor.close()
+        return result
+    }
+
     fun getMessage(messageId: Long): Message? {
-        val columns = arrayOf("contact", "incoming", "delivered", "time", "type", "message")
+        val columns = arrayOf("contact", "incoming", "delivered", "time", "type", "message", "read")
         val cursor = readableDatabase.query("messages", columns, "id = ?", arrayOf("$messageId"), null, null, "time", "1")
         if (cursor.moveToNext()) {
             val contactId = cursor.getLong(0)
@@ -215,9 +235,10 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val time = cursor.getLong(3)
             val type = cursor.getInt(4)
             val message = cursor.getString(5)
+            val read = cursor.getInt(6) != 0
             //Log.i(TAG, "$message ::: $messId")
             cursor.close()
-            return Message(messageId, contactId, incoming, delivered, time, type, message)
+            return Message(messageId, contactId, incoming, delivered, time, type, message, read)
         }
         cursor.close()
         return null
@@ -270,9 +291,14 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val id = cursor.getLong(0)
             val pubkey = cursor.getString(1)
             val name = cursor.getString(2)
-            list.add(Contact(id, pubkey, name, ""))
+            list.add(Contact(id, pubkey, name, "", 0))
         }
         cursor.close()
+        for (c in list) {
+            c.unread = getUnreadCount(c.id)
+            c.lastMessage = getLastMessage(c.id).orEmpty()
+        }
+
         return list
     }
 

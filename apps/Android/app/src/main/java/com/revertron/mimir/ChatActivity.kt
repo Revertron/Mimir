@@ -37,7 +37,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val pubkey = intent.getStringExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         val id = getStorage().getContactId(pubkey)
-        contact = Contact(id, pubkey, name, "")
+        contact = Contact(id, pubkey, name, "", 0)
 
         supportActionBar?.title = contact.name
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -52,7 +52,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 sendText(contact.pubkey, text)
             }
         }
-        val messages = (application as App).storage.getMessages(contact.pubkey)
         val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this)
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter

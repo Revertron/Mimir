@@ -14,7 +14,7 @@ import com.revertron.mimir.storage.SqlStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 
-class MessageAdapter(private val storage: SqlStorage, userId: Long, private val multiChat: Boolean, private val myName: String, private val contactName: String, private val onclick: View.OnClickListener?):
+class MessageAdapter(private val storage: SqlStorage, private val userId: Long, private val multiChat: Boolean, private val myName: String, private val contactName: String, private val onclick: View.OnClickListener?):
     RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance()
@@ -70,6 +70,8 @@ class MessageAdapter(private val storage: SqlStorage, userId: Long, private val 
         } else {
             layoutParams.updateMargins(top = 0)
         }
+        //TODO somehow propagate this event to notification manager to cancel notification if it exists
+        storage.setMessageRead(userId, message.id, true)
     }
 
     override fun getItemViewType(position: Int): Int {

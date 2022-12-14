@@ -17,6 +17,8 @@
         <item name="textEditTextColor">@color/light_gray</item>
         <item name="chatBackgroundColor">@color/semi_gray</item>
         <item name="iconColor">@color/white</item>
+        <item name="unreadBadgeBackColor">@color/gray_80</item>
+        <item name="unreadBadgeColor">@color/white</item>
 
         <item name="editTextStyle">@style/EditTextStyle</item>
         <!--<item name="toolbarStyle">@style/MimirToolbar</item>-->

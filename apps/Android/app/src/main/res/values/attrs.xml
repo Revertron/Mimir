@@ -4,4 +4,6 @@
     <attr name="textEditTextColor" format="reference" />
     <attr name="chatBackgroundColor" format="reference" />
     <attr name="iconColor" format="color" />
+    <attr name="unreadBadgeColor" format="color" />
+    <attr name="unreadBadgeBackColor" format="color" />
 </resources>

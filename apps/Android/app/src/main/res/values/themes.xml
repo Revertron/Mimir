@@ -18,6 +18,8 @@
         <item name="textEditTextColor">@color/dark_gray</item>
         <item name="chatBackgroundColor">@color/light_gray</item>
         <item name="iconColor">@color/black</item>
+        <item name="unreadBadgeBackColor">@color/gray_80</item>
+        <item name="unreadBadgeColor">@color/white</item>
 
         <item name="editTextStyle">@style/EditTextStyle</item>
         <item name="android:editTextStyle">@style/EditTextStyle</item>

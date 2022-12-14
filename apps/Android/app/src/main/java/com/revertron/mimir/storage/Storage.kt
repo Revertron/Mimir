@@ -24,7 +24,7 @@ class Storage(private val context: Context) {
     fun getContactList(): List<Contact> {
         val list = mutableListOf<Contact>()
         contacts.forEach{ (addr, name) ->
-            list.add(Contact(0, name, addr, ""))
+            list.add(Contact(0, name, addr, "", 0))
         }
         return list
     }

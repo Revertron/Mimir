@@ -13,11 +13,13 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
     class ViewHolder(view: View): RecyclerView.ViewHolder(view) {
         val contactName: AppCompatTextView
         val lastMessage: AppCompatTextView
+        val unreadCount: AppCompatTextView
         val avatar: AvatarView
 
         init {
             contactName = view.findViewById(R.id.contact_name)
             lastMessage = view.findViewById(R.id.last_message)
+            unreadCount = view.findViewById(R.id.unread_count)
             avatar = view.findViewById(R.id.avatar)
         }
     }
@@ -33,6 +35,12 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
         val contact = dataSet[position]
         holder.contactName.text = contact.name
         holder.lastMessage.text = contact.lastMessage.ifEmpty { contact.pubkey }
+        if (contact.unread > 0) {
+            holder.unreadCount.text = contact.unread.toString()
+            holder.unreadCount.visibility = View.VISIBLE
+        } else {
+            holder.unreadCount.visibility = View.GONE
+        }
         holder.itemView.tag = contact
         val initials = getInitials(contact)
         holder.avatar.avatarInitials = initials
