@@ -1,6 +1,8 @@
 package com.revertron.mimir.net
 
 import android.util.Log
+import com.revertron.mimir.isAddressFromSubnet
+import com.revertron.mimir.isSubnetYggdrasilAddress
 import com.revertron.mimir.randomBytes
 import com.revertron.mimir.sec.Sign
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
@@ -9,6 +11,7 @@ import org.bouncycastle.util.encoders.Hex
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
+import java.net.InetAddress
 import java.net.Socket
 
 class ConnectionHandler(private val clientId: Int, private val keyPair: AsymmetricCipherKeyPair, private val socket: Socket, private val listener: EventListener): Thread(TAG) {
@@ -22,7 +25,7 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
     var peerStatus: Status = Status.Created
     var challengeBytes: ByteArray? = randomBytes(32)
     private val buffer = mutableListOf<Pair<Long, String>>()
-    private val address = socket.inetAddress.toString().replace("/", "")
+    private var address = socket.inetAddress.toString().replace("/", "")
     private var peerClientId = 0
 
     override fun run() {
@@ -36,7 +39,11 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
         while (!this.isInterrupted) {
             when (peerStatus) {
                 Status.ConnectedOut -> {
-                    val hello = getHello(clientId)
+                    // If our client is from NATed Yggdrasil network we send its address from 300::/8
+                    val hello = if (isSubnetYggdrasilAddress(socket.localAddress))
+                        getHello(clientId, socket.localAddress)
+                    else
+                        getHello(clientId)
                     writeClientHello(dos, hello)
                     peerStatus = Status.HelloSent
                 }
@@ -107,12 +114,20 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
             Log.i(TAG, "Got header $header")
             when (header.type) {
                 MSG_TYPE_HELLO -> {
-                    val hello = readClientHello(dis) ?: return false
+                    val hello = readClientHello(dis, header.size > 80) ?: return false
                     if (peer == null) {
                         peer = hello.pubkey
                         if (!(keyPair.public as Ed25519PublicKeyParameters).encoded.contentEquals(hello.receiver)) {
                             Log.w(TAG, "Connection for wrong number!")
                             return false
+                        }
+                        if (hello.address != null) {
+                            if (!isAddressFromSubnet(socket.inetAddress, hello.address)) {
+                                Log.e(TAG, "Spoofing Yggdrasil address!\n${socket.inetAddress} and ${hello.address}")
+                                return false
+                            }
+                            Log.i(TAG, "Client connected from NATed IPv6: ${hello.address}")
+                            address = hello.address.toString().replace("/", "")
                         }
                         val challenge = getChallenge()
                         writeChallenge(dos, challenge!!)
@@ -183,9 +198,9 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
         }
     }
 
-    private fun getHello(clientId: Int): ClientHello {
+    private fun getHello(clientId: Int, address: InetAddress? = null): ClientHello {
         val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
-        return ClientHello(VERSION, pubkey, peer!!, clientId)
+        return ClientHello(VERSION, pubkey, peer!!, clientId, address)
     }
 
     private fun getChallenge(): Challenge? {

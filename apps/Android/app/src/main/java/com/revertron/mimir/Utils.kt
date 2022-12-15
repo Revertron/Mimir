@@ -73,6 +73,19 @@ fun getYggdrasilAddress(): InetAddress? {
     return null
 }
 
+fun isSubnetYggdrasilAddress(address: InetAddress): Boolean {
+    return address.address[0] == 0x3.toByte()
+}
+
+fun isAddressFromSubnet(address: InetAddress, subnet: InetAddress): Boolean {
+    for (b in 1..7) {
+        if (address.address[b] != subnet.address[b]) {
+            return false
+        }
+    }
+    return true
+}
+
 fun randomString(length: Int): String {
     val characters = ('a'..'z') + ('A'..'Z') + ('0'..'9')
     return (1..length)

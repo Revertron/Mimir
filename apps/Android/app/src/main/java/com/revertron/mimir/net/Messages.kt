@@ -4,6 +4,7 @@ import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.net.InetAddress
 
 const val MSG_TYPE_HELLO = 1
 const val MSG_TYPE_CHALLENGE = 2
@@ -12,7 +13,7 @@ const val MSG_TYPE_MESSAGE_TEXT = 4
 const val MSG_TYPE_OK = 32767
 
 data class Header(val stream: Int, val type: Int, val size: Long)
-data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: ByteArray, val clientId: Int)
+data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: ByteArray, val clientId: Int, val address: InetAddress? = null)
 data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
 data class MessageText(val id: Long, val data: ByteArray)
@@ -37,7 +38,7 @@ private fun writeHeader(dos: DataOutputStream, stream: Int, type: Int, size: Int
     dos.write(baos.toByteArray())
 }
 
-fun readClientHello(dis: DataInputStream): ClientHello? {
+fun readClientHello(dis: DataInputStream, read_address: Boolean): ClientHello? {
     val version = dis.readInt()
     var size = dis.readInt()
     val pubkey = ByteArray(size)
@@ -60,11 +61,22 @@ fun readClientHello(dis: DataInputStream): ClientHello? {
         count += read
     }
     val clientId = dis.readInt()
-    return ClientHello(version, pubkey, receiver, clientId)
+    val address = if (read_address) {
+        val size = dis.readInt()
+        val buf = ByteArray(size)
+        dis.read(buf)
+        InetAddress.getByAddress(buf)
+    } else {
+        null
+    }
+    return ClientHello(version, pubkey, receiver, clientId, address)
 }
 
 fun writeClientHello(dos: DataOutputStream, hello: ClientHello, stream: Int = 0, type: Int = MSG_TYPE_HELLO): Boolean {
-    val size = 4 + 4 + hello.pubkey.size + 4 + hello.receiver.size + 4
+    var size = 4 + 4 + hello.pubkey.size + 4 + hello.receiver.size + 4
+    if (hello.address != null) {
+        size += hello.address.address.size + 4
+    }
     writeHeader(dos, stream, type, size)
 
     dos.writeInt(hello.version)
@@ -73,6 +85,10 @@ fun writeClientHello(dos: DataOutputStream, hello: ClientHello, stream: Int = 0,
     dos.writeInt(hello.receiver.size)
     dos.write(hello.receiver)
     dos.writeInt(hello.clientId)
+    if (hello.address != null) {
+        dos.writeInt(hello.address.address.size)
+        dos.write(hello.address.address)
+    }
     return true
 }
 
