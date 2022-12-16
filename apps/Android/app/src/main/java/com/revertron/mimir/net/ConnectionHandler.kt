@@ -127,7 +127,9 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                                 return false
                             }
                             Log.i(TAG, "Client connected from NATed IPv6: ${hello.address}")
+                            val oldAddress = address
                             address = hello.address.toString().replace("/", "")
+                            listener.onClientIPChanged(oldAddress, address)
                         }
                         val challenge = getChallenge()
                         writeChallenge(dos, challenge!!)

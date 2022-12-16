@@ -153,14 +153,25 @@ class MimirServer(val context: Context, private val clientId: Int, private val k
         // Nothing
     }
 
+    override fun onClientIPChanged(old: String, new: String) {
+        synchronized(connections) {
+            if (connections.containsKey(old)) {
+                val connectionHandler = connections.remove(old)!!
+                connections[new] = connectionHandler
+            }
+        }
+    }
+
     override fun onClientConnected(from: ByteArray, address: String, clientId: Int) {
         // When some client connects to us, we put `ConnectionHandler` in `connections` by the address
         // as we don't know the public key of newly connected client.
         // Now we can change it to correct key.
-        if (connections.containsKey(address)) {
-            val connectionHandler = connections.remove(address)!!
-            val publicKey = Hex.toHexString(from)
-            connections[publicKey] = connectionHandler
+        synchronized(connections) {
+            if (connections.containsKey(address)) {
+                val connectionHandler = connections.remove(address)!!
+                val publicKey = Hex.toHexString(from)
+                connections[publicKey] = connectionHandler
+            }
         }
         listener.onClientConnected(from, address, clientId)
     }
@@ -184,6 +195,7 @@ class MimirServer(val context: Context, private val clientId: Int, private val k
 
 interface EventListener {
     fun onServerStateChanged(online: Boolean)
+    fun onClientIPChanged(old: String, new: String) {}
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
     fun onMessageReceived(from: ByteArray, address: String, id: Long, message: String)
     fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean)
