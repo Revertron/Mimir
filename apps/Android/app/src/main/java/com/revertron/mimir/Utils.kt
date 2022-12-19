@@ -10,6 +10,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
+import org.bouncycastle.util.encoders.DecoderException
 import org.bouncycastle.util.encoders.Hex
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -106,6 +107,9 @@ fun validPublicKey(text: String): Boolean {
         Log.d(MainActivity.TAG, "Got valid public key $key")
         return true
     } catch (e: IllegalArgumentException) {
+        Log.d(MainActivity.TAG, "Wrong public key $text")
+        return false
+    } catch (e: DecoderException) {
         Log.d(MainActivity.TAG, "Wrong public key $text")
         return false
     }

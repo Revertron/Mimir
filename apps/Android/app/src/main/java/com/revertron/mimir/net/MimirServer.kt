@@ -40,6 +40,7 @@ class MimirServer(val context: Context, private val clientId: Int, private val k
                 Log.i(TAG, "Starting on $localAddress")
                 serverSocket = ServerSocket(port, 50, localAddress)
                 serverSocket?.soTimeout = 60000
+                Log.d(TAG, "Socket on $localAddress created")
                 while (working.get()) {
                     try {
                         if (!online) {
@@ -75,6 +76,11 @@ class MimirServer(val context: Context, private val clientId: Int, private val k
                 } catch (ex: IOException) {
                     ex.printStackTrace()
                 }
+                sleep(10000)
+            } catch (e: SecurityException) {
+                e.printStackTrace()
+                Log.e(TAG, "Security manager doesn't allow binding socket")
+                break
             }
         }
     }

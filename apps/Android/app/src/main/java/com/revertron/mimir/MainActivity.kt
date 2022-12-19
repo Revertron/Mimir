@@ -124,8 +124,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.setTitle(getString(R.string.add_contact))
         builder.setView(view)
         builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
-            val name = name.text.toString()
-            val pubkey = pubkey.text.toString()
+            val name = name.text.toString().trim()
+            val pubkey = pubkey.text.toString().trim()
             if (name.isEmpty()) {
                 Toast.makeText(this@MainActivity, R.string.empty_name, Toast.LENGTH_LONG).show()
                 return@setPositiveButton
