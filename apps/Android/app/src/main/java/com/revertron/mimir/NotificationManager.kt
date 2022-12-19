@@ -12,6 +12,10 @@ import androidx.core.app.TaskStackBuilder
 import com.revertron.mimir.storage.StorageListener
 
 class NotificationManager(val context: Context): StorageListener {
+
+    private val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val messages = HashMap<Long, String>()
+
     override fun onContactAdded(id: Long) {
 
     }
@@ -32,13 +36,41 @@ class NotificationManager(val context: Context): StorageListener {
 
     }
 
+    override fun onMessageRead(id: Long, contactId: Long) {
+        manager.cancel((contactId.toInt() shl 16))
+        synchronized(messages) {
+            messages.remove(contactId)
+        }
+    }
+
     override fun onMessageReceived(id: Long, contactId: Long, message: String): Boolean {
+        val mes = synchronized(messages) {
+            val message = if (message.length > 50) {
+                message.substring(0, 50)
+            } else {
+                message
+            }
+            if (messages.containsKey(contactId)) {
+                val old = messages.remove(contactId)!!
+                // Prevent it from growing
+                if (old.length < 30) {
+                    val new = "$old\n$message"
+                    messages[contactId] = new
+                    new
+                } else {
+                    messages[contactId] = old
+                    old
+                }
+            } else {
+                messages[contactId] = message
+                message
+            }
+        }
+
         val name = App.app.storage.getContactName(contactId)
         val pubkey = App.app.storage.getContactPubkey(contactId)
-        val notification = createMessageNotification(context, contactId, name, pubkey, message)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val nId = (contactId shl 32).toInt()
-        manager.notify(nId, notification)
+        val notification = createMessageNotification(context, contactId, name, pubkey, mes)
+        manager.notify((contactId.toInt() shl 16), notification)
         return true
     }
 

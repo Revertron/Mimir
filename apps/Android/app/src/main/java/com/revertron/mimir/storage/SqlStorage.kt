@@ -164,7 +164,9 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             put("read", read)
         }
         if (this.writableDatabase.update("messages", values, "id = ? AND contact = ?", arrayOf("$id", "$contactId")) > 0) {
-            Log.i(TAG, "Message $id read = $read")
+            if (read) {
+                notificationManager.onMessageRead(id, contactId)
+            }
         }
     }
 
@@ -385,4 +387,5 @@ interface StorageListener {
     fun onMessageSent(id: Long, contactId: Long, message: String) {}
     fun onMessageDelivered(id: Long, delivered: Boolean) {}
     fun onMessageReceived(id: Long, contactId: Long, message: String): Boolean { return false }
+    fun onMessageRead(id: Long, contactId: Long) {}
 }
