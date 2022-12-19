@@ -217,7 +217,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 
     fun getLastMessage(userId: Long): String? {
         var result: String? = null
-        val cursor = readableDatabase.query("messages", arrayOf("message"), "contact = ? AND incoming = true", arrayOf("$userId"), null, null, "time DESC", "1")
+        val cursor = readableDatabase.query("messages", arrayOf("message"), "contact = ?", arrayOf("$userId"), null, null, "time DESC", "1")
         if (cursor.moveToNext()) {
             result = cursor.getString(0)
         }
