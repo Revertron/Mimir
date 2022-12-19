@@ -47,7 +47,7 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                     writeClientHello(dos, hello)
                     peerStatus = Status.HelloSent
                 }
-                Status.AuthDone -> {
+                Status.Auth2Done -> {
                     val message: Pair<Long, String>? = synchronized(buffer) {
                         if (buffer.isNotEmpty()){
                             buffer.removeAt(0)
@@ -111,13 +111,13 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
     private fun processInput(dis: DataInputStream, dos: DataOutputStream): Boolean {
         try {
             val header = readHeader(dis)
-            Log.i(TAG, "Got header $header")
+            Log.i(TAG, "Got header $header, our state $peerStatus")
             when (header.type) {
                 MSG_TYPE_HELLO -> {
                     val hello = readClientHello(dis, header.size > 80) ?: return false
                     if (peer == null) {
                         peer = hello.pubkey
-                        if (!(keyPair.public as Ed25519PublicKeyParameters).encoded.contentEquals(hello.receiver)) {
+                        if (!isMessageForMe(hello)) {
                             Log.w(TAG, "Connection for wrong number!")
                             return false
                         }
@@ -143,6 +143,12 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                     writeChallengeAnswer(dos, answer)
                     peerStatus = Status.ChallengeAnswered
                 }
+                MSG_TYPE_CHALLENGE2 -> {
+                    val challenge = readChallenge(dis)
+                    val answer = getChallengeAnswer(challenge?.data ?: return false)
+                    writeChallengeAnswer(dos, answer, type = MSG_TYPE_CHALLENGE_ANSWER2)
+                    peerStatus = Status.Challenge2Answered
+                }
                 MSG_TYPE_CHALLENGE_ANSWER -> {
                     val answer = readChallengeAnswer(dis)
                     val public = Ed25519PublicKeyParameters(peer)
@@ -150,8 +156,23 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                         Log.w(TAG, "Wrong challenge answer!")
                         return false
                     }
+                    // Client answered challenge
                     writeOk(dos, 0)
                     peerStatus = Status.AuthDone
+                    synchronized(listener) {
+                        peer?.let { listener.onClientConnected(it, address, peerClientId) }
+                    }
+                }
+                MSG_TYPE_CHALLENGE_ANSWER2 -> {
+                    val answer = readChallengeAnswer(dis)
+                    val public = Ed25519PublicKeyParameters(peer)
+                    if (!Sign.verify(public, challengeBytes!!, answer?.data ?: return false)) {
+                        Log.w(TAG, "Wrong challenge answer!")
+                        return false
+                    }
+                    // Server answered challenge
+                    writeOk(dos, 0)
+                    peerStatus = Status.Auth2Done
                     synchronized(listener) {
                         peer?.let { listener.onClientConnected(it, address, peerClientId) }
                     }
@@ -162,7 +183,13 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                         Log.i(TAG, "Message with id ${ok.id} received by peer")
                         //TODO process Ok as real confirmation
                         if (peerStatus == Status.ChallengeAnswered && ok.id == 0L) {
-                            peerStatus = Status.AuthDone
+                            // Now we, as client node, need to authorize the server node
+                            val challenge = getChallenge()
+                            writeChallenge(dos, challenge!!, type = MSG_TYPE_CHALLENGE2)
+                            peerStatus = Status.Challenge2Sent
+                        } else if (peerStatus == Status.Challenge2Answered && ok.id == 0L) {
+                            // Now we, as client node, are authorized
+                            peerStatus = Status.Auth2Done
                         } else if (ok.id > 0) {
                             //TODO Check that we really sent this ok.id to this user ;)
                             listener.onMessageDelivered(peer!!, ok.id, true)
@@ -185,6 +212,8 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
         }
         return false
     }
+
+    private fun isMessageForMe(hello: ClientHello) = (keyPair.public as Ed25519PublicKeyParameters).encoded.contentEquals(hello.receiver)
 
     fun setPeerPublicKey(pubkey: ByteArray) {
         peer = pubkey
@@ -223,5 +252,5 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
 }
 
 enum class Status {
-    Created, ConnectedIn, ConnectedOut, HelloSent, ChallengeSent, ChallengeAnswered, AuthDone,
+    Created, ConnectedIn, ConnectedOut, HelloSent, ChallengeSent, ChallengeAnswered, AuthDone, Challenge2Sent, Challenge2Answered, Auth2Done,
 }

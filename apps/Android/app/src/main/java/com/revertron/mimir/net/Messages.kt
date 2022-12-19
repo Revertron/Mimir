@@ -9,7 +9,9 @@ import java.net.InetAddress
 const val MSG_TYPE_HELLO = 1
 const val MSG_TYPE_CHALLENGE = 2
 const val MSG_TYPE_CHALLENGE_ANSWER = 3
-const val MSG_TYPE_MESSAGE_TEXT = 4
+const val MSG_TYPE_CHALLENGE2 = 4
+const val MSG_TYPE_CHALLENGE_ANSWER2 = 5
+const val MSG_TYPE_MESSAGE_TEXT = 1000
 const val MSG_TYPE_OK = 32767
 
 data class Header(val stream: Int, val type: Int, val size: Long)
@@ -89,6 +91,7 @@ fun writeClientHello(dos: DataOutputStream, hello: ClientHello, stream: Int = 0,
         dos.writeInt(hello.address.address.size)
         dos.write(hello.address.address)
     }
+    dos.flush()
     return true
 }
 
@@ -112,6 +115,7 @@ fun writeChallenge(dos: DataOutputStream, challenge: Challenge, stream: Int = 0,
 
     dos.writeInt(challenge.data.size)
     dos.write(challenge.data)
+    dos.flush()
     return true
 }
 
@@ -135,6 +139,7 @@ fun writeChallengeAnswer(dos: DataOutputStream, challenge: ChallengeAnswer, stre
 
     dos.writeInt(challenge.data.size)
     dos.write(challenge.data)
+    dos.flush()
     return true
 }
 
@@ -173,6 +178,7 @@ fun writeOk(dos: DataOutputStream, id: Long, stream: Int = 0, type: Int = MSG_TY
     writeHeader(dos, stream, type, size)
 
     dos.writeLong(id)
+    dos.flush()
     return true
 }
 
