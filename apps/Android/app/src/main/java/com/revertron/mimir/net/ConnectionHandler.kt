@@ -14,7 +14,13 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.Socket
 
-class ConnectionHandler(private val clientId: Int, private val keyPair: AsymmetricCipherKeyPair, private val socket: Socket, private val listener: EventListener): Thread(TAG) {
+class ConnectionHandler(
+    private val clientId: Int,
+    private val keyPair: AsymmetricCipherKeyPair,
+    private val socket: Socket,
+    private val listener: EventListener,
+    private val infoProvider: InfoProvider
+): Thread(TAG) {
 
     companion object {
         private const val TAG = "ConnectionHandler"
@@ -24,6 +30,7 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
     private var peer: ByteArray? = null
     var peerStatus: Status = Status.Created
     var challengeBytes: ByteArray? = randomBytes(32)
+    private var infoRequested = false
     private val buffer = mutableListOf<Pair<Long, String>>()
     private var address = socket.inetAddress.toString().replace("/", "")
     private var peerClientId = 0
@@ -49,7 +56,7 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                 }
                 Status.Auth2Done -> {
                     val message: Pair<Long, String>? = synchronized(buffer) {
-                        if (buffer.isNotEmpty()){
+                        if (buffer.isNotEmpty()) {
                             buffer.removeAt(0)
                         } else {
                             null
@@ -158,6 +165,10 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                     }
                     // Client answered challenge
                     writeOk(dos, 0)
+                    if (!infoRequested) {
+                        writeInfoRequest(dos, infoProvider.getContactUpdateTime(Hex.toHexString(peer)))
+                        infoRequested = true
+                    }
                     peerStatus = Status.AuthDone
                     synchronized(listener) {
                         peer?.let { listener.onClientConnected(it, address, peerClientId) }
@@ -175,6 +186,19 @@ class ConnectionHandler(private val clientId: Int, private val keyPair: Asymmetr
                     peerStatus = Status.Auth2Done
                     synchronized(listener) {
                         peer?.let { listener.onClientConnected(it, address, peerClientId) }
+                    }
+                }
+                MSG_TYPE_INFO_REQUEST -> {
+                    val time = dis.readLong()
+                    val info = infoProvider.getMyInfo(time)
+                    if (info != null) {
+                        writeInfoResponse(dos, info)
+                    }
+                }
+                MSG_TYPE_INFO_RESPONSE -> {
+                    val info = readInfoResponse(dis)
+                    if (info != null) {
+                        infoProvider.updateContactInfo(Hex.toHexString(peer), info)
                     }
                 }
                 MSG_TYPE_OK -> {

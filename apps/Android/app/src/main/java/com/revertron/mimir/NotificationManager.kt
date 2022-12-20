@@ -67,7 +67,7 @@ class NotificationManager(val context: Context): StorageListener {
             }
         }
 
-        val name = App.app.storage.getContactName(contactId)
+        val name = App.app.storage.getContactName(contactId).ifEmpty { context.getString(R.string.unknown_nickname) }
         val pubkey = App.app.storage.getContactPubkey(contactId)
         val notification = createMessageNotification(context, contactId, name, pubkey, mes)
         manager.notify((contactId.toInt() shl 16), notification)

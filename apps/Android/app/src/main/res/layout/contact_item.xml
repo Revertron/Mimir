@@ -15,6 +15,7 @@
         android:layout_height="48dp"
         android:layout_marginEnd="8dp"
         app:avatarViewShape="rounded_rect"
+        app:avatarViewBorderRadius="4dp"
         app:avatarViewInitialsTextSizeRatio="0.5"
         app:avatarViewInitials="Mi"
         app:avatarViewBorderWidth="0dp"
@@ -52,7 +53,7 @@
                 android:layout_height="wrap_content"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
-                android:background="?attr/unreadBadgeBackColor"
+                android:background="@drawable/unread_badge"
                 android:textColor="?attr/unreadBadgeColor"
                 tools:text="20" />
 

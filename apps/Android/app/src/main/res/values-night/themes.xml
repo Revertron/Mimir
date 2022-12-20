@@ -13,6 +13,7 @@
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
         <!-- Customize your theme here. -->
         <item name="android:textColorPrimary">@color/white</item>
+        <item name="android:textColor">@color/white</item>
         <item name="textEditBackgroundColor">@color/dark_gray</item>
         <item name="textEditTextColor">@color/light_gray</item>
         <item name="chatBackgroundColor">@color/semi_gray</item>
@@ -22,5 +23,10 @@
 
         <item name="editTextStyle">@style/EditTextStyle</item>
         <!--<item name="toolbarStyle">@style/MimirToolbar</item>-->
+        <item name="actionOverflowButtonStyle">@style/MimirToolbarOverflowStyle</item>
+    </style>
+
+    <style name="MimirToolbarOverflowStyle" parent="Widget.AppCompat.ActionButton.Overflow">
+        <item name="tint">@color/white</item>
     </style>
 </resources>

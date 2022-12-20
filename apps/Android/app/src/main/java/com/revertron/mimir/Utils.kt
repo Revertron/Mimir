@@ -115,6 +115,12 @@ fun validPublicKey(text: String): Boolean {
     }
 }
 
+fun getUtcTime(): Long {
+    val calendar = Calendar.getInstance()
+    val offset = calendar.timeZone.rawOffset
+    return (calendar.timeInMillis - offset) / 1000
+}
+
 enum class State {
     Disabled, Enabled;
 }

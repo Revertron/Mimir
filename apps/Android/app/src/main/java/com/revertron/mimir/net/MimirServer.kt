@@ -15,7 +15,14 @@ private const val CONNECTION_TRIES = 5
 private const val CONNECTION_TIMEOUT = 15000
 private const val CONNECTION_PERIOD = 3000L
 
-class MimirServer(val context: Context, private val clientId: Int, private val keyPair: AsymmetricCipherKeyPair, private val listener: EventListener, val port: Int): Thread(TAG), EventListener {
+class MimirServer(
+    val context: Context,
+    private val clientId: Int,
+    private val keyPair: AsymmetricCipherKeyPair,
+    private val listener: EventListener,
+    private val infoProvider: InfoProvider,
+    val port: Int
+): Thread(TAG), EventListener {
 
     companion object {
         const val TAG: String = "MimirServer"
@@ -50,7 +57,7 @@ class MimirServer(val context: Context, private val clientId: Int, private val k
                         socket = serverSocket!!.accept()
                         Log.i(TAG, "New client from: $socket")
                         // Use threads for each client to communicate with them simultaneously
-                        val connection = ConnectionHandler(clientId, keyPair, socket, this)
+                        val connection = ConnectionHandler(clientId, keyPair, socket, this, infoProvider)
                         connection.peerStatus = Status.ConnectedIn
                         synchronized(connections) {
                             val address = socket.inetAddress.toString().substring(1)
@@ -127,7 +134,7 @@ class MimirServer(val context: Context, private val clientId: Int, private val k
     }
 
     private fun connect(recipient: ByteArray, address: String): ConnectionHandler? {
-        for (i in 1..CONNECTION_TRIES + 1) {
+        for (i in 1..CONNECTION_TRIES) {
             try {
                 Log.d(TAG, "Connection attempt $i for $address")
                 val socket = Socket()
@@ -136,7 +143,7 @@ class MimirServer(val context: Context, private val clientId: Int, private val k
                 )
                 socket.connect(socketAddress, CONNECTION_TIMEOUT)
                 if (socket.isConnected) {
-                    val connection = ConnectionHandler(clientId, keyPair, socket, this)
+                    val connection = ConnectionHandler(clientId, keyPair, socket, this, infoProvider)
                     connection.peerStatus = Status.ConnectedOut
                     connection.setPeerPublicKey(recipient)
                     connection.start()
@@ -206,4 +213,10 @@ interface EventListener {
     fun onMessageReceived(from: ByteArray, address: String, id: Long, message: String)
     fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean)
     fun onConnectionClosed(from: ByteArray, address: String) {}
+}
+
+interface InfoProvider {
+    fun getMyInfo(ifUpdatedSince: Long): InfoResponse?
+    fun getContactUpdateTime(pubkey: String): Long
+    fun updateContactInfo(pubkey: String, info: InfoResponse)
 }

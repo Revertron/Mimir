@@ -42,4 +42,5 @@
     <string name="contact_already_added">Contact with that key already added</string>
     <string name="contact_addition_error">Error adding contact</string>
     <string name="empty_uri">Empty URI</string>
+    <string name="unknown_nickname">Unknown</string>
 </resources>

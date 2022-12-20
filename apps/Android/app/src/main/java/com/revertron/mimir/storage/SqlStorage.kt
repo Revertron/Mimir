@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.provider.Settings
 import android.util.Log
 import com.revertron.mimir.NotificationManager
+import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.KeyGenerationParameters
@@ -22,10 +23,10 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 3
         const val DATABASE_NAME = "data.db"
-        const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER)"
-        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey TEXT, name TEXT)"
+        const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
+        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey TEXT, name TEXT, info TEXT, avatar TEXT, updated INTEGER, redacted BOOL)"
         const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, expiration INTEGER)"
         const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, incoming BOOL, delivered BOOL, time INTEGER, type INTEGER, message TEXT, read BOOL)"
     }
@@ -45,7 +46,19 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (newVersion > oldVersion && newVersion == 2) {
-            db.execSQL("ALTER TABLE messages ADD COLUMN read BOOL DEFAULT 1");
+            db.execSQL("ALTER TABLE messages ADD COLUMN read BOOL DEFAULT 1")
+        }
+
+        if (newVersion > oldVersion && newVersion == 3) {
+            val time = getUtcTime()
+            db.execSQL("ALTER TABLE accounts ADD COLUMN info TEXT")
+            db.execSQL("ALTER TABLE accounts ADD COLUMN avatar TEXT")
+            db.execSQL("ALTER TABLE accounts ADD COLUMN updated INTEGER DEFAULT $time")
+
+            db.execSQL("ALTER TABLE contacts ADD COLUMN info TEXT")
+            db.execSQL("ALTER TABLE contacts ADD COLUMN avatar TEXT")
+            db.execSQL("ALTER TABLE contacts ADD COLUMN updated INTEGER DEFAULT 0")
+            db.execSQL("ALTER TABLE contacts ADD COLUMN redacted BOOL DEFAULT 0")
         }
     }
 
@@ -76,7 +89,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             Log.i(TAG, "Found contact id $id")
             saveIp(id, address, clientId)
         } else {
-            id = addContact(pubkey, "Unknown")
+            id = addContact(pubkey, "")
             Log.i(TAG, "Created contact id $id")
             saveIp(id, address, clientId)
         }
@@ -102,9 +115,21 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return this.writableDatabase.insert("ips", null, values) >= 0
     }
 
-    fun renameContact(contactId: Long, name: String) {
+    fun renameContact(contactId: Long, name: String, redacted: Boolean) {
+        val cursor = this.readableDatabase.query("contacts", arrayOf("redacted"), "id = ?", arrayOf("$contactId"), null, null, null)
+        val redactedLocally = if (cursor.moveToNext()) {
+            cursor.getInt(0) != 0
+        } else {
+            false
+        }
+        cursor.close()
+        if (redactedLocally && !redacted) {
+            return
+        }
         val values = ContentValues().apply {
             put("name", name)
+            put("updated", getUtcTime())
+            put("redacted", redacted)
         }
         writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
     }
@@ -112,7 +137,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     fun addMessage(contact: String, incoming: Boolean, delivered: Boolean, time: Long, type: Int, message: String): Long {
         var id = getContactId(contact)
         if (id <= 0) {
-            id = addContact(contact, "Unknown")
+            id = addContact(contact, "")
         }
         val values = ContentValues().apply {
             put("contact", id)
@@ -145,7 +170,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     fun setMessageDelivered(to: String, id: Long, delivered: Boolean) {
         var contact = getContactId(to)
         if (contact <= 0) {
-            contact = addContact(to, "Unknown")
+            contact = addContact(to, "")
         }
         val values = ContentValues().apply {
             put("delivered", delivered)
@@ -279,7 +304,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         val name = if (cursor.moveToNext()) {
             cursor.getString(0)
         } else {
-            "Unknown"
+            ""
         }
         cursor.close()
         return name
@@ -327,45 +352,66 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return emptyList()
     }
 
-    fun getAccountInfo(id: Int): AccountInfo {
-        var db = this.readableDatabase
-        val cursor = db.query("accounts", arrayOf("name", "privkey", "pubkey", "client"), "id = ?", arrayOf(id.toString()), null, null, null)
+    fun getAccountInfo(id: Int, ifUpdatedSince: Long): AccountInfo? {
+        val db = this.readableDatabase
+        val columns = arrayOf("name", "info", "avatar", "privkey", "pubkey", "client", "updated")
+        val cursor = db.query("accounts", columns, "id = ? AND updated > ?", arrayOf(id.toString(), ifUpdatedSince.toString()), null, null, null)
         if (cursor.moveToNext()) {
             val name = cursor.getString(0)
-            val privkey = Hex.decode(cursor.getString(1))
-            val pubkeyString = cursor.getString(2)
+            val info = cursor.getString(1) ?: ""
+            val avatar = cursor.getString(2) ?: ""
+            val privkey = Hex.decode(cursor.getString(3))
+            val pubkeyString = cursor.getString(4)
             val pubkey = Hex.decode(pubkeyString)
-            val clientId = cursor.getInt(3) xor androidId
+            val clientId = cursor.getInt(5) xor androidId
+            val updated = cursor.getLong(6)
+
             val priv = Ed25519PrivateKeyParameters(privkey)
             val pub = Ed25519PublicKeyParameters(pubkey)
             cursor.close()
             Log.i(TAG, "Found account $name with pubkey $pubkeyString")
-            return AccountInfo(name, clientId, AsymmetricCipherKeyPair(pub, priv))
+            return AccountInfo(name, info, avatar, updated, clientId, AsymmetricCipherKeyPair(pub, priv))
         }
-        // If there is no account with that id we generate new
+        return null
+    }
+
+    fun generateNewAccount(): AccountInfo {
         val gen = Ed25519KeyPairGenerator()
         gen.init(KeyGenerationParameters(SecureRandom(), 256))
         val pair = gen.generateKeyPair()
-        val name = "Default"
         val pub = Hex.toHexString((pair.public as Ed25519PublicKeyParameters).encoded)
         val priv = Hex.toHexString((pair.private as Ed25519PrivateKeyParameters).encoded)
         val clientId = Random(System.currentTimeMillis()).run { nextInt() }
-        db = this.writableDatabase
+        val utcTime = getUtcTime()
         val values = ContentValues().apply {
-            put("name", name)
+            put("name", "")
             put("privkey", priv)
             put("pubkey", pub)
             put("client", clientId)
+            put("updated", utcTime)
         }
-        db.insert("accounts", null, values)
-        return AccountInfo(name, clientId, pair)
+        this.writableDatabase.insert("accounts", null, values)
+        return AccountInfo("", "", "", utcTime, clientId, pair)
     }
 
     fun updateName(id: Int, name: String): Boolean {
+        val utcTime = getUtcTime()
         val values = ContentValues().apply {
             put("name", name)
+            put("updated", utcTime)
         }
         return this.writableDatabase.update("accounts", values, "id = ?", arrayOf("$id")) > 0
+    }
+
+    fun getContactUpdateTime(pubkey: String): Long {
+        val contactId = getContactId(pubkey)
+        val cursor = this.readableDatabase.query("contacts", arrayOf("updated"), "id = ?", arrayOf("$contactId"), null, null, null)
+        var updated = 0L
+        while (cursor.moveToNext()) {
+            updated = cursor.getLong(0)
+        }
+        cursor.close()
+        return updated
     }
 
     fun removeContactAndChat(id: Long) {
@@ -377,7 +423,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 }
 
-data class AccountInfo(val name: String, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)
+data class AccountInfo(val name: String, val info: String, val avatar: String, val updated: Long, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)
 
 interface StorageListener {
     fun onContactAdded(id: Long) {}

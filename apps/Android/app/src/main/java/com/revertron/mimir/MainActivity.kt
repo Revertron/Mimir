@@ -175,7 +175,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.setView(view)
         builder.setPositiveButton(getString(R.string.rename)) { _, _ ->
             val newName = name.text.toString()
-            (application as App).storage.renameContact(contact.id, newName)
+            (application as App).storage.renameContact(contact.id, newName, true)
             refreshContacts()
         }
         builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->

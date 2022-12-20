@@ -33,7 +33,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val contact = dataSet[position]
-        holder.contactName.text = contact.name
+        holder.contactName.text = contact.name.ifEmpty { holder.itemView.context.getString(R.string.unknown_nickname) }
         holder.lastMessage.text = contact.lastMessage.ifEmpty { contact.pubkey }
         if (contact.unread > 0) {
             holder.unreadCount.text = contact.unread.toString()

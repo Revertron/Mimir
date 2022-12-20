@@ -8,11 +8,13 @@ import android.os.IBinder
 import android.util.Log
 import androidx.preference.PreferenceManager
 import com.revertron.mimir.net.EventListener
+import com.revertron.mimir.net.InfoProvider
+import com.revertron.mimir.net.InfoResponse
 import com.revertron.mimir.net.MimirServer
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 
-class ConnectionService : Service(), EventListener {
+class ConnectionService : Service(), EventListener, InfoProvider {
 
     companion object {
         const val TAG = "ConnectionService"
@@ -38,11 +40,14 @@ class ConnectionService : Service(), EventListener {
                 val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
                 if (preferences.getBoolean("enabled", true)) { //TODO change to false
                     if (mimirServer == null) {
-                        val accountInfo = storage.getAccountInfo(1) // TODO use name
+                        var accountInfo = storage.getAccountInfo(1, 0L) // TODO use name
+                        if (accountInfo == null) {
+                            accountInfo = storage.generateNewAccount()
+                        }
                         val pubkey = (accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded
                         val pubkeyHex = Hex.toHexString(pubkey)
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey $pubkeyHex")
-                        mimirServer = MimirServer(this.applicationContext, accountInfo.clientId, accountInfo.keyPair, this, 5050) //TODO make changing port
+                        mimirServer = MimirServer(this.applicationContext, accountInfo.clientId, accountInfo.keyPair, this, this, 5050) //TODO make changing port
                         mimirServer!!.start()
                         val n = createServiceNotification(this, State.Enabled)
                         startForeground(1, n)
@@ -107,5 +112,27 @@ class ConnectionService : Service(), EventListener {
     override fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean) {
         val keyString = Hex.toHexString(to)
         (application as App).storage.setMessageDelivered(keyString, id, delivered)
+    }
+
+    override fun getMyInfo(ifUpdatedSince: Long): InfoResponse? {
+        //TODO refactor for multi account
+        val info = (application as App).storage.getAccountInfo(1, ifUpdatedSince) ?: return null
+        var avatar: ByteArray? = null
+        if (info.avatar.isNotEmpty()) {
+            val file = getFileStreamPath(info.avatar)
+            avatar = file.readBytes()
+        }
+        return InfoResponse(info.updated, info.name, info.info, avatar)
+    }
+
+    override fun getContactUpdateTime(pubkey: String): Long {
+        return (application as App).storage.getContactUpdateTime(pubkey)
+    }
+
+    override fun updateContactInfo(pubkey: String, info: InfoResponse) {
+        val storage = (application as App).storage
+        val id = storage.getContactId(pubkey)
+        Log.i(TAG, "Renaming contact $id to ${info.nickname}")
+        storage.renameContact(id, info.nickname, false)
     }
 }

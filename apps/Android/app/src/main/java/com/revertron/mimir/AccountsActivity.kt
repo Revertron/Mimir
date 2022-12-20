@@ -24,7 +24,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
         val accountNumber = 1 //TODO make multi account
 
-        val accountInfo = getStorage().getAccountInfo(accountNumber)
+        val accountInfo = getStorage().getAccountInfo(accountNumber, 0L)!!
         var name = accountInfo.name
         val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded)
 

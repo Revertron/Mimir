@@ -11,6 +11,8 @@ const val MSG_TYPE_CHALLENGE = 2
 const val MSG_TYPE_CHALLENGE_ANSWER = 3
 const val MSG_TYPE_CHALLENGE2 = 4
 const val MSG_TYPE_CHALLENGE_ANSWER2 = 5
+const val MSG_TYPE_INFO_REQUEST = 6
+const val MSG_TYPE_INFO_RESPONSE = 7
 const val MSG_TYPE_MESSAGE_TEXT = 1000
 const val MSG_TYPE_OK = 32767
 
@@ -18,6 +20,7 @@ data class Header(val stream: Int, val type: Int, val size: Long)
 data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: ByteArray, val clientId: Int, val address: InetAddress? = null)
 data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
+data class InfoResponse(val time: Long, val nickname: String, val info: String, val avatar: ByteArray?)
 data class MessageText(val id: Long, val data: ByteArray)
 data class Ok(val id: Long)
 
@@ -163,7 +166,7 @@ fun readMessageText(dis: DataInputStream): MessageText? {
 
 // val id: Int, val size: Long, val offset: Long, val data: ByteArray
 fun writeMessageText(dos: DataOutputStream, message: MessageText, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT): Boolean {
-    val size = 4 + 4 + message.data.size
+    val size = 8 + 4 + message.data.size
     writeHeader(dos, stream, type, size)
 
     dos.writeLong(message.id)
@@ -174,7 +177,7 @@ fun writeMessageText(dos: DataOutputStream, message: MessageText, stream: Int = 
 }
 
 fun writeOk(dos: DataOutputStream, id: Long, stream: Int = 0, type: Int = MSG_TYPE_OK): Boolean {
-    val size = 4 + 4
+    val size = 8
     writeHeader(dos, stream, type, size)
 
     dos.writeLong(id)
@@ -185,4 +188,86 @@ fun writeOk(dos: DataOutputStream, id: Long, stream: Int = 0, type: Int = MSG_TY
 fun readOk(dis: DataInputStream): Ok? {
     val id = dis.readLong()
     return Ok(id)
+}
+
+fun writeInfoRequest(dos: DataOutputStream, time: Long, stream: Int = 0, type: Int = MSG_TYPE_INFO_REQUEST): Boolean {
+    writeHeader(dos, stream, type, 8)
+    dos.writeLong(time)
+    dos.flush()
+    return true
+}
+
+fun writeInfoResponse(dos: DataOutputStream, info: InfoResponse, stream: Int = 0, type: Int = MSG_TYPE_INFO_RESPONSE): Boolean {
+    val nickBuf = info.nickname.toByteArray()
+    val infoBuf = info.info.toByteArray()
+    val size = 16 + 4 + nickBuf.size + 4 + infoBuf.size + 4 + (info.avatar?.size ?: 0)
+    writeHeader(dos, stream, type, size)
+
+    dos.writeLong(info.time)
+    dos.writeInt(nickBuf.size)
+    dos.write(nickBuf)
+    dos.writeInt(infoBuf.size)
+    dos.write(infoBuf)
+    if (info.avatar == null) {
+        dos.writeInt(0)
+    } else {
+        dos.writeInt(info.avatar.size)
+        dos.write(info.avatar)
+    }
+    dos.flush()
+    return true
+}
+
+fun readInfoResponse(dis: DataInputStream): InfoResponse? {
+    val time = dis.readLong()
+
+    var size = dis.readInt()
+    val nickname = if (size > 0) {
+        val data = ByteArray(size)
+        var count = 0
+        while (count < size) {
+            val read = dis.read(data, count, size - count)
+            if (read < 0) {
+                return null
+            }
+            count += read
+        }
+        String(data)
+    } else {
+        ""
+    }
+
+    size = dis.readInt()
+    val info = if (size > 0) {
+        val data = ByteArray(size)
+        var count = 0
+        while (count < size) {
+            val read = dis.read(data, count, size - count)
+            if (read < 0) {
+                return null
+            }
+            count += read
+        }
+        String(data)
+    } else {
+        ""
+    }
+
+    size = dis.readInt()
+    val avatar = if (size > 0) {
+        val data = ByteArray(size)
+        var count = 0
+        while (count < size) {
+            val read = dis.read(data, count, size - count)
+            if (read < 0) {
+                return null
+            }
+            count += read
+        }
+        data
+    } else {
+        null
+    }
+
+    return InfoResponse(time, nickname, info, avatar)
 }
