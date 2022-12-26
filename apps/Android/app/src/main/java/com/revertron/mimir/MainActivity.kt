@@ -11,6 +11,7 @@ import androidx.appcompat.view.ContextThemeWrapper
 import androidx.appcompat.widget.*
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.net.CONNECTION_PORT
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
@@ -67,6 +68,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 val intent = Intent(this, AccountsActivity::class.java)
                 startActivity(intent)
             }
+            R.id.action_settings -> {
+                val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
+            }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
             }
@@ -85,11 +90,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         if (view.tag != null) {
             val contact = view.tag as Contact
             Log.i(TAG, "Clicked on ${view.tag}")
-            val ips = getStorage().getContactIps(contact.pubkey)
-            if (ips.isEmpty()) {
-                showAddAddressDialog(contact)
-                return
-            }
             val intent = Intent(this, ChatActivity::class.java)
             intent.putExtra("pubkey", contact.pubkey)
             intent.putExtra("name", contact.name)
@@ -156,7 +156,9 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
             val address = address.text.toString()
             val pubkey = pubkey.text.toString() //TODO validate input
-            (application as App).storage.saveIp(pubkey, address, 0)
+            // We add this kind of IPs for 10 days
+            val expiration = getUtcTime() + 86400 * 10
+            (application as App).storage.saveIp(pubkey, address, CONNECTION_PORT, 0, 0, expiration)
         }
         builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
             dialog.cancel()

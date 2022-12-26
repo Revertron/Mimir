@@ -37,7 +37,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val pubkey = intent.getStringExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         val id = getStorage().getContactId(pubkey)
-        contact = Contact(id, pubkey, name, "", 0)
+        contact = Contact(id, pubkey, name, "", 0L, 0)
 
         supportActionBar?.title = contact.name
         supportActionBar?.setDisplayHomeAsUpEnabled(true)

@@ -27,13 +27,30 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <androidx.appcompat.widget.AppCompatTextView
-            android:id="@+id/contact_name"
+        <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textStyle="bold"
-            android:ellipsize="end"
-            android:lines="1" />
+            android:layout_height="wrap_content">
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/contact_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                tools:text="Thor Odinson"
+                android:textStyle="bold"
+                android:ellipsize="end"
+                android:lines="1" />
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/last_message_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                tools:text="12 Nov"
+                android:ellipsize="end"
+                android:lines="1" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
 
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"

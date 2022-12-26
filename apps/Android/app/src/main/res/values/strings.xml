@@ -43,4 +43,12 @@
     <string name="contact_addition_error">Error adding contact</string>
     <string name="empty_uri">Empty URI</string>
     <string name="unknown_nickname">Unknown</string>
+    <string name="ip_cache_title">How long to cache IP addresses?</string>
+    <string name="one_hour">1 hour</string>
+    <string name="three_hours">3 hours</string>
+    <string name="six_hours">6 hours</string>
+    <string name="twelve_hours">12 hours</string>
+    <string name="one_day">1 day</string>
+    <string name="three_days">3 days</string>
+    <string name="fifteen_days">15 days</string>
 </resources>

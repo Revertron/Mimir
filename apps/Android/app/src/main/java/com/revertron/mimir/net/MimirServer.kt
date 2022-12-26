@@ -1,28 +1,35 @@
 package com.revertron.mimir.net
 
-import android.content.Context
 import android.util.Log
+import com.revertron.mimir.ConnectionService
+import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.getYggdrasilAddress
+import com.revertron.mimir.storage.Peer
+import com.revertron.mimir.storage.SqlStorage
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
+import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.io.IOException
 import java.net.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 //TODO This port will be random, and clients will get it from trackers (or DNS)
-private const val CONNECTION_PORT = 5050
+const val CONNECTION_PORT: Short = 5050
 private const val CONNECTION_TRIES = 5
-private const val CONNECTION_TIMEOUT = 15000
+private const val CONNECTION_TIMEOUT = 5000
 private const val CONNECTION_PERIOD = 3000L
+//TODO move to gradle config maybe?
+private const val RESOLVER_ADDR = "[202:7991::880a:d4b2:de3b:2da1]"
 
 class MimirServer(
-    val context: Context,
+    val storage: SqlStorage,
     private val clientId: Int,
     private val keyPair: AsymmetricCipherKeyPair,
     private val listener: EventListener,
     private val infoProvider: InfoProvider,
-    val port: Int
-): Thread(TAG), EventListener {
+    private val port: Int
+): Thread(TAG), EventListener, ResolverReceiver {
 
     companion object {
         const val TAG: String = "MimirServer"
@@ -31,6 +38,11 @@ class MimirServer(
     private val working = AtomicBoolean(true)
     private val connections = HashMap<String, ConnectionHandler>(5)
     private var serverSocket: ServerSocket? = null
+    private val resolver = Resolver(storage, InetSocketAddress(RESOLVER_ADDR, CONNECTION_PORT.toInt()))
+    private val pubkey = Hex.toHexString((keyPair.public as Ed25519PublicKeyParameters).encoded)
+    private val privkey = Hex.toHexString((keyPair.private as Ed25519PrivateKeyParameters).encoded)
+    private var lastAnnounceTime = 0L
+    private var announceTtl = 0L
 
     override fun run() {
         var online = false
@@ -48,8 +60,13 @@ class MimirServer(
                 serverSocket = ServerSocket(port, 50, localAddress)
                 serverSocket?.soTimeout = 60000
                 Log.d(TAG, "Socket on $localAddress created")
+                val peer = Peer(localAddress.toString().replace("/", ""), port.toShort(), clientId, 3, 0)
                 while (working.get()) {
                     try {
+                        // We try to announce 30 seconds before expiration
+                        if (getUtcTime() >= lastAnnounceTime + announceTtl - 30000) {
+                            resolver.announce(pubkey, privkey, peer, this)
+                        }
                         if (!online) {
                             online = true
                             listener.onServerStateChanged(online)
@@ -97,7 +114,7 @@ class MimirServer(
         serverSocket?.close()
     }
 
-    fun sendText(recipient: ByteArray, ips: List<String>, id: Long, message: String) {
+    fun sendText(recipient: ByteArray, id: Long, message: String) {
         val recipientString = Hex.toHexString(recipient)
         var added = false
         synchronized(connections) {
@@ -109,22 +126,32 @@ class MimirServer(
         }
         // If there is no established connection we try to create one
         if (!added) {
-            for (ip in ips) {
-                //TODO Check priorities of IPs and try to send in descending priority
-                Thread{
-                    val connection = connect(recipient, ip)
-                    if (added) return@Thread
-                    if (connection != null) {
-                        Log.i(TAG, "Created new connection, sending message.")
-                        connection.addForDeliveryText(id, message)
-                        synchronized(connections) {
-                            added = true
-                            connections[recipientString] = connection
+            val receiver = object : ResolverReceiver {
+                override fun onResolveResponse(pubkey: String, ips: List<Peer>) {
+                    Log.i(TAG, "Resolved IPS: $ips")
+                    if (ips.isNotEmpty()) {
+                        ips.forEach {
+                            storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
                         }
-                    } else {
-                        Log.e(TAG, "Can not connect to $recipientString")
+                        sendTextMessage(recipient, recipientString, ips, id, message)
                     }
-                }.start()
+                }
+
+                override fun onAnnounceResponse(pubkey: String, ttl: Long) {}
+                override fun onTimeout(pubkey: String) {}
+            }
+
+            val peers = storage.getContactPeers(recipientString)
+            if (peers.isNotEmpty()) {
+                Log.i(TAG, "Got ips locally")
+                added = sendTextMessage(recipient, recipientString, peers, id, message)
+                if (!added) {
+                    Log.i(TAG, "Locally found IPs are dead, resolving")
+                    resolver.resolveIps(recipientString, receiver)
+                }
+            } else {
+                Log.i(TAG, "No ips found, resolving")
+                resolver.resolveIps(recipientString, receiver)
             }
         }
         // If we couldn't create any connections we fail
@@ -133,14 +160,31 @@ class MimirServer(
         }
     }
 
-    private fun connect(recipient: ByteArray, address: String): ConnectionHandler? {
+    private fun sendTextMessage(recipient: ByteArray, recipientString: String, peers: List<Peer>, id: Long, message: String): Boolean {
+        val sortedPeers = peers.sortedBy { it.priority }
+        Log.i(TAG, "Found ${sortedPeers.size} peers for $recipientString")
+        for (peer in sortedPeers) {
+            val connection = connect(recipient, peer)
+            if (connection != null) {
+                Log.i(TAG, "Created new connection, sending message.")
+                connection.addForDeliveryText(id, message)
+                synchronized(connections) {
+                    connections[recipientString] = connection
+                    return true
+                }
+            } else {
+                Log.e(TAG, "Can not connect to $recipientString")
+            }
+        }
+        return false
+    }
+
+    private fun connect(recipient: ByteArray, peer: Peer): ConnectionHandler? {
         for (i in 1..CONNECTION_TRIES) {
             try {
-                Log.d(TAG, "Connection attempt $i for $address")
+                Log.d(TAG, "Connection attempt $i for ${peer.address}")
                 val socket = Socket()
-                val socketAddress = InetSocketAddress(InetAddress.getByName(address),
-                    CONNECTION_PORT
-                )
+                val socketAddress = InetSocketAddress(InetAddress.getByName(peer.address), peer.port.toInt())
                 socket.connect(socketAddress, CONNECTION_TIMEOUT)
                 if (socket.isConnected) {
                     val connection = ConnectionHandler(clientId, keyPair, socket, this, infoProvider)
@@ -151,7 +195,7 @@ class MimirServer(
                 }
             } catch (e: IOException) {
                 //e.printStackTrace()
-                Log.e(TAG, "Error connecting to $address")
+                Log.e(TAG, "Error connecting to $peer")
             }
             try {
                 sleep(CONNECTION_PERIOD * i)
@@ -203,6 +247,20 @@ class MimirServer(
             Log.i(TAG, "Removing connection from $pubKey and $address")
             connections.remove(Hex.toHexString(from))
         }
+    }
+
+    override fun onResolveResponse(pubkey: String, ips: List<Peer>) {
+        Log.d(TAG, "Resolved: $ips")
+    }
+
+    override fun onAnnounceResponse(pubkey: String, ttl: Long) {
+        Log.d(TAG, "Got TTL: $ttl")
+        lastAnnounceTime = getUtcTime()
+        announceTtl = ttl
+    }
+
+    override fun onTimeout(pubkey: String) {
+        Log.d(TAG, "Got timeout")
     }
 }
 

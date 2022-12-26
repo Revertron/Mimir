@@ -7,18 +7,25 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import io.getstream.avatarview.AvatarView
+import java.text.SimpleDateFormat
+import java.util.*
 
 class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: View.OnClickListener, private val onlongclick: View.OnLongClickListener): RecyclerView.Adapter<ContactsAdapter.ViewHolder>() {
+
+    private val timeFormatter = SimpleDateFormat.getTimeInstance()
+    private val dateFormatter = SimpleDateFormat.getDateInstance()
 
     class ViewHolder(view: View): RecyclerView.ViewHolder(view) {
         val contactName: AppCompatTextView
         val lastMessage: AppCompatTextView
+        val lastMessageTime: AppCompatTextView
         val unreadCount: AppCompatTextView
         val avatar: AvatarView
 
         init {
             contactName = view.findViewById(R.id.contact_name)
             lastMessage = view.findViewById(R.id.last_message)
+            lastMessageTime = view.findViewById(R.id.last_message_time)
             unreadCount = view.findViewById(R.id.unread_count)
             avatar = view.findViewById(R.id.avatar)
         }
@@ -35,6 +42,18 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
         val contact = dataSet[position]
         holder.contactName.text = contact.name.ifEmpty { holder.itemView.context.getString(R.string.unknown_nickname) }
         holder.lastMessage.text = contact.lastMessage.ifEmpty { contact.pubkey }
+        if (contact.lastMessageTime > 0) {
+            holder.lastMessageTime.visibility = View.VISIBLE
+            val date = Date(contact.lastMessageTime)
+            val diff = Date().time - date.time
+            if (diff > 86400 * 1000) {
+                holder.lastMessageTime.text = dateFormatter.format(date)
+            } else {
+                holder.lastMessageTime.text = timeFormatter.format(date)
+            }
+        } else {
+            holder.lastMessageTime.visibility = View.GONE
+        }
         if (contact.unread > 0) {
             holder.unreadCount.text = contact.unread.toString()
             holder.unreadCount.visibility = View.VISIBLE

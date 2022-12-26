@@ -7,10 +7,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import androidx.preference.PreferenceManager
-import com.revertron.mimir.net.EventListener
-import com.revertron.mimir.net.InfoProvider
-import com.revertron.mimir.net.InfoResponse
-import com.revertron.mimir.net.MimirServer
+import com.revertron.mimir.net.*
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 
@@ -47,7 +44,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         val pubkey = (accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded
                         val pubkeyHex = Hex.toHexString(pubkey)
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey $pubkeyHex")
-                        mimirServer = MimirServer(this.applicationContext, accountInfo.clientId, accountInfo.keyPair, this, this, 5050) //TODO make changing port
+                        mimirServer = MimirServer(storage, accountInfo.clientId, accountInfo.keyPair, this, this, CONNECTION_PORT.toInt()) //TODO make changing port
                         mimirServer!!.start()
                         val n = createServiceNotification(this, State.Enabled)
                         startForeground(1, n)
@@ -61,11 +58,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val message = intent.getStringExtra("message")
                 Log.i(TAG, "Message to $keyString")
                 if (pubkey != null && message != null) {
-                    val ips = storage.getContactIps(keyString)
-                    Log.i(TAG, "Found ips for $keyString: $ips")
                     val id = storage.addMessage(keyString, false, false, System.currentTimeMillis(), 0, message)
                     Thread{
-                        mimirServer?.sendText(pubkey, ips, id, message)
+                        mimirServer?.sendText(pubkey, id, message)
                     }.start()
                 }
             }
@@ -74,11 +69,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val pubkey = intent.getByteArrayExtra("pubkey")
                 val message = intent.getStringExtra("message")
                 if (pubkey != null && message != null) {
-                    val keyString = Hex.toHexString(pubkey)
-                    val ips = storage.getContactIps(keyString)
-                    Log.i(TAG, "Found ips for $keyString: $ips")
                     Thread{
-                        mimirServer?.sendText(pubkey, ips, id, message)
+                        mimirServer?.sendText(pubkey, id, message)
                     }.start()
                 }
             }
@@ -99,8 +91,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onClientConnected(from: ByteArray, address: String, clientId: Int) {
         val keyString = Hex.toHexString(from)
+        val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
+        val ttl = preferences.getInt(IP_CACHE_TTL, IP_CACHE_DEFAULT_TTL)
+        val expiration = getUtcTime() + ttl
         val storage = (application as App).storage
-        storage.saveIp(keyString, address, clientId)
+        storage.saveIp(keyString, address, CONNECTION_PORT, clientId, 0, expiration)
     }
 
     override fun onMessageReceived(from: ByteArray, address: String, id: Long, message: String) {

@@ -23,11 +23,11 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 3
+        const val DATABASE_VERSION = 4
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey TEXT, name TEXT, info TEXT, avatar TEXT, updated INTEGER, redacted BOOL)"
-        const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, expiration INTEGER)"
+        const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, port INTEGER DEFAULT 5050, priority INTEGER DEFAULT 3, expiration INTEGER DEFAULT 3600)"
         const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, incoming BOOL, delivered BOOL, time INTEGER, type INTEGER, message TEXT, read BOOL)"
     }
 
@@ -60,6 +60,11 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             db.execSQL("ALTER TABLE contacts ADD COLUMN updated INTEGER DEFAULT 0")
             db.execSQL("ALTER TABLE contacts ADD COLUMN redacted BOOL DEFAULT 0")
         }
+
+        if (newVersion > oldVersion && newVersion == 4) {
+            db.execSQL("ALTER TABLE ips ADD COLUMN port INTEGER DEFAULT 5050")
+            db.execSQL("ALTER TABLE ips ADD COLUMN priority INTEGER DEFAULT 3")
+        }
     }
 
     fun addContact(pubkey: String, name: String): Long {
@@ -75,34 +80,28 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
     }
 
-    fun saveIp(pubkey: String, address: String, clientId: Int): Boolean {
-        for (ip in getContactIps(pubkey)) {
-            if (ip == address) {
-                //TODO renew TTL in the table, not ignore it
-                Log.d(TAG, "Already have this IP")
-                return false
-            }
-        }
+    fun saveIp(pubkey: String, address: String, port: Short, clientId: Int, priority: Int, expiration: Long): Boolean {
         // First we get numeric id for this contact
         var id = getContactId(pubkey)
         return if (id >= 0) {
             Log.i(TAG, "Found contact id $id")
-            saveIp(id, address, clientId)
+            saveIp(id, address, port, clientId, priority, expiration)
         } else {
             id = addContact(pubkey, "")
             Log.i(TAG, "Created contact id $id")
-            saveIp(id, address, clientId)
+            saveIp(id, address, port, clientId, priority, expiration)
         }
     }
 
-    private fun saveIp(id: Long, address: String, clientId: Int): Boolean {
-        val expiration = System.currentTimeMillis() / 1000 + 365 * 86400
-
+    private fun saveIp(id: Long, address: String, port: Short, clientId: Int, priority: Int, expiration: Long): Boolean {
         var values = ContentValues().apply {
             put("address", address)
             put("expiration", expiration)
+            put("port", port)
+            put("priority", priority)
         }
         if (writableDatabase.update("ips", values, "id = ? AND (client = ? OR client = 0)", arrayOf("$id", "$clientId")) > 0) {
+            Log.i(TAG, "Updated $address for contact $id and client $clientId")
             return true
         }
 
@@ -111,6 +110,8 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             put("client", clientId)
             put("address", address)
             put("expiration", expiration) // In seconds
+            put("port", port)
+            put("priority", priority)
         }
         return this.writableDatabase.insert("ips", null, values) >= 0
     }
@@ -242,14 +243,16 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return count
     }
 
-    fun getLastMessage(userId: Long): String? {
-        var result: String? = null
-        val cursor = readableDatabase.query("messages", arrayOf("message"), "contact = ?", arrayOf("$userId"), null, null, "time DESC", "1")
+    fun getLastMessage(userId: Long): Pair<String?, Long> {
+        var message: String? = null
+        var time = 0L
+        val cursor = readableDatabase.query("messages", arrayOf("message", "time"), "contact = ?", arrayOf("$userId"), null, null, "time DESC", "1")
         if (cursor.moveToNext()) {
-            result = cursor.getString(0)
+            message = cursor.getString(0)
+            time = cursor.getLong(1)
         }
         cursor.close()
-        return result
+        return message to time
     }
 
     fun getMessage(messageId: Long): Message? {
@@ -318,34 +321,39 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val id = cursor.getLong(0)
             val pubkey = cursor.getString(1)
             val name = cursor.getString(2)
-            list.add(Contact(id, pubkey, name, "", 0))
+            list.add(Contact(id, pubkey, name, "", 0L, 0))
         }
         cursor.close()
         for (c in list) {
             c.unread = getUnreadCount(c.id)
-            c.lastMessage = getLastMessage(c.id).orEmpty()
+            val lastMessage = getLastMessage(c.id)
+            c.lastMessage = lastMessage.first.orEmpty()
+            c.lastMessageTime = lastMessage.second
         }
 
         return list
     }
 
-    fun getContactIps(pubkey: String): List<String> {
+    fun getContactPeers(pubkey: String): List<Peer> {
         // First we get numeric id for this contact
         val id = getContactId(pubkey)
-        val db = this.readableDatabase
         if (id >= 0) {
             Log.i(TAG, "Found contact id $id")
-            val curTime = System.currentTimeMillis() / 1000
-            val list = mutableListOf<String>()
-            val cursor = db.query("ips", arrayOf("address", "expiration"), "id = ?",
+            val curTime = getUtcTime()
+            val list = mutableListOf<Peer>()
+            val cursor = this.readableDatabase.query("ips", arrayOf("address", "port", "client", "priority", "expiration"), "id = ?",
                 arrayOf(id.toString()), null, null, null, null)
             while (cursor.moveToNext()) {
                 val address = cursor.getString(0)
-                val expiration = cursor.getLong(1)
-                if (curTime < expiration) {
-                    list.add(address)
+                val port = cursor.getShort(1)
+                val client = cursor.getInt(2)
+                val priority = cursor.getInt(3)
+                val expiration = cursor.getLong(4)
+                if (curTime <= expiration) {
+                    list.add(Peer(address, port, client, priority, expiration))
                 }
             }
+            Log.i(TAG, "Found ips: $list")
             cursor.close()
             return list
         }
@@ -424,6 +432,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 }
 
 data class AccountInfo(val name: String, val info: String, val avatar: String, val updated: Long, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)
+data class Peer(val address: String, val port: Short, val clientId: Int, val priority: Int, val expiration: Long)
 
 interface StorageListener {
     fun onContactAdded(id: Long) {}
