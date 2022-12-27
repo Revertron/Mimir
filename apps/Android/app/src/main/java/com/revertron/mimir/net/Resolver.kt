@@ -123,6 +123,7 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         dos.writeByte(peer.priority)
         dos.writeInt(peer.clientId)
         val ip = InetAddress.getByName(peer.address)
+        dos.write(ip.address)
         val priv = Ed25519PrivateKeyParameters(Hex.decode(privkey))
         val signature = Sign.sign(priv, ip.address)
         dos.write(signature)

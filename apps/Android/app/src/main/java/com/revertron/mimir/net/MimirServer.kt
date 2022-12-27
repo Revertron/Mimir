@@ -38,7 +38,7 @@ class MimirServer(
     private val working = AtomicBoolean(true)
     private val connections = HashMap<String, ConnectionHandler>(5)
     private var serverSocket: ServerSocket? = null
-    private val resolver = Resolver(storage, InetSocketAddress(RESOLVER_ADDR, CONNECTION_PORT.toInt()))
+    private lateinit var resolver: Resolver
     private val pubkey = Hex.toHexString((keyPair.public as Ed25519PublicKeyParameters).encoded)
     private val privkey = Hex.toHexString((keyPair.private as Ed25519PrivateKeyParameters).encoded)
     private var lastAnnounceTime = 0L
@@ -46,6 +46,7 @@ class MimirServer(
 
     override fun run() {
         var online = false
+        resolver = Resolver(storage, InetSocketAddress(RESOLVER_ADDR, CONNECTION_PORT.toInt()))
         while (working.get()) {
             var socket: Socket? = null
             try {
