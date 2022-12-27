@@ -1,5 +1,5 @@
 use std::io::{Cursor, Read, Write};
-use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::{io, thread};
 use std::thread::JoinHandle;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
@@ -48,23 +48,23 @@ impl Server {
         let command = c.read_u8()?;
         let mut id = [0u8; 32];
         c.read_exact(&mut id)?;
+        let hex = to_hex(&id);
+        println!("Got packet from/for {} on {}", &hex, &src.ip());
         match command {
             0 => {
                 let port = c.read_u16::<BigEndian>()?;
                 let priority = c.read_u8()?;
                 let client = c.read_u32::<BigEndian>()?;
+                let mut ip = [0u8; 16];
+                c.read_exact(&mut ip)?;
                 let mut signature = [0u8; 64];
                 c.read_exact(&mut signature)?;
-                let ip = match src.ip() {
-                    IpAddr::V4(_) => return Err(io::Error::from(io::ErrorKind::Other)),
-                    IpAddr::V6(ip) => ip
-                };
-                if !check_signature(&id, &signature, &ip.octets()) {
-                    let hex = to_hex(&id);
+                if !check_signature(&id, &signature, &ip) {
+                    let ip = Ipv6Addr::from(ip);
                     println!("Wrong signature from {} for {}", &ip, &hex);
                     return Err(io::Error::from(io::ErrorKind::Other))
                 }
-                let ttl = storage.save_address(&id, &ip.octets(), &signature, port, priority, client);
+                let ttl = storage.save_address(&id, &ip, &signature, port, priority, client);
                 let mut w = Cursor::new(response);
                 w.write_u32::<BigEndian>(nonce)?;
                 w.write_u8(command)?;
@@ -77,7 +77,7 @@ impl Server {
                 w.write_u32::<BigEndian>(nonce)?;
                 w.write_u8(command)?;
                 w.write_u8(results.len() as u8)?;
-                println!("Got {} ips for {:?}", results.len(), &id);
+                println!("Got {} ips for {:?}", results.len(), &hex);
                 for addr in results.iter() {
                     w.write_all(addr.ip.as_slice())?;
                     w.write_all(addr.signature.as_slice())?;

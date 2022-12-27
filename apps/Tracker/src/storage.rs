@@ -47,7 +47,7 @@ impl SqliteStorage {
         statement.bind((7, get_utc_time() as i64)).expect("Error in bind");
         statement.bind((7, DEFAULT_TTL as i64)).expect("Error in bind");
         if let State::Done = statement.next().expect("Error in DB") {
-            println!("Saved new address");
+            //println!("Saved new address");
             return DEFAULT_TTL
         }
         return 300
@@ -63,7 +63,7 @@ impl SqliteStorage {
         statement.bind((6, ip)).expect("Error in bind");
         statement.bind((7, client as i64)).expect("Error in bind");
         if let State::Done = statement.next().expect("Error in DB") {
-            println!("Updated address");
+            //println!("Updated address");
             return DEFAULT_TTL
         }
         return 300
@@ -83,8 +83,8 @@ impl SqliteStorage {
             let time: i64 = statement.read(5).unwrap_or(0i64);
             let ttl: i64 = statement.read(6).unwrap_or(DEFAULT_TTL as i64);
             let expire = time + ttl;
-            println!("time: {}, ttl: {}, expire: {}, cur_time: {}", time, ttl, expire, cur_time);
-            println!("Got something {:?}", &ip);
+            //println!("time: {}, ttl: {}, expire: {}, cur_time: {}", time, ttl, expire, cur_time);
+            //println!("Got something {:?}", &ip);
             if cur_time > (expire as u64) {
                 continue;
             }
