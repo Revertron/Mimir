@@ -20,6 +20,7 @@
         <item name="textEditTextColor">@color/light_gray</item>
         <item name="chatBackgroundColor">@color/semi_gray</item>
         <item name="iconColor">@color/white</item>
+        <item name="iconInvertedColor">@color/black</item>
         <item name="unreadBadgeBackColor">@color/gray_80</item>
         <item name="unreadBadgeColor">@color/white</item>
 
@@ -28,17 +29,7 @@
         <item name="actionOverflowButtonStyle">@style/MimirToolbarOverflowStyle</item>
     </style>
 
-    <style name="MimirToolbar" parent="Theme.AppCompat.DayNight.DarkActionBar">
-        <item name="android:background">?attr/colorPrimaryVariant</item>
-        <item name="android:colorControlNormal">?attr/colorOnPrimary</item>
-        <item name="android:textColor">@color/white</item>
-        <item name="titleTextColor">@color/white</item>
-        <item name="iconColor">@color/white</item>
-        <item name="elevation">8dp</item>
-        <item name="android:elevation">8dp</item>
-    </style>
-
-    <style name="MimirToolbarOverflowStyle" parent="Widget.AppCompat.ActionButton.Overflow">
-        <item name="tint">@color/white</item>
+    <style name="MimirDialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:buttonBarButtonStyle">@style/DialogButtons</item>
     </style>
 </resources>

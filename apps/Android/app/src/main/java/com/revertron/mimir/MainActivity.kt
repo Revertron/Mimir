@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.util.Log
 import android.view.*
 import android.widget.Toast
-import androidx.appcompat.view.ContextThemeWrapper
 import androidx.appcompat.widget.*
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -119,10 +118,11 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val view = LayoutInflater.from(this).inflate(R.layout.add_contact_dialog, null)
         val name = view.findViewById<AppCompatEditText>(R.id.contact_name)
         val pubkey = view.findViewById<AppCompatEditText>(R.id.contact_pubkey)
-        val wrapper = ContextThemeWrapper(this, com.google.android.material.R.style.Theme_MaterialComponents_DayNight_Dialog)
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
         val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
         builder.setTitle(getString(R.string.add_contact))
         builder.setView(view)
+        builder.setIcon(R.drawable.ic_contact_add_daynight)
         builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
             val name = name.text.toString().trim()
             val pubkey = pubkey.text.toString().trim()
@@ -149,10 +149,11 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val pubkey = view.findViewById<AppCompatEditText>(R.id.contact_pubkey)
         pubkey.setText(contact.pubkey)
         val address = view.findViewById<AppCompatEditText>(R.id.contact_address)
-        val wrapper = ContextThemeWrapper(this, com.google.android.material.R.style.Theme_MaterialComponents_DayNight_Dialog)
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
         val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
         builder.setTitle(getString(R.string.add_contact_address))
         builder.setView(view)
+        builder.setIcon(R.drawable.ic_add_address)
         builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
             val address = address.text.toString()
             val pubkey = pubkey.text.toString() //TODO validate input
@@ -171,10 +172,11 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val view = LayoutInflater.from(this).inflate(R.layout.rename_contact_dialog, null)
         val name = view.findViewById<AppCompatEditText>(R.id.contact_name)
         name.setText(contact.name)
-        val wrapper = ContextThemeWrapper(this, com.google.android.material.R.style.Theme_MaterialComponents_DayNight_Dialog)
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
         val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
         builder.setTitle(getString(R.string.rename_contact))
         builder.setView(view)
+        builder.setIcon(R.drawable.ic_contact_rename)
         builder.setPositiveButton(getString(R.string.rename)) { _, _ ->
             val newName = name.text.toString()
             (application as App).storage.renameContact(contact.id, newName, true)
