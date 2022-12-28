@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 //TODO This port will be random, and clients will get it from trackers (or DNS)
 const val CONNECTION_PORT: Short = 5050
-private const val CONNECTION_TRIES = 5
+private const val CONNECTION_TRIES = 2
 private const val CONNECTION_TIMEOUT = 5000
 private const val CONNECTION_PERIOD = 3000L
 //TODO move to gradle config maybe?
@@ -92,6 +92,7 @@ class MimirServer(
             } catch (e: IOException) {
                 e.printStackTrace()
                 Log.e(TAG, "Error creating server socket or accepting connection")
+                lastAnnounceTime = 0L
                 if (online && getYggdrasilAddress() == null) {
                     online = false
                     listener.onServerStateChanged(online)
