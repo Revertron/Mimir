@@ -15,10 +15,11 @@
         <item name="android:textColorPrimary">@color/black</item>
         <item name="android:textColor">@color/black</item>
         <item name="android:toolbarStyle">@style/MimirToolbar</item>
+        <item name="toolbarStyle">@style/MimirToolbar</item>
         <item name="textEditBackgroundColor">@color/light_gray</item>
         <item name="textEditTextColor">@color/dark_gray</item>
         <item name="chatBackgroundColor">@color/light_gray</item>
-        <item name="iconColor">@color/black</item>
+        <item name="iconColor">@color/white</item>
         <item name="unreadBadgeBackColor">@color/gray_80</item>
         <item name="unreadBadgeColor">@color/white</item>
 
@@ -29,12 +30,17 @@
     </style>
 
     <style name="MimirToolbar" parent="Theme.AppCompat.DayNight.DarkActionBar">
-        <item name="android:background">@color/teal_200</item>
-        <item name="colorControlNormal">@color/black</item>
+        <item name="android:background">?attr/colorPrimaryVariant</item>
+        <item name="android:colorControlNormal">?attr/colorOnPrimary</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="titleTextColor">@color/white</item>
+        <item name="iconColor">@color/white</item>
+        <item name="elevation">8dp</item>
+        <item name="android:elevation">8dp</item>
     </style>
     
     <style name="MimirToolbarOverflowStyle" parent="Widget.AppCompat.ActionButton.Overflow">
-        <item name="tint">@color/black</item>
+        <item name="tint">@color/white</item>
     </style>
 
     <style name="EditTextStyle"  parent="android:Widget.EditText">
