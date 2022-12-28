@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
+import com.revertron.mimir.isColorDark
 import io.getstream.avatarview.AvatarView
 import org.bouncycastle.util.encoders.Hex
 import java.text.SimpleDateFormat
@@ -66,7 +67,13 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
         holder.itemView.tag = contact
         val initials = getInitials(contact)
         holder.avatar.avatarInitials = initials
-        holder.avatar.avatarInitialsBackgroundColor = getAvatarColor(contact.pubkey)
+        val avatarColor = getAvatarColor(contact.pubkey)
+        holder.avatar.avatarInitialsBackgroundColor = avatarColor
+        if (isColorDark(avatarColor)) {
+            holder.avatar.avatarInitialsTextColor = 0xFFFFFFFF.toInt()
+        } else {
+            holder.avatar.avatarInitialsTextColor = 0xFF000000.toInt()
+        }
     }
 
     override fun getItemCount(): Int {

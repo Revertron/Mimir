@@ -121,6 +121,15 @@ fun getUtcTime(): Long {
     return (calendar.timeInMillis - offset) / 1000
 }
 
+fun isColorDark(color: Int): Boolean {
+    val r = ((color shr 16) and 0xff) / 255.0
+    val g = ((color shr 8) and 0xff) / 255.0
+    val b = (color and 0xff) / 255.0
+    val luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return luminance < 0.5
+}
+
+
 enum class State {
     Disabled, Enabled;
 }
