@@ -20,6 +20,7 @@
         app:avatarViewInitials="Mi"
         app:avatarViewBorderWidth="0dp"
         app:avatarViewBorderColor="@color/gray_DD"
+        app:avatarViewInitialsTextColor="@color/black"
         app:avatarViewInitialsBackgroundColor="@color/gray_80"/>
 
     <androidx.appcompat.widget.LinearLayoutCompat
