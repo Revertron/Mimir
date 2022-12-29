@@ -16,9 +16,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 //TODO This port will be random, and clients will get it from trackers (or DNS)
 const val CONNECTION_PORT: Short = 5050
-private const val CONNECTION_TRIES = 2
-private const val CONNECTION_TIMEOUT = 5000
-private const val CONNECTION_PERIOD = 3000L
+private const val CONNECTION_TRIES = 5
+private const val CONNECTION_TIMEOUT = 3000
+private const val CONNECTION_PERIOD = 1000L
 //TODO move to gradle config maybe?
 private const val RESOLVER_ADDR = "[202:7991::880a:d4b2:de3b:2da1]"
 
@@ -64,8 +64,7 @@ class MimirServer(
                 val peer = Peer(localAddress.toString().replace("/", ""), port.toShort(), clientId, 3, 0)
                 while (working.get()) {
                     try {
-                        // We try to announce 30 seconds before expiration
-                        if (getUtcTime() >= lastAnnounceTime + announceTtl - 30000) {
+                        if (getUtcTime() >= lastAnnounceTime + announceTtl) {
                             resolver.announce(pubkey, privkey, peer, this)
                         }
                         if (!online) {

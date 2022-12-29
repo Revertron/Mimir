@@ -115,6 +115,9 @@ fun validPublicKey(text: String): Boolean {
     }
 }
 
+/**
+ * Gets current time in seconds in UTC timezone
+ */
 fun getUtcTime(): Long {
     val calendar = Calendar.getInstance()
     val offset = calendar.timeZone.rawOffset
