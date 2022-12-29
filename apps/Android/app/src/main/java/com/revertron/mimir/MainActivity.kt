@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.*
 import android.widget.Toast
 import androidx.appcompat.widget.*
+import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.net.CONNECTION_PORT
@@ -42,6 +43,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this)
+        recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
     }
 
     override fun onDestroy() {

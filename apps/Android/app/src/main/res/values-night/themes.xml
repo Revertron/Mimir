@@ -18,7 +18,8 @@
         <item name="toolbarStyle">@style/MimirToolbar</item>
         <item name="textEditBackgroundColor">@color/dark_gray</item>
         <item name="textEditTextColor">@color/light_gray</item>
-        <item name="chatBackgroundColor">@color/semi_gray</item>
+        <item name="android:listDivider">@color/dark_gray</item>
+        <item name="chatBackgroundColor">@color/black</item>
         <item name="iconColor">@color/white</item>
         <item name="iconInvertedColor">@color/black</item>
         <item name="unreadBadgeBackColor">@color/gray_80</item>
