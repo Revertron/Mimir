@@ -47,7 +47,7 @@ impl SqliteStorage {
         statement.bind((5, priority as i64)).expect("Error in bind");
         statement.bind((6, client as i64)).expect("Error in bind");
         statement.bind((7, get_utc_time() as i64)).expect("Error in bind");
-        statement.bind((7, DEFAULT_TTL as i64)).expect("Error in bind");
+        statement.bind((8, DEFAULT_TTL as i64)).expect("Error in bind");
         if let State::Done = statement.next().expect("Error in DB") {
             println!("Saved new address");
             return UPDATE_TTL
