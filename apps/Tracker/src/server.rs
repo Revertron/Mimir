@@ -49,7 +49,7 @@ impl Server {
         let mut id = [0u8; 32];
         c.read_exact(&mut id)?;
         let hex = to_hex(&id);
-        println!("Got packet from/for {} on {}", &hex, &src.ip());
+        println!("Got command {} from/for {} on {}", command, &hex, &src.ip());
         match command {
             0 => {
                 let port = c.read_u16::<BigEndian>()?;

@@ -9,7 +9,7 @@ pub trait Storage {
 
 const SQL_CREATE_TABLES: &str = include_str!("create_db.sql");
 const SQL_INSERT_IP: &str = "INSERT INTO clients (id, ip, signature, port, priority, client, timestamp, ttl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-const SQL_UPDATE_IP: &str = "UPDATE clients SET port=?, priority=?, timestamp=?, ttl=? WHERE id=? AND ip=? AND client=?";
+const SQL_UPDATE_IP: &str = "UPDATE clients SET ip=?, port=?, priority=?, timestamp=?, ttl=? WHERE id=? AND client=?";
 const SQL_SELECT_IPS: &str = "SELECT ip, signature, port, priority, client, timestamp, ttl FROM clients WHERE id=?";
 
 pub struct SqliteStorage {
@@ -17,7 +17,9 @@ pub struct SqliteStorage {
 }
 
 const DEFAULT_PORT: u16 = 5050;
-const DEFAULT_TTL: u64 = 86400;
+const DEFAULT_TTL: u64 = 3600;
+const UPDATE_TTL: u64 = 600;
+const ERROR_TTL: u64 = 120;
 
 impl SqliteStorage {
     pub fn new(db_name: &str) -> Self {
@@ -26,10 +28,10 @@ impl SqliteStorage {
         SqliteStorage { db }
     }
 
-    fn is_address_saved(&self, id: &[u8], ip: &[u8]) -> bool {
-        let mut statement = self.db.prepare("SELECT * FROM clients WHERE id = ? AND ip = ?").expect("Error in is_address_saved");
+    fn is_address_saved(&self, id: &[u8], client: u32) -> bool {
+        let mut statement = self.db.prepare("SELECT ip FROM clients WHERE id = ? AND client = ?").expect("Error in is_address_saved");
         statement.bind((1, id)).expect("Error in bind");
-        statement.bind((2, ip)).expect("Error in bind");
+        statement.bind((2, client as i64)).expect("Error in bind");
         return match statement.next().expect("Error in DB") {
             State::Row => true,
             State::Done => false
@@ -47,26 +49,26 @@ impl SqliteStorage {
         statement.bind((7, get_utc_time() as i64)).expect("Error in bind");
         statement.bind((7, DEFAULT_TTL as i64)).expect("Error in bind");
         if let State::Done = statement.next().expect("Error in DB") {
-            //println!("Saved new address");
-            return DEFAULT_TTL
+            println!("Saved new address");
+            return UPDATE_TTL
         }
-        return 300
+        return ERROR_TTL
     }
 
     fn update_address(&self, id: &[u8], ip: &[u8], port: u16, priority: u8, client: u32) -> u64 {
         let mut statement = self.db.prepare(SQL_UPDATE_IP).expect("Error in update_address");
-        statement.bind((1, port as i64)).expect("Error in bind");
-        statement.bind((2, priority as i64)).expect("Error in bind");
-        statement.bind((3, get_utc_time() as i64)).expect("Error in bind");
-        statement.bind((4, DEFAULT_TTL as i64)).expect("Error in bind");
-        statement.bind((5, id)).expect("Error in bind");
-        statement.bind((6, ip)).expect("Error in bind");
+        statement.bind((1, ip)).expect("Error in bind");
+        statement.bind((2, port as i64)).expect("Error in bind");
+        statement.bind((3, priority as i64)).expect("Error in bind");
+        statement.bind((4, get_utc_time() as i64)).expect("Error in bind");
+        statement.bind((5, DEFAULT_TTL as i64)).expect("Error in bind");
+        statement.bind((6, id)).expect("Error in bind");
         statement.bind((7, client as i64)).expect("Error in bind");
         if let State::Done = statement.next().expect("Error in DB") {
-            //println!("Updated address");
-            return DEFAULT_TTL
+            println!("Updated address");
+            return UPDATE_TTL
         }
-        return 300
+        return ERROR_TTL
     }
 
     fn select_addresses(&self, id: &[u8]) -> Vec<Addr> {
@@ -88,7 +90,7 @@ impl SqliteStorage {
             if cur_time > (expire as u64) {
                 continue;
             }
-            result.push(Addr { ip, signature, port: port as u16, priority: priority as u8, client: client as u32, ttl: 30/*ttl as u64*/ })
+            result.push(Addr { ip, signature, port: port as u16, priority: priority as u8, client: client as u32, ttl: ttl as u64 })
         }
         result
     }
@@ -96,7 +98,7 @@ impl SqliteStorage {
 
 impl Storage for SqliteStorage {
     fn save_address(&self, id: &[u8], ip: &[u8], signature: &[u8], port: u16, priority: u8, client: u32) -> u64 {
-        if !self.is_address_saved(id, ip) {
+        if !self.is_address_saved(id, client) {
             return self.save_new_address(id, ip, signature, port, priority, client);
         }
         self.update_address(id, ip, port, priority, client)
