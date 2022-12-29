@@ -9,7 +9,7 @@ pub trait Storage {
 
 const SQL_CREATE_TABLES: &str = include_str!("create_db.sql");
 const SQL_INSERT_IP: &str = "INSERT INTO clients (id, ip, signature, port, priority, client, timestamp, ttl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-const SQL_UPDATE_IP: &str = "UPDATE clients SET ip=?, port=?, priority=?, timestamp=?, ttl=? WHERE id=? AND client=?";
+const SQL_UPDATE_IP: &str = "UPDATE clients SET ip=?, signature=?, port=?, priority=?, timestamp=?, ttl=? WHERE id=? AND client=?";
 const SQL_SELECT_IPS: &str = "SELECT ip, signature, port, priority, client, timestamp, ttl FROM clients WHERE id=?";
 
 pub struct SqliteStorage {
@@ -55,15 +55,16 @@ impl SqliteStorage {
         return ERROR_TTL
     }
 
-    fn update_address(&self, id: &[u8], ip: &[u8], port: u16, priority: u8, client: u32) -> u64 {
+    fn update_address(&self, id: &[u8], ip: &[u8], signature: &[u8], port: u16, priority: u8, client: u32) -> u64 {
         let mut statement = self.db.prepare(SQL_UPDATE_IP).expect("Error in update_address");
         statement.bind((1, ip)).expect("Error in bind");
-        statement.bind((2, port as i64)).expect("Error in bind");
-        statement.bind((3, priority as i64)).expect("Error in bind");
-        statement.bind((4, get_utc_time() as i64)).expect("Error in bind");
-        statement.bind((5, DEFAULT_TTL as i64)).expect("Error in bind");
-        statement.bind((6, id)).expect("Error in bind");
-        statement.bind((7, client as i64)).expect("Error in bind");
+        statement.bind((2, signature)).expect("Error in bind");
+        statement.bind((3, port as i64)).expect("Error in bind");
+        statement.bind((4, priority as i64)).expect("Error in bind");
+        statement.bind((5, get_utc_time() as i64)).expect("Error in bind");
+        statement.bind((6, DEFAULT_TTL as i64)).expect("Error in bind");
+        statement.bind((7, id)).expect("Error in bind");
+        statement.bind((8, client as i64)).expect("Error in bind");
         if let State::Done = statement.next().expect("Error in DB") {
             println!("Updated address");
             return UPDATE_TTL
@@ -101,7 +102,7 @@ impl Storage for SqliteStorage {
         if !self.is_address_saved(id, client) {
             return self.save_new_address(id, ip, signature, port, priority, client);
         }
-        self.update_address(id, ip, port, priority, client)
+        self.update_address(id, ip, signature, port, priority, client)
     }
 
     fn get_addresses(&self, id: &[u8]) -> Vec<Addr> {
