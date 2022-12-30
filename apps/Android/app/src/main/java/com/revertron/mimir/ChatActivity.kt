@@ -16,6 +16,7 @@ import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
+import okio.blackholeSink
 import org.bouncycastle.util.encoders.Hex
 
 
@@ -59,9 +60,28 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         getStorage().listeners.add(this)
     }
 
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            finish()
+            overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
     override fun onDestroy() {
         getStorage().listeners.remove(this)
         super.onDestroy()
+    }
+
+    override fun finish() {
+        super.finish()
+        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+    }
+
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        Log.i(TAG, "Clicked on ${item?.itemId}")
+        return true
     }
 
     private fun sendText(pubkey: String, text: String) {
@@ -70,20 +90,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         intent.putExtra("pubkey", Hex.decode(pubkey))
         intent.putExtra("message", text)
         startService(intent)
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        Log.i(TAG, "onOptionsItemSelected on ${item.itemId}")
-        /*if (item.itemId == android.R.id.home) {
-            finish()
-            return true
-        }*/
-        return super.onOptionsItemSelected(item)
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        Log.i(TAG, "Clicked on ${item?.itemId}")
-        return true
     }
 
     override fun onMessageSent(id: Long, contactId: Long, message: String) {

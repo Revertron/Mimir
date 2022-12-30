@@ -68,10 +68,12 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             android.R.id.home -> {
                 val intent = Intent(this, AccountsActivity::class.java)
                 startActivity(intent)
+                overridePendingTransition(R.anim.slide_in_left, R.anim.hold_still)
             }
             R.id.action_settings -> {
                 val intent = Intent(this, SettingsActivity::class.java)
                 startActivity(intent)
+                overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
             }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
@@ -95,6 +97,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             intent.putExtra("pubkey", contact.pubkey)
             intent.putExtra("name", contact.name)
             startActivity(intent)
+            overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
         }
     }
 
