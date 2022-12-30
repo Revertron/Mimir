@@ -1,7 +1,6 @@
 package com.revertron.mimir.net
 
 import android.util.Log
-import com.revertron.mimir.ConnectionService
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.getYggdrasilAddress
 import com.revertron.mimir.storage.Peer
@@ -66,6 +65,7 @@ class MimirServer(
                     try {
                         if (getUtcTime() >= lastAnnounceTime + announceTtl) {
                             resolver.announce(pubkey, privkey, peer, this)
+                            listener.onTrackerPing(false)
                         }
                         if (!online) {
                             online = true
@@ -211,6 +211,10 @@ class MimirServer(
         listener.onServerStateChanged(online)
     }
 
+    override fun onTrackerPing(online: Boolean) {
+        listener.onTrackerPing(online)
+    }
+
     override fun onClientIPChanged(old: String, new: String) {
         synchronized(connections) {
             if (connections.containsKey(old)) {
@@ -258,6 +262,7 @@ class MimirServer(
         Log.d(TAG, "Got TTL: $ttl")
         lastAnnounceTime = getUtcTime()
         announceTtl = ttl
+        listener.onTrackerPing(true)
     }
 
     override fun onTimeout(pubkey: String) {
@@ -267,6 +272,7 @@ class MimirServer(
 
 interface EventListener {
     fun onServerStateChanged(online: Boolean)
+    fun onTrackerPing(online: Boolean)
     fun onClientIPChanged(old: String, new: String) {}
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
     fun onMessageReceived(from: ByteArray, address: String, id: Long, message: String)

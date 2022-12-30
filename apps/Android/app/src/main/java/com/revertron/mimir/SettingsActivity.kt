@@ -56,6 +56,9 @@ class SettingsActivity : BaseActivity() {
             }
 
         })
+        val lastPing = findViewById<AppCompatTextView>(R.id.last_tracker_ping_time)
+        val lastPingTime = preferences.getLong("trackerPingTime", 0L)
+        lastPing.text = getString(R.string.tracker_ping_time, getUtcTime() - lastPingTime)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {

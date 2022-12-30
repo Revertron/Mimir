@@ -29,7 +29,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
         val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
         setSupportActionBar(toolbar)
-        //supportActionBar?.title = "Mimir"
+        supportActionBar?.setHomeActionContentDescription(R.string.account)
         if (intent?.hasExtra("no_service") != true) {
             startService()
         }

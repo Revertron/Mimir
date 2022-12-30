@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
+import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.revertron.mimir.net.*
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
@@ -87,6 +88,14 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val n = createServiceNotification(this, state)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(1, n)
+    }
+
+    override fun onTrackerPing(online: Boolean) {
+        val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
+        preferences.edit {
+            putLong("trackerPingTime", getUtcTime())
+            apply()
+        }
     }
 
     override fun onClientConnected(from: ByteArray, address: String, clientId: Int) {

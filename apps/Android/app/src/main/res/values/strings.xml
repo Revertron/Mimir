@@ -23,7 +23,7 @@
     <string name="my_public_key">My public key:</string>
     <string name="my_name_title">My name:</string>
     <string name="save_button">Save</string>
-    <string name="accounts">Accounts</string>
+    <string name="account">Account</string>
     <string name="my_name_hint">Thor Odinson</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="saved">Saved</string>
@@ -51,4 +51,5 @@
     <string name="one_day">1 day</string>
     <string name="three_days">3 days</string>
     <string name="fifteen_days">15 days</string>
+    <string name="tracker_ping_time">Tracker ping was %d seconds ago</string>
 </resources>

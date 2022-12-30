@@ -69,7 +69,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
     }
 
-    public fun cleanUp() {
+    fun cleanUp() {
         writableDatabase.execSQL("DELETE FROM ips")
         writableDatabase.execSQL("VACUUM")
     }
