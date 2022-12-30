@@ -14,6 +14,7 @@ class App: Application() {
     override fun onCreate() {
         super.onCreate()
         storage = SqlStorage(this)
+        storage.cleanUp()
         app = this
     }
 }
