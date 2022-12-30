@@ -73,6 +73,9 @@
         android:layout_height="wrap_content"
         android:layout_marginLeft="16dp"
         android:layout_marginRight="16dp"
+        android:layout_marginTop="8dp"
+        android:weightSum="5"
+        android:gravity="center"
         app:layout_constraintTop_toBottomOf="@id/my_public_key"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent">

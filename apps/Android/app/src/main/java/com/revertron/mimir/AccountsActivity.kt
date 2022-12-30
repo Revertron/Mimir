@@ -28,7 +28,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
         val accountInfo = getStorage().getAccountInfo(accountNumber, 0L)!!
         var name = accountInfo.name
-        val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded)
+        val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded).uppercase()
 
         val myNameEdit = findViewById<AppCompatEditText>(R.id.my_name)
         myNameEdit.setText(name)
@@ -65,6 +65,20 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         findViewById<View>(R.id.button_qrcode).setOnClickListener {
             Toast.makeText(applicationContext, getString(R.string.not_yet_implemented) , Toast.LENGTH_SHORT).show()
         }
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            finish()
+            overridePendingTransition(R.anim.hold_still, R.anim.slide_out_left)
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
+    override fun finish() {
+        super.finish()
+        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_left)
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {

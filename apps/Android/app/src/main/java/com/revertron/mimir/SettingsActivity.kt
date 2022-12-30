@@ -2,6 +2,7 @@ package com.revertron.mimir
 
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.view.MenuItem
 import android.view.View
 import android.widget.SeekBar
 import android.widget.SeekBar.OnSeekBarChangeListener
@@ -55,6 +56,20 @@ class SettingsActivity : BaseActivity() {
             }
 
         })
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            finish()
+            overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
+    override fun finish() {
+        super.finish()
+        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 
     fun getSeekBarData(progress: Int): Pair<Int, String> {
