@@ -45,6 +45,8 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        Log.i(TAG, "Upgrading from $oldVersion to $newVersion")
+
         if (newVersion > oldVersion && newVersion == 2) {
             db.execSQL("ALTER TABLE messages ADD COLUMN read BOOL DEFAULT 1")
         }
@@ -65,6 +67,11 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             db.execSQL("ALTER TABLE ips ADD COLUMN port INTEGER DEFAULT 5050")
             db.execSQL("ALTER TABLE ips ADD COLUMN priority INTEGER DEFAULT 3")
         }
+    }
+
+    public fun cleanUp() {
+        writableDatabase.execSQL("DELETE FROM ips")
+        writableDatabase.execSQL("VACUUM")
     }
 
     fun addContact(pubkey: String, name: String): Long {
