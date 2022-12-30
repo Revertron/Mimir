@@ -34,6 +34,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             startService()
         }
         getStorage().listeners.add(this)
+        val recycler = findViewById<RecyclerView>(R.id.contacts_list)
+        recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
     }
 
     override fun onResume() {
@@ -43,7 +45,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this)
-        recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
     }
 
     override fun onDestroy() {
