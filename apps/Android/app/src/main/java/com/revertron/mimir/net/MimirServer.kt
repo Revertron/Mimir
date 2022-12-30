@@ -208,7 +208,7 @@ class MimirServer(
     }
 
     override fun onServerStateChanged(online: Boolean) {
-        // Nothing
+        listener.onServerStateChanged(online)
     }
 
     override fun onClientIPChanged(old: String, new: String) {
