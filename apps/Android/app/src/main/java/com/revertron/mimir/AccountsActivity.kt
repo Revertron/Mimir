@@ -3,6 +3,8 @@ package com.revertron.mimir
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
@@ -30,16 +32,20 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
         val myNameEdit = findViewById<AppCompatEditText>(R.id.my_name)
         myNameEdit.setText(name)
+        // Saving the name when it changes
+        myNameEdit.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val newName = s.toString()
+                if (getStorage().updateName(accountNumber, newName)) {
+                    name = newName
+                }
+            }
+        })
+
         val pubKeyEdit = findViewById<AppCompatEditText>(R.id.my_public_key)
         pubKeyEdit.setText(public)
-
-        findViewById<AppCompatButton>(R.id.save_button).setOnClickListener {
-            val newName = myNameEdit.text.toString()
-            if (getStorage().updateName(accountNumber, newName)) {
-                name = newName
-                Toast.makeText(applicationContext, R.string.saved, Toast.LENGTH_SHORT).show()
-            }
-        }
 
         findViewById<View>(R.id.button_copy).setOnClickListener {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
