@@ -31,7 +31,7 @@ class ConnectionHandler(
     var peerStatus: Status = Status.Created
     var challengeBytes: ByteArray? = randomBytes(32)
     private var infoRequested = false
-    private val buffer = mutableListOf<Pair<Long, ByteArray>>()
+    private val buffer = mutableListOf<Pair<Long, Message>>()
     private var address = socket.inetAddress.toString().replace("/", "")
     private var peerClientId = 0
 
@@ -55,7 +55,7 @@ class ConnectionHandler(
                     peerStatus = Status.HelloSent
                 }
                 Status.Auth2Done -> {
-                    val message: Pair<Long, ByteArray>? = synchronized(buffer) {
+                    val message: Pair<Long, Message>? = synchronized(buffer) {
                         if (buffer.isNotEmpty()) {
                             buffer.removeAt(0)
                         } else {
@@ -64,8 +64,7 @@ class ConnectionHandler(
                     }
                     if (message != null) {
                         try {
-                            val mes = MessageText(message.first, message.second)
-                            writeMessageText(dos, mes)
+                            writeMessage(dos, message.second)
                             lastActiveTime = System.currentTimeMillis()
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -227,7 +226,7 @@ class ConnectionHandler(
                     }
                 }
                 MSG_TYPE_MESSAGE_TEXT -> {
-                    val message = readMessageText(dis)
+                    val message = readMessage(dis)
                     val text = String(message?.data ?: return false)
                     Log.i(TAG, "Got message ${message.id}")
                     writeOk(dos, message.id)
@@ -257,8 +256,9 @@ class ConnectionHandler(
         peer = Hex.decode(pubkey)
     }
 
-    fun sendMessage(id: Long, message: ByteArray) {
+    fun sendMessage(id: Long, type: Int, message: ByteArray) {
         synchronized(buffer) {
+            val message = Message(id, type, message)
             buffer.add(id to message)
         }
     }

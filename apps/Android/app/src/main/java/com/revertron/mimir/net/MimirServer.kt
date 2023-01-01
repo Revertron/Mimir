@@ -123,7 +123,7 @@ class MimirServer(
                 Log.i(TAG, "Found keep-alive connection, sending message $id.")
                 val message = storage.getMessage(id)
                 if (message?.message != null) {
-                    connections[recipientString]?.sendMessage(id, message.message)
+                    connections[recipientString]?.sendMessage(id, message.type, message.message)
                 }
                 added = true
             }
@@ -173,7 +173,7 @@ class MimirServer(
                 Log.i(TAG, "Created new connection, sending message $id.")
                 val message = storage.getMessage(id)
                 if (message?.message != null) {
-                    connection.sendMessage(id, message.message)
+                    connection.sendMessage(id, message.type, message.message)
                 }
                 synchronized(connections) {
                     connections[recipientString] = connection

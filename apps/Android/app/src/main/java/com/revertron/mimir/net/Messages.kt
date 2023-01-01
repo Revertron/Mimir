@@ -21,7 +21,7 @@ data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: By
 data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
 data class InfoResponse(val time: Long, val nickname: String, val info: String, val avatar: ByteArray?)
-data class MessageText(val id: Long, val data: ByteArray)
+data class Message(val id: Long, val type: Int, val data: ByteArray)
 data class Ok(val id: Long)
 
 private const val TAG = "Messages"
@@ -146,9 +146,10 @@ fun writeChallengeAnswer(dos: DataOutputStream, challenge: ChallengeAnswer, stre
     return true
 }
 
-// val id: Int, val size: Long, val offset: Long, val data: ByteArray
-fun readMessageText(dis: DataInputStream): MessageText? {
+// val id: Long, val type: Int, val data: ByteArray
+fun readMessage(dis: DataInputStream): Message? {
     val id = dis.readLong()
+    val type = dis.readInt()
     val size = dis.readInt()
     val data = ByteArray(size)
     var count = 0
@@ -161,15 +162,16 @@ fun readMessageText(dis: DataInputStream): MessageText? {
         }
         count += read
     }
-    return MessageText(id, data)
+    return Message(id, type, data)
 }
 
-// val id: Int, val size: Long, val offset: Long, val data: ByteArray
-fun writeMessageText(dos: DataOutputStream, message: MessageText, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT): Boolean {
-    val size = 8 + 4 + message.data.size
+// val id: Long, val type: Int, val data: ByteArray
+fun writeMessage(dos: DataOutputStream, message: Message, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT): Boolean {
+    val size = 8 + 4 + 4 + message.data.size
     writeHeader(dos, stream, type, size)
 
     dos.writeLong(message.id)
+    dos.writeInt(message.type)
     dos.writeInt(message.data.size)
     dos.write(message.data)
     dos.flush()
