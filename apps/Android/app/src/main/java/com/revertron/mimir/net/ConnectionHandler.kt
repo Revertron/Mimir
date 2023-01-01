@@ -226,12 +226,11 @@ class ConnectionHandler(
                     }
                 }
                 MSG_TYPE_MESSAGE_TEXT -> {
-                    val message = readMessage(dis)
-                    val text = String(message?.data ?: return false)
+                    val message = readMessage(dis) ?: return false
                     Log.i(TAG, "Got message ${message.id}")
                     writeOk(dos, message.id)
                     synchronized(listener) {
-                        peer?.let { listener.onMessageReceived(it, address, message.id, text) }
+                        peer?.let { listener.onMessageReceived(it, address, message.id, message.type, message.data) }
                     }
                 }
             }

@@ -240,7 +240,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
     }
 
-    fun addMessage(contact: ByteArray, incoming: Boolean, delivered: Boolean, time: Long, type: Int, message: String): Long {
+    fun addMessage(contact: ByteArray, incoming: Boolean, delivered: Boolean, time: Long, type: Int, message: ByteArray): Long {
         var id = getContactId(contact)
         if (id <= 0) {
             id = addContact(contact, "")
@@ -258,16 +258,16 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             var processed = false
             for (listener in listeners) {
                 if (!incoming) {
-                    listener.onMessageSent(it, id, message)
+                    listener.onMessageSent(it, id)
                 } else {
-                    processed = processed or listener.onMessageReceived(it, id, message)
+                    processed = processed or listener.onMessageReceived(it, id)
                 }
             }
             if (!incoming) {
-                notificationManager.onMessageSent(it, id, message)
+                notificationManager.onMessageSent(it, id)
             } else {
                 if (!processed) {
-                    notificationManager.onMessageReceived(it, id, message)
+                    notificationManager.onMessageReceived(it, id)
                 }
             }
         }
@@ -351,10 +351,14 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     fun getLastMessage(userId: Long): Pair<String?, Long> {
         var message: String? = null
         var time = 0L
-        val cursor = readableDatabase.query("messages", arrayOf("message", "time"), "contact = ?", arrayOf("$userId"), null, null, "time DESC", "1")
+        val cursor = readableDatabase.query("messages", arrayOf("type", "message", "time"), "contact = ?", arrayOf("$userId"), null, null, "time DESC", "1")
         if (cursor.moveToNext()) {
-            message = cursor.getString(0)
-            time = cursor.getLong(1)
+            val type = cursor.getInt(0)
+            val data = cursor.getBlob(1)
+            if (type == 0) {
+                message = String(data)
+            }
+            time = cursor.getLong(2)
         }
         cursor.close()
         return message to time
@@ -543,8 +547,8 @@ interface StorageListener {
     fun onContactRemoved(id: Long) {}
     fun onContactChanged(id: Long) {}
 
-    fun onMessageSent(id: Long, contactId: Long, message: String) {}
+    fun onMessageSent(id: Long, contactId: Long) {}
     fun onMessageDelivered(id: Long, delivered: Boolean) {}
-    fun onMessageReceived(id: Long, contactId: Long, message: String): Boolean { return false }
+    fun onMessageReceived(id: Long, contactId: Long): Boolean { return false }
     fun onMessageRead(id: Long, contactId: Long) {}
 }

@@ -12,6 +12,7 @@ import org.bouncycastle.util.encoders.Hex
 import java.io.IOException
 import java.net.*
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.collections.HashMap
 
 //TODO This port will be random, and clients will get it from trackers (or DNS)
 const val CONNECTION_PORT: Short = 5050
@@ -244,8 +245,8 @@ class MimirServer(
         listener.onClientConnected(from, address, clientId)
     }
 
-    override fun onMessageReceived(from: ByteArray, address: String, id: Long, message: String) {
-        listener.onMessageReceived(from, address, id, message)
+    override fun onMessageReceived(from: ByteArray, address: String, id: Long, type: Int, message: ByteArray) {
+        listener.onMessageReceived(from, address, id, type, message)
     }
 
     override fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean) {
@@ -281,7 +282,7 @@ interface EventListener {
     fun onTrackerPing(online: Boolean)
     fun onClientIPChanged(old: String, new: String) {}
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
-    fun onMessageReceived(from: ByteArray, address: String, id: Long, message: String)
+    fun onMessageReceived(from: ByteArray, address: String, id: Long, type: Int, message: ByteArray)
     fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean)
     fun onConnectionClosed(from: ByteArray, address: String) {}
 }

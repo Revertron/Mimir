@@ -109,7 +109,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         return true
     }
 
-    override fun onMessageReceived(id: Long, contactId: Long, message: String): Boolean {
+    override fun onMessageReceived(id: Long, contactId: Long): Boolean {
         runOnUiThread {
             val contacts = (application as App).storage.getContactList()
             val adapter = ContactsAdapter(contacts, this, this)

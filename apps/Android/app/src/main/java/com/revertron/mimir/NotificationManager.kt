@@ -29,7 +29,7 @@ class NotificationManager(val context: Context): StorageListener {
 
     }
 
-    override fun onMessageSent(id: Long, contactId: Long, message: String) {
+    override fun onMessageSent(id: Long, contactId: Long) {
 
     }
 
@@ -44,12 +44,17 @@ class NotificationManager(val context: Context): StorageListener {
         }
     }
 
-    override fun onMessageReceived(id: Long, contactId: Long, message: String): Boolean {
+    override fun onMessageReceived(id: Long, contactId: Long): Boolean {
+        val message = App.app.storage.getMessage(id)
+        if (message?.message == null) {
+            return false
+        }
         val mes = synchronized(messages) {
-            val message = if (message.length > 50) {
-                message.substring(0, 50)
+            var text = String(message.message)
+            text = if (text.length > 50) {
+                text.substring(0, 50)
             } else {
-                message
+                text
             }
             if (messages.containsKey(contactId)) {
                 val old = messages.remove(contactId)!!
@@ -63,8 +68,8 @@ class NotificationManager(val context: Context): StorageListener {
                     old
                 }
             } else {
-                messages[contactId] = message
-                message
+                messages[contactId] = text
+                text
             }
         }
 

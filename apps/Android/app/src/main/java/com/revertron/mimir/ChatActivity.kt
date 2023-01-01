@@ -92,11 +92,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         startService(intent)
     }
 
-    override fun onMessageSent(id: Long, contactId: Long, message: String) {
+    override fun onMessageSent(id: Long, contactId: Long) {
         runOnUiThread {
-            Log.i(TAG, "Message $id sent to $contactId: $message")
+            Log.i(TAG, "Message $id sent to $contactId")
             if (contact.id == contactId) {
-                Log.i(TAG, "Processing message $message")
                 val recycler = findViewById<RecyclerView>(R.id.messages_list)
                 val adapter = recycler.adapter as MessageAdapter
                 adapter.addMessageId(id)
@@ -114,8 +113,8 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         }
     }
 
-    override fun onMessageReceived(id: Long, contactId: Long, message: String): Boolean {
-        Log.i(TAG, "Message $id from $contactId: $message")
+    override fun onMessageReceived(id: Long, contactId: Long): Boolean {
+        Log.i(TAG, "Message $id from $contactId")
         if (contact.id == contactId) {
             runOnUiThread {
                 Log.i(TAG, "Adding message")
