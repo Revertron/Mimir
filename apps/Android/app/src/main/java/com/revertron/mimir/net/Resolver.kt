@@ -26,7 +26,7 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
     }
 
     private val random = Random(System.currentTimeMillis())
-    private val nonces = HashMap<Int, Pair<String, ResolverReceiver>>()
+    private val nonces = HashMap<Int, Pair<ByteArray, ResolverReceiver>>()
     private val socket = DatagramSocket()
 
     init {
@@ -65,7 +65,7 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
                             val clientId = dis.readInt()
                             val ttl = dis.readLong()
                             Log.i(TAG, "Got ip $ip")
-                            val public = Ed25519PublicKeyParameters(Hex.decode(pair.first))
+                            val public = Ed25519PublicKeyParameters(pair.first)
                             if (!Sign.verify(public, ipBuf, sigBuf)) {
                                 Log.w(TAG, "Wrong IP signature!")
                                 continue
@@ -83,17 +83,17 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         t.start()
     }
 
-    fun getIps(pubkey: String): List<Peer> {
+    fun getIps(pubkey: ByteArray): List<Peer> {
         return storage.getContactPeers(pubkey)
     }
 
-    fun saveIps(pubkey: String, peers: List<Peer>) {
+    fun saveIps(pubkey: ByteArray, peers: List<Peer>) {
         for (addr in peers) {
             storage.saveIp(pubkey, addr.address, addr.port, addr.clientId, addr.priority, addr.expiration)
         }
     }
 
-    fun resolveIps(pubkey: String, receiver: ResolverReceiver) {
+    fun resolveIps(pubkey: ByteArray, receiver: ResolverReceiver) {
         val baos = ByteArrayOutputStream()
         val dos = DataOutputStream(baos)
         dos.writeByte(VERSION)
@@ -101,14 +101,13 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         dos.writeInt(nonce)
         nonces[nonce] = pubkey to receiver
         dos.writeByte(CMD_GET_IPS)
-        val id = Hex.decode(pubkey)
-        dos.write(id)
+        dos.write(pubkey)
         val request = baos.toByteArray()
         val packet = DatagramPacket(request, request.size, tracker)
         socket.send(packet)
     }
 
-    fun announce(pubkey: String, privkey: String, peer: Peer, receiver: ResolverReceiver) {
+    fun announce(pubkey: ByteArray, privkey: ByteArray, peer: Peer, receiver: ResolverReceiver) {
         Log.i(TAG, "Announcing ${peer.address}")
         val baos = ByteArrayOutputStream()
         val dos = DataOutputStream(baos)
@@ -117,14 +116,13 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         dos.writeInt(nonce)
         nonces[nonce] = pubkey to receiver
         dos.writeByte(CMD_ANNOUNCE)
-        val id = Hex.decode(pubkey)
-        dos.write(id)
+        dos.write(pubkey)
         dos.writeShort(peer.port.toInt())
         dos.writeByte(peer.priority)
         dos.writeInt(peer.clientId)
         val ip = InetAddress.getByName(peer.address)
         dos.write(ip.address)
-        val priv = Ed25519PrivateKeyParameters(Hex.decode(privkey))
+        val priv = Ed25519PrivateKeyParameters(privkey)
         val signature = Sign.sign(priv, ip.address)
         dos.write(signature)
         val request = baos.toByteArray()
@@ -135,7 +133,7 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
 }
 
 interface ResolverReceiver {
-    fun onResolveResponse(pubkey:String, ips: List<Peer>)
-    fun onAnnounceResponse(pubkey: String, ttl: Long)
-    fun onTimeout(pubkey: String)
+    fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>)
+    fun onAnnounceResponse(pubkey: ByteArray, ttl: Long)
+    fun onTimeout(pubkey: ByteArray)
 }

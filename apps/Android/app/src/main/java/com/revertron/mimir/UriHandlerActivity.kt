@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatTextView
+import org.bouncycastle.util.encoders.Hex
 
 
 class UriHandlerActivity : BaseActivity() {
@@ -59,6 +60,8 @@ class UriHandlerActivity : BaseActivity() {
     private fun addContact(pubkey: String, name: String?): Boolean {
         if (validPublicKey(pubkey)) {
             if (name != null && name.isNotEmpty()) {
+                @Suppress("NAME_SHADOWING")
+                val pubkey = Hex.decode(pubkey)
                 //TODO validate name
                 val storage = getStorage()
                 if (storage.getContactId(pubkey) > 0) {

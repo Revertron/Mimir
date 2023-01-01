@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.TaskStackBuilder
 import com.revertron.mimir.storage.StorageListener
+import org.bouncycastle.util.encoders.Hex
 
 class NotificationManager(val context: Context): StorageListener {
 
@@ -69,12 +70,14 @@ class NotificationManager(val context: Context): StorageListener {
 
         val name = App.app.storage.getContactName(contactId).ifEmpty { context.getString(R.string.unknown_nickname) }
         val pubkey = App.app.storage.getContactPubkey(contactId)
-        val notification = createMessageNotification(context, contactId, name, pubkey, mes)
-        manager.notify((contactId.toInt() shl 16), notification)
+        if (pubkey != null) {
+            val notification = createMessageNotification(context, contactId, name, pubkey, mes)
+            manager.notify((contactId.toInt() shl 16), notification)
+        }
         return true
     }
 
-    private fun createMessageNotification(context: Context, contactId: Long, name:String, pubkey: String, message: String): Notification {
+    private fun createMessageNotification(context: Context, contactId: Long, name: String, pubkey: ByteArray, message: String): Notification {
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
         val channelId = "Messages"
@@ -104,7 +107,7 @@ class NotificationManager(val context: Context): StorageListener {
             .build()
     }
 
-    private fun createNotificationChannels(context: Context, channelId: String, pubkey: String, contactId: Long) {
+    private fun createNotificationChannels(context: Context, channelId: String, pubkey: ByteArray, contactId: Long) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channelName = context.getString(R.string.channel_name_messages)
             val descriptionText = context.getString(R.string.channel_description_messages)
@@ -117,10 +120,11 @@ class NotificationManager(val context: Context): StorageListener {
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(parentChannel)
 
-            val channel = NotificationChannel(pubkey, "Contact $contactId", importance).apply {
+            val hexString = Hex.toHexString(pubkey)
+            val channel = NotificationChannel(hexString, "Contact $contactId", importance).apply {
                 description = "Messages with $contactId"
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    setConversationId(channelId, pubkey)
+                    setConversationId(channelId, hexString)
                 }
             }
             // Register the channel with the system

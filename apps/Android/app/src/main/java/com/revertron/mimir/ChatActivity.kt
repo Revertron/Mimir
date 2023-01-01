@@ -35,7 +35,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
         setSupportActionBar(toolbar)
 
-        val pubkey = intent.getStringExtra("pubkey").apply { if (this == null) finish() }!!
+        val pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         val id = getStorage().getContactId(pubkey)
         contact = Contact(id, pubkey, name, "", 0L, 0)
@@ -50,7 +50,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             val text: String = editText.text.toString()
             if (text.isNotEmpty()) {
                 editText.text?.clear()
-                sendText(contact.pubkey, text)
+                sendMessage(contact.pubkey, text)
             }
         }
         val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this)
@@ -84,10 +84,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         return true
     }
 
-    private fun sendText(pubkey: String, text: String) {
+    private fun sendMessage(pubkey: ByteArray, text: String) {
         val intent = Intent(this, ConnectionService::class.java)
         intent.putExtra("command", "send")
-        intent.putExtra("pubkey", Hex.decode(pubkey))
+        intent.putExtra("pubkey", pubkey)
         intent.putExtra("message", text)
         startService(intent)
     }
@@ -141,7 +141,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                     val intent = Intent(this, ConnectionService::class.java)
                     intent.putExtra("command", "resend")
                     intent.putExtra("id", view.tag as Long)
-                    intent.putExtra("pubkey", Hex.decode(contact.pubkey))
+                    intent.putExtra("pubkey", contact.pubkey)
                     intent.putExtra("message", textview.text.toString())
                     startService(intent)
                     true

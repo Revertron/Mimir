@@ -15,6 +15,7 @@ import com.revertron.mimir.net.CONNECTION_PORT
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
+import org.bouncycastle.util.encoders.Hex
 
 
 class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener, StorageListener {
@@ -131,13 +132,14 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.setIcon(R.drawable.ic_contact_add_daynight)
         builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
             val name = name.text.toString().trim()
-            val pubkey = pubkey.text.toString().trim()
-            if (name.isEmpty()) {
-                Toast.makeText(this@MainActivity, R.string.empty_name, Toast.LENGTH_LONG).show()
+            val pubKeyString = pubkey.text.toString().trim()
+            if (!validPublicKey(pubKeyString)) {
+                Toast.makeText(this@MainActivity, R.string.wrong_public_key, Toast.LENGTH_LONG).show()
                 return@setPositiveButton
             }
-            if (!validPublicKey(pubkey)) {
-                Toast.makeText(this@MainActivity, R.string.wrong_public_key, Toast.LENGTH_LONG).show()
+            val pubkey = Hex.decode(pubKeyString)
+            if (name.isEmpty()) {
+                Toast.makeText(this@MainActivity, R.string.empty_name, Toast.LENGTH_LONG).show()
                 return@setPositiveButton
             }
             (application as App).storage.addContact(pubkey, name)
@@ -153,7 +155,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     private fun showAddAddressDialog(contact: Contact) {
         val view = LayoutInflater.from(this).inflate(R.layout.add_contact_ip_dialog, null)
         val pubkey = view.findViewById<AppCompatEditText>(R.id.contact_pubkey)
-        pubkey.setText(contact.pubkey)
+        pubkey.setText(Hex.toHexString(contact.pubkey))
         val address = view.findViewById<AppCompatEditText>(R.id.contact_address)
         val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
         val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
@@ -162,10 +164,9 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.setIcon(R.drawable.ic_add_address)
         builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
             val address = address.text.toString()
-            val pubkey = pubkey.text.toString() //TODO validate input
             // We add this kind of IPs for 10 days
             val expiration = getUtcTime() + 86400 * 10
-            (application as App).storage.saveIp(pubkey, address, CONNECTION_PORT, 0, 0, expiration)
+            (application as App).storage.saveIp(contact.pubkey, address, CONNECTION_PORT, 0, 0, expiration)
         }
         builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
             dialog.cancel()

@@ -1,11 +1,14 @@
 package com.revertron.mimir.storage
 
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteDoneException
 import android.database.sqlite.SQLiteOpenHelper
 import android.provider.Settings
 import android.util.Log
+import androidx.core.database.getBlobOrNull
 import com.revertron.mimir.NotificationManager
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.ui.Contact
@@ -23,18 +26,19 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 4
+        const val DATABASE_VERSION = 5
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
-        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey TEXT, name TEXT, info TEXT, avatar TEXT, updated INTEGER, redacted BOOL)"
+        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
         const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, port INTEGER DEFAULT 5050, priority INTEGER DEFAULT 3, expiration INTEGER DEFAULT 3600)"
-        const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, incoming BOOL, delivered BOOL, time INTEGER, type INTEGER, message TEXT, read BOOL)"
+        const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, incoming BOOL, delivered BOOL, read BOOL, time INTEGER, type INTEGER, message BLOB)"
     }
 
-    data class Message(val id: Long, val contact: Long, val incoming: Boolean, var delivered: Boolean, val time: Long, val type: Int, val message: String, val read: Boolean)
+    data class Message(val id: Long, val contact: Long, val incoming: Boolean, var delivered: Boolean, val read: Boolean, val time: Long, val type: Int, val message: ByteArray?)
 
     val listeners = mutableListOf<StorageListener>()
     private val notificationManager = NotificationManager(context)
+    @SuppressLint("HardwareIds")
     private val androidId: Int = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.hashCode() ?: 0
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -67,14 +71,108 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             db.execSQL("ALTER TABLE ips ADD COLUMN port INTEGER DEFAULT 5050")
             db.execSQL("ALTER TABLE ips ADD COLUMN priority INTEGER DEFAULT 3")
         }
+
+        if (newVersion > oldVersion && newVersion == 5) {
+            migrateAccountsToBlob(db)
+            migrateContactsToBlob(db)
+            migrateMessagesToBlob(db)
+        }
+    }
+
+    private fun migrateAccountsToBlob(db: SQLiteDatabase) {
+        // Changing pubkey in "contacts" from TEXT to BLOB
+        db.execSQL("CREATE TABLE a (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey BLOB, pubkey BLOB, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)")
+        val columns = arrayOf("id", "name", "privkey", "pubkey", "client", "info", "avatar", "updated")
+        val cursor = db.query("accounts", columns, null, null, null, null, "id", null)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(0)
+            val name = cursor.getString(1)
+            val privkey = Hex.decode(cursor.getString(2))
+            val pubkey = Hex.decode(cursor.getString(3))
+            val client = cursor.getInt(4)
+            val info = cursor.getString(5)
+            val avatar = cursor.getString(6)
+            var updated = cursor.getLong(7)
+            if (updated == 0L) {
+                updated = getUtcTime()
+            }
+
+            val values = ContentValues().apply {
+                put("id", id)
+                put("name", name)
+                put("privkey", privkey)
+                put("pubkey", pubkey)
+                put("client", client)
+                put("info", info)
+                put("avatar", avatar)
+                put("updated", updated)
+            }
+            db.insert("a", null, values)
+        }
+        cursor.close()
+        db.execSQL("DROP TABLE accounts")
+        db.execSQL("ALTER TABLE a RENAME TO accounts")
+    }
+
+    private fun migrateContactsToBlob(db: SQLiteDatabase) {
+        // Changing pubkey in "contacts" from TEXT to BLOB
+        db.execSQL("CREATE TABLE c (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)")
+        val columns = arrayOf("id", "pubkey", "name", "info", "avatar", "updated", "redacted")
+        val cursor = db.query("contacts", columns, null, null, null, null, "id", null)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(0)
+            val pubkey = cursor.getString(1)
+            val name = cursor.getString(2)
+            val info = cursor.getString(3)
+            val avatar = cursor.getString(4)
+            val updated = cursor.getLong(5)
+            val redacted = cursor.getInt(6) != 0
+
+            val values = ContentValues().apply {
+                put("id", id)
+                put("pubkey", Hex.decode(pubkey))
+                put("name", name)
+                put("info", info)
+                put("avatar", avatar)
+                put("updated", updated)
+                put("renamed", redacted)
+                put("last_seen", 0L)
+            }
+            db.insert("c", null, values)
+        }
+        cursor.close()
+        db.execSQL("DROP TABLE contacts")
+        db.execSQL("ALTER TABLE c RENAME TO contacts")
+    }
+
+    private fun migrateMessagesToBlob(db: SQLiteDatabase) {
+        // Community agreed that we can just "move fast, break things" this time
+        db.execSQL("DROP TABLE messages")
+        db.execSQL(CREATE_MESSAGES)
     }
 
     fun cleanUp() {
         writableDatabase.execSQL("DELETE FROM ips")
         writableDatabase.execSQL("VACUUM")
+
+        val columns = arrayOf("id", "name", "privkey", "pubkey", "client", "info", "avatar", "updated")
+        val cursor = readableDatabase.query("accounts", columns, null, null, null, null, "id", null)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(0)
+            val name = cursor.getString(1)
+            val privkey = cursor.getBlob(2)
+            val pubkey = cursor.getBlob(3)
+            val client = cursor.getInt(4)
+            val info = cursor.getString(5)
+            val avatar = cursor.getString(6)
+            val updated = cursor.getLong(7)
+
+            Log.i(TAG, "$id $name, ${Hex.toHexString(privkey)}, ${Hex.toHexString(pubkey)}, $client, $info, $avatar, $updated")
+        }
+        cursor.close()
     }
 
-    fun addContact(pubkey: String, name: String): Long {
+    fun addContact(pubkey: ByteArray, name: String): Long {
         val values = ContentValues().apply {
             put("pubkey", pubkey)
             put("name", name)
@@ -87,7 +185,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
     }
 
-    fun saveIp(pubkey: String, address: String, port: Short, clientId: Int, priority: Int, expiration: Long): Boolean {
+    fun saveIp(pubkey: ByteArray, address: String, port: Short, clientId: Int, priority: Int, expiration: Long): Boolean {
         // First we get numeric id for this contact
         var id = getContactId(pubkey)
         return if (id >= 0) {
@@ -123,26 +221,26 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return this.writableDatabase.insert("ips", null, values) >= 0
     }
 
-    fun renameContact(contactId: Long, name: String, redacted: Boolean) {
-        val cursor = this.readableDatabase.query("contacts", arrayOf("redacted"), "id = ?", arrayOf("$contactId"), null, null, null)
-        val redactedLocally = if (cursor.moveToNext()) {
+    fun renameContact(contactId: Long, name: String, renamed: Boolean) {
+        val cursor = this.readableDatabase.query("contacts", arrayOf("renamed"), "id = ?", arrayOf("$contactId"), null, null, null)
+        val renamedLocally = if (cursor.moveToNext()) {
             cursor.getInt(0) != 0
         } else {
             false
         }
         cursor.close()
-        if (redactedLocally && !redacted) {
+        if (renamedLocally && !renamed) {
             return
         }
         val values = ContentValues().apply {
             put("name", name)
             put("updated", getUtcTime())
-            put("redacted", redacted)
+            put("renamed", renamed)
         }
         writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
     }
 
-    fun addMessage(contact: String, incoming: Boolean, delivered: Boolean, time: Long, type: Int, message: String): Long {
+    fun addMessage(contact: ByteArray, incoming: Boolean, delivered: Boolean, time: Long, type: Int, message: String): Long {
         var id = getContactId(contact)
         if (id <= 0) {
             id = addContact(contact, "")
@@ -175,7 +273,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
     }
 
-    fun setMessageDelivered(to: String, id: Long, delivered: Boolean) {
+    fun setMessageDelivered(to: ByteArray, id: Long, delivered: Boolean) {
         var contact = getContactId(to)
         if (contact <= 0) {
             contact = addContact(to, "")
@@ -203,7 +301,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
     }
 
-    fun getMessages(pubkey: String): List<Message> {
+    fun getMessages(pubkey: ByteArray): List<Message> {
         val id = getContactId(pubkey)
         if (id <= 0) {
             return emptyList()
@@ -218,10 +316,10 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val delivered = cursor.getInt(2) != 0
             val time = cursor.getLong(3)
             val type = cursor.getInt(4)
-            val message = cursor.getString(5)
+            val message = cursor.getBlob(5)
             val read = cursor.getInt(6) != 0
             //Log.i(TAG, "$message ::: $messId")
-            list.add(Message(messId, id, incoming, delivered, time, type, message, read))
+            list.add(Message(messId, id, incoming, delivered, read, time, type, message))
         }
         cursor.close()
         return list
@@ -263,45 +361,43 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     fun getMessage(messageId: Long): Message? {
-        val columns = arrayOf("contact", "incoming", "delivered", "time", "type", "message", "read")
+        val columns = arrayOf("contact", "incoming", "delivered", "read", "time", "type", "message")
         val cursor = readableDatabase.query("messages", columns, "id = ?", arrayOf("$messageId"), null, null, "time", "1")
         if (cursor.moveToNext()) {
             val contactId = cursor.getLong(0)
             val incoming = cursor.getInt(1) != 0
             val delivered = cursor.getInt(2) != 0
-            val time = cursor.getLong(3)
-            val type = cursor.getInt(4)
-            val message = cursor.getString(5)
-            val read = cursor.getInt(6) != 0
+            val read = cursor.getInt(3) != 0
+            val time = cursor.getLong(4)
+            val type = cursor.getInt(5)
+            val message = cursor.getBlobOrNull(6)
             //Log.i(TAG, "$message ::: $messId")
             cursor.close()
-            return Message(messageId, contactId, incoming, delivered, time, type, message, read)
+            return Message(messageId, contactId, incoming, delivered, read, time, type, message)
         }
         cursor.close()
         return null
     }
 
-    fun getContactId(pubkey: String): Long {
+    fun getContactId(pubkey: ByteArray): Long {
         val db = this.readableDatabase
-        val cursor =
-            db.query("contacts", arrayOf("id"), "pubkey = ?", arrayOf(pubkey), null, null, null)
-        val id = if (cursor.moveToNext()) {
-            cursor.getLong(0)
-        } else {
+        val statement = db.compileStatement("SELECT id FROM contacts WHERE pubkey=? LIMIT 1")
+        statement.bindBlob(1, pubkey)
+        return try {
+            statement.simpleQueryForLong()
+        } catch (e: SQLiteDoneException) {
             -1
         }
-        cursor.close()
-        return id
     }
 
-    fun getContactPubkey(id: Long): String {
+    fun getContactPubkey(id: Long): ByteArray? {
         val db = this.readableDatabase
         val cursor =
             db.query("contacts", arrayOf("pubkey"), "id = ?", arrayOf(id.toString()), null, null, null)
         val pubkey = if (cursor.moveToNext()) {
-            cursor.getString(0)
+            cursor.getBlob(0)
         } else {
-            ""
+            null
         }
         cursor.close()
         return pubkey
@@ -326,8 +422,9 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         val cursor = db.query("contacts", arrayOf("id", "pubkey", "name"), "", emptyArray(), null, null, "name", "")
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
-            val pubkey = cursor.getString(1)
+            val pubkey = cursor.getBlob(1)
             val name = cursor.getString(2)
+            Log.i(TAG, "Found $id $name with ${Hex.toHexString(pubkey)}")
             list.add(Contact(id, pubkey, name, "", 0L, 0))
         }
         cursor.close()
@@ -341,7 +438,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return list
     }
 
-    fun getContactPeers(pubkey: String): List<Peer> {
+    fun getContactPeers(pubkey: ByteArray): List<Peer> {
         // First we get numeric id for this contact
         val id = getContactId(pubkey)
         if (id >= 0) {
@@ -375,18 +472,18 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val name = cursor.getString(0)
             val info = cursor.getString(1) ?: ""
             val avatar = cursor.getString(2) ?: ""
-            val privkey = Hex.decode(cursor.getString(3))
-            val pubkeyString = cursor.getString(4)
-            val pubkey = Hex.decode(pubkeyString)
+            val privkey = cursor.getBlob(3)
+            val pubkey = cursor.getBlob(4)
             val clientId = cursor.getInt(5) xor androidId
             val updated = cursor.getLong(6)
 
             val priv = Ed25519PrivateKeyParameters(privkey)
             val pub = Ed25519PublicKeyParameters(pubkey)
             cursor.close()
-            Log.i(TAG, "Found account $name with pubkey $pubkeyString")
+            Log.i(TAG, "Found account $name with pubkey ${Hex.toHexString(pubkey)}")
             return AccountInfo(name, info, avatar, updated, clientId, AsymmetricCipherKeyPair(pub, priv))
         }
+        Log.e(TAG, "Didn't find account info $id")
         return null
     }
 
@@ -394,8 +491,8 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         val gen = Ed25519KeyPairGenerator()
         gen.init(KeyGenerationParameters(SecureRandom(), 256))
         val pair = gen.generateKeyPair()
-        val pub = Hex.toHexString((pair.public as Ed25519PublicKeyParameters).encoded)
-        val priv = Hex.toHexString((pair.private as Ed25519PrivateKeyParameters).encoded)
+        val pub = (pair.public as Ed25519PublicKeyParameters).encoded
+        val priv = (pair.private as Ed25519PrivateKeyParameters).encoded
         val clientId = Random(System.currentTimeMillis()).run { nextInt() }
         val utcTime = getUtcTime()
         val values = ContentValues().apply {
@@ -418,7 +515,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return this.writableDatabase.update("accounts", values, "id = ?", arrayOf("$id")) > 0
     }
 
-    fun getContactUpdateTime(pubkey: String): Long {
+    fun getContactUpdateTime(pubkey: ByteArray): Long {
         val contactId = getContactId(pubkey)
         val cursor = this.readableDatabase.query("contacts", arrayOf("updated"), "id = ?", arrayOf("$contactId"), null, null, null)
         var updated = 0L

@@ -166,7 +166,10 @@ class ConnectionHandler(
                     // Client answered challenge
                     writeOk(dos, 0)
                     if (!infoRequested) {
-                        writeInfoRequest(dos, infoProvider.getContactUpdateTime(Hex.toHexString(peer)))
+                        if (peer == null) {
+                            return false
+                        }
+                        writeInfoRequest(dos, infoProvider.getContactUpdateTime(peer!!))
                         infoRequested = true
                     }
                     peerStatus = Status.AuthDone
@@ -198,7 +201,10 @@ class ConnectionHandler(
                 MSG_TYPE_INFO_RESPONSE -> {
                     val info = readInfoResponse(dis)
                     if (info != null) {
-                        infoProvider.updateContactInfo(Hex.toHexString(peer), info)
+                        if (peer == null) {
+                            return false
+                        }
+                        infoProvider.updateContactInfo(peer!!, info)
                     }
                 }
                 MSG_TYPE_OK -> {
@@ -237,7 +243,11 @@ class ConnectionHandler(
         return false
     }
 
-    private fun isMessageForMe(hello: ClientHello) = (keyPair.public as Ed25519PublicKeyParameters).encoded.contentEquals(hello.receiver)
+    private fun isMessageForMe(hello: ClientHello): Boolean {
+        val publicKey = (keyPair.public as Ed25519PublicKeyParameters).encoded
+        Log.i(TAG, "My ${Hex.toHexString(publicKey)} and his ${Hex.toHexString(hello.receiver)}")
+        return publicKey.contentEquals(hello.receiver)
+    }
 
     fun setPeerPublicKey(pubkey: ByteArray) {
         peer = pubkey
@@ -276,5 +286,14 @@ class ConnectionHandler(
 }
 
 enum class Status {
-    Created, ConnectedIn, ConnectedOut, HelloSent, ChallengeSent, ChallengeAnswered, AuthDone, Challenge2Sent, Challenge2Answered, Auth2Done,
+    Created,
+    ConnectedIn,
+    ConnectedOut,
+    HelloSent,
+    ChallengeSent,
+    ChallengeAnswered,
+    AuthDone,
+    Challenge2Sent,
+    Challenge2Answered,
+    Auth2Done,
 }

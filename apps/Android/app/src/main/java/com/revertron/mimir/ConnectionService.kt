@@ -59,7 +59,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val message = intent.getStringExtra("message")
                 Log.i(TAG, "Message to $keyString")
                 if (pubkey != null && message != null) {
-                    val id = storage.addMessage(keyString, false, false, System.currentTimeMillis(), 0, message)
+                    val id = storage.addMessage(pubkey, false, false, System.currentTimeMillis(), 0, message)
                     Thread{
                         mimirServer?.sendText(pubkey, id, message)
                     }.start()
@@ -99,23 +99,20 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     override fun onClientConnected(from: ByteArray, address: String, clientId: Int) {
-        val keyString = Hex.toHexString(from)
         val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
         val ttl = preferences.getInt(IP_CACHE_TTL, IP_CACHE_DEFAULT_TTL)
         val expiration = getUtcTime() + ttl
         val storage = (application as App).storage
-        storage.saveIp(keyString, address, CONNECTION_PORT, clientId, 0, expiration)
+        storage.saveIp(from, address, CONNECTION_PORT, clientId, 0, expiration)
     }
 
     override fun onMessageReceived(from: ByteArray, address: String, id: Long, message: String) {
-        val keyString = Hex.toHexString(from)
         val storage = (application as App).storage
-        storage.addMessage(keyString, true, true, System.currentTimeMillis(), 0, message)
+        storage.addMessage(from, true, true, System.currentTimeMillis(), 0, message)
     }
 
     override fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean) {
-        val keyString = Hex.toHexString(to)
-        (application as App).storage.setMessageDelivered(keyString, id, delivered)
+        (application as App).storage.setMessageDelivered(to, id, delivered)
     }
 
     override fun getMyInfo(ifUpdatedSince: Long): InfoResponse? {
@@ -129,11 +126,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         return InfoResponse(info.updated, info.name, info.info, avatar)
     }
 
-    override fun getContactUpdateTime(pubkey: String): Long {
+    override fun getContactUpdateTime(pubkey: ByteArray): Long {
         return (application as App).storage.getContactUpdateTime(pubkey)
     }
 
-    override fun updateContactInfo(pubkey: String, info: InfoResponse) {
+    override fun updateContactInfo(pubkey: ByteArray, info: InfoResponse) {
         val storage = (application as App).storage
         val id = storage.getContactId(pubkey)
         Log.i(TAG, "Renaming contact $id to ${info.nickname}")

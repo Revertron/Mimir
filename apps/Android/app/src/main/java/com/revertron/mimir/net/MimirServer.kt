@@ -38,8 +38,8 @@ class MimirServer(
     private val connections = HashMap<String, ConnectionHandler>(5)
     private var serverSocket: ServerSocket? = null
     private lateinit var resolver: Resolver
-    private val pubkey = Hex.toHexString((keyPair.public as Ed25519PublicKeyParameters).encoded)
-    private val privkey = Hex.toHexString((keyPair.private as Ed25519PrivateKeyParameters).encoded)
+    private val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
+    private val privkey = (keyPair.private as Ed25519PrivateKeyParameters).encoded
     private var lastAnnounceTime = 0L
     private var announceTtl = 0L
 
@@ -128,7 +128,7 @@ class MimirServer(
         // If there is no established connection we try to create one
         if (!added) {
             val receiver = object : ResolverReceiver {
-                override fun onResolveResponse(pubkey: String, ips: List<Peer>) {
+                override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
                     Log.i(TAG, "Resolved IPS: $ips")
                     if (ips.isNotEmpty()) {
                         ips.forEach {
@@ -138,21 +138,21 @@ class MimirServer(
                     }
                 }
 
-                override fun onAnnounceResponse(pubkey: String, ttl: Long) {}
-                override fun onTimeout(pubkey: String) {}
+                override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
+                override fun onTimeout(pubkey: ByteArray) {}
             }
 
-            val peers = storage.getContactPeers(recipientString)
+            val peers = storage.getContactPeers(recipient)
             if (peers.isNotEmpty()) {
                 Log.i(TAG, "Got ips locally")
                 added = sendTextMessage(recipient, recipientString, peers, id, message)
                 if (!added) {
                     Log.i(TAG, "Locally found IPs are dead, resolving")
-                    resolver.resolveIps(recipientString, receiver)
+                    resolver.resolveIps(recipient, receiver)
                 }
             } else {
                 Log.i(TAG, "No ips found, resolving")
-                resolver.resolveIps(recipientString, receiver)
+                resolver.resolveIps(recipient, receiver)
             }
         }
         // If we couldn't create any connections we fail
@@ -254,18 +254,18 @@ class MimirServer(
         }
     }
 
-    override fun onResolveResponse(pubkey: String, ips: List<Peer>) {
+    override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
         Log.d(TAG, "Resolved: $ips")
     }
 
-    override fun onAnnounceResponse(pubkey: String, ttl: Long) {
+    override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {
         Log.d(TAG, "Got TTL: $ttl")
         lastAnnounceTime = getUtcTime()
         announceTtl = ttl
         listener.onTrackerPing(true)
     }
 
-    override fun onTimeout(pubkey: String) {
+    override fun onTimeout(pubkey: ByteArray) {
         Log.d(TAG, "Got timeout")
     }
 }
@@ -282,6 +282,6 @@ interface EventListener {
 
 interface InfoProvider {
     fun getMyInfo(ifUpdatedSince: Long): InfoResponse?
-    fun getContactUpdateTime(pubkey: String): Long
-    fun updateContactInfo(pubkey: String, info: InfoResponse)
+    fun getContactUpdateTime(pubkey: ByteArray): Long
+    fun updateContactInfo(pubkey: ByteArray, info: InfoResponse)
 }

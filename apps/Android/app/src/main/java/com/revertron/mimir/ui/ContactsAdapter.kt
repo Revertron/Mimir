@@ -45,7 +45,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val contact = dataSet[position]
         holder.contactName.text = contact.name.ifEmpty { holder.itemView.context.getString(R.string.unknown_nickname) }
-        holder.lastMessage.text = contact.lastMessage.ifEmpty { contact.pubkey }
+        holder.lastMessage.text = contact.lastMessage.ifEmpty { "..." }
         if (contact.lastMessageTime > 0) {
             holder.lastMessageTime.visibility = View.VISIBLE
             val date = Date(contact.lastMessageTime)
@@ -87,7 +87,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
     private fun getInitials(contact: Contact): String {
         val name = contact.name.trim()
         if (name.isEmpty() || name.length < 2) {
-            return contact.pubkey.substring(0, 2)
+            return Hex.toHexString(contact.pubkey, 0, 1)
         }
 
         if (name.length == 2) {
@@ -102,9 +102,8 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
         return name.substring(0, 2)
     }
 
-    private fun getAvatarColor(pubkey: String): Int {
-        val bytes = Hex.decode(pubkey)
-        val hashCode = bytes.toList().hashCode()
+    private fun getAvatarColor(pubkey: ByteArray): Int {
+        val hashCode = pubkey.toList().hashCode()
         return darkColors[abs(hashCode) % darkColors.size].toInt()
     }
 

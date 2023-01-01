@@ -5,8 +5,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
-import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.core.view.marginTop
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
@@ -55,7 +53,7 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
         } else {
             holder.name.visibility = View.GONE
         }
-        holder.message.text = message.message
+        holder.message.text = String(message.message!!)
         holder.time.text = timeFormatter.format(Date(message.time))
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered
