@@ -31,7 +31,7 @@ class ConnectionHandler(
     var peerStatus: Status = Status.Created
     var challengeBytes: ByteArray? = randomBytes(32)
     private var infoRequested = false
-    private val buffer = mutableListOf<Pair<Long, String>>()
+    private val buffer = mutableListOf<Pair<Long, ByteArray>>()
     private var address = socket.inetAddress.toString().replace("/", "")
     private var peerClientId = 0
 
@@ -55,7 +55,7 @@ class ConnectionHandler(
                     peerStatus = Status.HelloSent
                 }
                 Status.Auth2Done -> {
-                    val message: Pair<Long, String>? = synchronized(buffer) {
+                    val message: Pair<Long, ByteArray>? = synchronized(buffer) {
                         if (buffer.isNotEmpty()) {
                             buffer.removeAt(0)
                         } else {
@@ -64,7 +64,7 @@ class ConnectionHandler(
                     }
                     if (message != null) {
                         try {
-                            val mes = MessageText(message.first, message.second.toByteArray())
+                            val mes = MessageText(message.first, message.second)
                             writeMessageText(dos, mes)
                             lastActiveTime = System.currentTimeMillis()
                         } catch (e: Exception) {
@@ -257,7 +257,7 @@ class ConnectionHandler(
         peer = Hex.decode(pubkey)
     }
 
-    fun addForDeliveryText(id: Long, message: String) {
+    fun sendMessage(id: Long, message: ByteArray) {
         synchronized(buffer) {
             buffer.add(id to message)
         }

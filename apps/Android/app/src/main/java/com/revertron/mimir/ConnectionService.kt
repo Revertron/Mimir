@@ -57,21 +57,21 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val pubkey = intent.getByteArrayExtra("pubkey")
                 val keyString = Hex.toHexString(pubkey)
                 val message = intent.getStringExtra("message")
-                Log.i(TAG, "Message to $keyString")
                 if (pubkey != null && message != null) {
                     val id = storage.addMessage(pubkey, false, false, System.currentTimeMillis(), 0, message)
+                    Log.i(TAG, "Message $id to $keyString")
                     Thread{
-                        mimirServer?.sendText(pubkey, id, message)
+                        mimirServer?.sendMessage(pubkey, id)
                     }.start()
                 }
             }
             "resend" -> {
                 val id = intent.getLongExtra("id", 0)
                 val pubkey = intent.getByteArrayExtra("pubkey")
-                val message = intent.getStringExtra("message")
-                if (pubkey != null && message != null) {
+                Log.i(TAG, "Resending message $id")
+                if (pubkey != null) {
                     Thread{
-                        mimirServer?.sendText(pubkey, id, message)
+                        mimirServer?.sendMessage(pubkey, id)
                     }.start()
                 }
             }

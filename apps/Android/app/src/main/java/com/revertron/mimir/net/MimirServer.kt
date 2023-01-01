@@ -115,13 +115,16 @@ class MimirServer(
         serverSocket?.close()
     }
 
-    fun sendText(recipient: ByteArray, id: Long, message: String) {
+    fun sendMessage(recipient: ByteArray, id: Long) {
         val recipientString = Hex.toHexString(recipient)
         var added = false
         synchronized(connections) {
             if (connections.contains(recipientString)) {
-                Log.i(TAG, "Found keep-alive connection, sending message.")
-                connections[recipientString]?.addForDeliveryText(id, message)
+                Log.i(TAG, "Found keep-alive connection, sending message $id.")
+                val message = storage.getMessage(id)
+                if (message?.message != null) {
+                    connections[recipientString]?.sendMessage(id, message.message)
+                }
                 added = true
             }
         }
@@ -134,7 +137,7 @@ class MimirServer(
                         ips.forEach {
                             storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
                         }
-                        sendTextMessage(recipient, recipientString, ips, id, message)
+                        sendMessage(recipient, recipientString, ips, id)
                     }
                 }
 
@@ -145,7 +148,7 @@ class MimirServer(
             val peers = storage.getContactPeers(recipient)
             if (peers.isNotEmpty()) {
                 Log.i(TAG, "Got ips locally")
-                added = sendTextMessage(recipient, recipientString, peers, id, message)
+                added = sendMessage(recipient, recipientString, peers, id)
                 if (!added) {
                     Log.i(TAG, "Locally found IPs are dead, resolving")
                     resolver.resolveIps(recipient, receiver)
@@ -161,14 +164,17 @@ class MimirServer(
         }
     }
 
-    private fun sendTextMessage(recipient: ByteArray, recipientString: String, peers: List<Peer>, id: Long, message: String): Boolean {
+    private fun sendMessage(recipient: ByteArray, recipientString: String, peers: List<Peer>, id: Long): Boolean {
         val sortedPeers = peers.sortedBy { it.priority }
         Log.i(TAG, "Found ${sortedPeers.size} peers for $recipientString")
         for (peer in sortedPeers) {
             val connection = connect(recipient, peer)
             if (connection != null) {
-                Log.i(TAG, "Created new connection, sending message.")
-                connection.addForDeliveryText(id, message)
+                Log.i(TAG, "Created new connection, sending message $id.")
+                val message = storage.getMessage(id)
+                if (message?.message != null) {
+                    connection.sendMessage(id, message.message)
+                }
                 synchronized(connections) {
                     connections[recipientString] = connection
                     return true

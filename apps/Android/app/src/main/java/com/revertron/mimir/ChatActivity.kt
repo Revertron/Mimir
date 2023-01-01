@@ -142,7 +142,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                     intent.putExtra("command", "resend")
                     intent.putExtra("id", view.tag as Long)
                     intent.putExtra("pubkey", contact.pubkey)
-                    intent.putExtra("message", textview.text.toString())
                     startService(intent)
                     true
                 }
