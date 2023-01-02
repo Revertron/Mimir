@@ -7,11 +7,11 @@ import com.revertron.mimir.storage.Peer
 import com.revertron.mimir.storage.SqlStorage
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
-import org.bouncycastle.util.encoders.Hex
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.IOException
 import java.net.*
 import java.util.*
 import kotlin.collections.HashMap
@@ -42,7 +42,7 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
                 val dis = DataInputStream(bais)
                 val nonce = dis.readInt()
                 val command = dis.readByte()
-                val pair = nonces.get(nonce) ?: continue
+                val pair = nonces.remove(nonce) ?: continue
                 when (command.toInt()) {
                     CMD_ANNOUNCE -> {
                         val ttl = dis.readLong()
@@ -104,7 +104,12 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         dos.write(pubkey)
         val request = baos.toByteArray()
         val packet = DatagramPacket(request, request.size, tracker)
-        socket.send(packet)
+        try {
+            socket.send(packet)
+        } catch (e: IOException) {
+            val pair = nonces.remove(nonce)!!
+            pair.second.onError(pubkey)
+        }
     }
 
     fun announce(pubkey: ByteArray, privkey: ByteArray, peer: Peer, receiver: ResolverReceiver) {
@@ -127,13 +132,18 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         dos.write(signature)
         val request = baos.toByteArray()
         val packet = DatagramPacket(request, request.size, tracker)
-        socket.send(packet)
-        Log.i(TAG, "Announce packet sent")
+        try {
+            socket.send(packet)
+            Log.i(TAG, "Announce packet sent")
+        } catch (e: IOException) {
+            val pair = nonces.remove(nonce)!!
+            pair.second.onError(pubkey)
+        }
     }
 }
 
 interface ResolverReceiver {
     fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>)
     fun onAnnounceResponse(pubkey: ByteArray, ttl: Long)
-    fun onTimeout(pubkey: ByteArray)
+    fun onError(pubkey: ByteArray)
 }

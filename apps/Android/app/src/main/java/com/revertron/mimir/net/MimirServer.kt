@@ -44,10 +44,12 @@ class MimirServer(
     private val privkey = (keyPair.private as Ed25519PrivateKeyParameters).encoded
     private var lastAnnounceTime = 0L
     private var announceTtl = 0L
+    private var lastResendTime = 0L
 
     override fun run() {
         var online = false
         resolver = Resolver(storage, InetSocketAddress(RESOLVER_ADDR, CONNECTION_PORT.toInt()))
+        startResendThread()
         while (working.get()) {
             var socket: Socket? = null
             try {
@@ -55,6 +57,7 @@ class MimirServer(
                 val localAddress = getYggdrasilAddress()
                 if (localAddress == null) {
                     Log.e(TAG, "Could not start server, no Yggdrasil IP found")
+                    online = false
                     sleep(10000)
                     continue
                 }
@@ -72,6 +75,7 @@ class MimirServer(
                         if (!online) {
                             online = true
                             listener.onServerStateChanged(online)
+                            resendUnsent()
                         }
                         socket = serverSocket!!.accept()
                         Log.i(TAG, "New client from: $socket")
@@ -98,6 +102,9 @@ class MimirServer(
                     online = false
                     listener.onServerStateChanged(online)
                 }
+                connections.values.forEach {
+                    it.interrupt()
+                }
                 try {
                     socket?.close()
                 } catch (ex: IOException) {
@@ -117,16 +124,43 @@ class MimirServer(
         serverSocket?.close()
     }
 
-    fun sendMessage(contact: ByteArray, id: Long) {
+    private fun startResendThread() {
+        Thread {
+            while (working.get()) {
+                sleep(60000)
+                if (working.get()) {
+                    resendUnsent()
+                } else {
+                    break
+                }
+            }
+        }.start()
+    }
+
+    fun resendUnsent() {
+        if (getUtcTime() < lastResendTime + 30) {
+            Log.i(TAG, "Too early to resend")
+            return
+        }
+        Log.i(TAG, "Resending unsent messages")
+        val unsent = storage.getUnsentMessages()
+        for (entry in unsent) {
+            sendMessages(entry.key, entry.value)
+        }
+        lastResendTime = getUtcTime()
+    }
+
+    fun sendMessages(contact: ByteArray, messages: List<Long>) {
         val contactString = Hex.toHexString(contact)
         var added = false
         synchronized(connections) {
             if (connections.contains(contactString)) {
-                Log.i(TAG, "Found keep-alive connection, sending message $id.")
-                val message = storage.getMessage(id)
-                if (message?.message != null) {
-                    connections[contactString]?.sendMessage(id, message.type, message.message)
-                    listener.onMessageDelivered(contact, id, true)
+                Log.i(TAG, "Found keep-alive connection, sending messages: $messages")
+                for (m in messages) {
+                    val message = storage.getMessage(m)
+                    if (message?.message != null && !message.delivered) {
+                        connections[contactString]?.sendMessage(m, message.type, message.message)
+                    }
                 }
                 added = true
             }
@@ -137,12 +171,15 @@ class MimirServer(
                 if (unsentMessages.containsKey(contactString)) {
                     val messages = unsentMessages.remove(contactString)
                     messages?.apply {
-                        add(id)
+                        addAll(messages)
+                        val newList = this.distinct()
+                        clear()
+                        addAll(newList)
                         unsentMessages[contactString] = this
                     }
                 } else {
                     // If there is no established connection we try to create one
-                    unsentMessages[contactString] = mutableListOf(id)
+                    unsentMessages[contactString] = messages.toMutableList()
                     Thread {
                         val receiver = object : ResolverReceiver {
                             override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
@@ -163,7 +200,12 @@ class MimirServer(
                             }
 
                             override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
-                            override fun onTimeout(pubkey: ByteArray) {}
+                            override fun onError(pubkey: ByteArray) {
+                                Log.e(TAG, "Error resolving IPs")
+                                synchronized(unsentMessages) {
+                                    unsentMessages.remove(contactString)
+                                }
+                            }
                         }
 
                         val peers = storage.getContactPeers(contact)
@@ -190,7 +232,9 @@ class MimirServer(
     }
 
     private fun sendMessages(recipient: ByteArray, recipientString: String, peers: List<Peer>, messages: List<Long>): Boolean {
-        val sortedPeers = peers.sortedBy { it.priority }
+        val sortedPeers = peers
+            .sortedBy { it.priority }
+            .distinctBy { it.address }
         Log.i(TAG, "Found ${sortedPeers.size} peers for $recipientString")
         for (peer in sortedPeers) {
             val connection = connect(recipient, peer)
@@ -198,7 +242,7 @@ class MimirServer(
                 Log.i(TAG, "Created new connection, sending messages: $messages")
                 for (m in messages) {
                     val message = storage.getMessage(m)
-                    if (message?.message != null) {
+                    if (message?.message != null && !message.delivered) {
                         connection.sendMessage(m, message.type, message.message)
                     }
                 }
@@ -298,7 +342,7 @@ class MimirServer(
         listener.onTrackerPing(true)
     }
 
-    override fun onTimeout(pubkey: ByteArray) {
+    override fun onError(pubkey: ByteArray) {
         Log.d(TAG, "Got timeout")
     }
 }

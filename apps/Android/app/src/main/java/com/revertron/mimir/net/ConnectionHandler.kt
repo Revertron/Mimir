@@ -101,7 +101,10 @@ class ConnectionHandler(
                 try {
                     sleep(100)
                 } catch (e: InterruptedException) {
-                    Log.i(TAG, "Connection thread with $peer and ${socket.inetAddress} interrupted")
+                    peer?.apply {
+                        val peer = Hex.toHexString(this)
+                        Log.i(TAG, "Connection thread with $peer and ${socket.inetAddress} interrupted")
+                    }
                     break
                 }
                 if (System.currentTimeMillis() > lastActiveTime + 120000) {

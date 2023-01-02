@@ -16,5 +16,7 @@ class App: Application() {
         storage = SqlStorage(this)
         storage.cleanUp()
         app = this
+        val callback = NetworkStateCallback(this)
+        callback.register()
     }
 }

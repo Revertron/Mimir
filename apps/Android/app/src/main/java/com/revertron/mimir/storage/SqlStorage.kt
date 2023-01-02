@@ -20,6 +20,7 @@ import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.security.SecureRandom
 import java.util.*
+import kotlin.collections.HashMap
 
 class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -189,11 +190,11 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         // First we get numeric id for this contact
         var id = getContactId(pubkey)
         return if (id >= 0) {
-            Log.i(TAG, "Found contact id $id")
+            //Log.i(TAG, "Found contact id $id")
             saveIp(id, address, port, clientId, priority, expiration)
         } else {
             id = addContact(pubkey, "")
-            Log.i(TAG, "Created contact id $id")
+            //Log.i(TAG, "Created contact id $id")
             saveIp(id, address, port, clientId, priority, expiration)
         }
     }
@@ -348,6 +349,32 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return count
     }
 
+    fun getUnsentMessages(): HashMap<ByteArray, List<Long>> {
+        val result = HashMap<ByteArray, List<Long>>(5)
+        val buf = HashMap<Long, MutableList<Long>>(5)
+        val db = this.readableDatabase
+        val cursor = db.query("messages", arrayOf("id", "contact"), "incoming = false AND delivered = false", null, null, null, null)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(0)
+            val contact = cursor.getLong(1)
+            if (buf.containsKey(contact)) {
+                val b = buf.remove(contact)!!
+                b.add(id)
+                buf[contact] = b
+            } else {
+                buf[contact] = mutableListOf(id)
+            }
+        }
+        cursor.close()
+        for (entry in buf) {
+            val pubkey = getContactPubkey(entry.key)
+            if (pubkey != null) {
+                result[pubkey] = entry.value
+            }
+        }
+        return result
+    }
+
     fun getLastMessage(userId: Long): Pair<String?, Long> {
         var message: String? = null
         var time = 0L
@@ -428,7 +455,6 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val id = cursor.getLong(0)
             val pubkey = cursor.getBlob(1)
             val name = cursor.getString(2)
-            Log.i(TAG, "Found $id $name with ${Hex.toHexString(pubkey)}")
             list.add(Contact(id, pubkey, name, "", 0L, 0))
         }
         cursor.close()
@@ -446,7 +472,6 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         // First we get numeric id for this contact
         val id = getContactId(pubkey)
         if (id >= 0) {
-            Log.i(TAG, "Found contact id $id")
             val curTime = getUtcTime()
             val list = mutableListOf<Peer>()
             val cursor = this.readableDatabase.query("ips", arrayOf("address", "port", "client", "priority", "expiration"), "id = ?",
