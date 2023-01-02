@@ -60,7 +60,7 @@ class NotificationManager(val context: Context): StorageListener {
                 val old = messages.remove(contactId)!!
                 // Prevent it from growing
                 if (old.length < 30) {
-                    val new = "$old\n$message"
+                    val new = "$old\n$text"
                     messages[contactId] = new
                     new
                 } else {
