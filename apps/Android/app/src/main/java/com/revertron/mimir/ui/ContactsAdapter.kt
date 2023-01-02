@@ -45,7 +45,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val contact = dataSet[position]
         holder.contactName.text = contact.name.ifEmpty { holder.itemView.context.getString(R.string.unknown_nickname) }
-        holder.lastMessage.text = contact.lastMessage.ifEmpty { "..." }
+        holder.lastMessage.text = contact.lastMessage.ifEmpty { "" }
         if (contact.lastMessageTime > 0) {
             holder.lastMessageTime.visibility = View.VISIBLE
             val date = Date(contact.lastMessageTime)

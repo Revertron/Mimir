@@ -147,12 +147,12 @@ class MimirServer(
         for (entry in unsent) {
             sendMessages(entry.key, entry.value)
         }
-        lastResendTime = getUtcTime()
     }
 
     fun sendMessages(contact: ByteArray, messages: List<Long>) {
         val contactString = Hex.toHexString(contact)
         var added = false
+        lastResendTime = getUtcTime()
         synchronized(connections) {
             if (connections.contains(contactString)) {
                 Log.i(TAG, "Found keep-alive connection, sending messages: $messages")
