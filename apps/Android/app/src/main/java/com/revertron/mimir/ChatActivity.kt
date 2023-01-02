@@ -47,7 +47,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val editText = findViewById<AppCompatEditText>(R.id.message_edit)
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
         sendButton.setOnClickListener {
-            val text: String = editText.text.toString()
+            val text: String = editText.text.toString().trim()
             if (text.isNotEmpty()) {
                 editText.text?.clear()
                 sendMessage(contact.pubkey, text)

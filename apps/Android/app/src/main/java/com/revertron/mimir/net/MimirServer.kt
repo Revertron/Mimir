@@ -37,6 +37,7 @@ class MimirServer(
 
     private val working = AtomicBoolean(true)
     private val connections = HashMap<String, ConnectionHandler>(5)
+    private val unsentMessages = HashMap<String, MutableList<Long>>(5)
     private var serverSocket: ServerSocket? = null
     private lateinit var resolver: Resolver
     private val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
@@ -116,65 +117,90 @@ class MimirServer(
         serverSocket?.close()
     }
 
-    fun sendMessage(recipient: ByteArray, id: Long) {
-        val recipientString = Hex.toHexString(recipient)
+    fun sendMessage(contact: ByteArray, id: Long) {
+        val contactString = Hex.toHexString(contact)
         var added = false
         synchronized(connections) {
-            if (connections.contains(recipientString)) {
+            if (connections.contains(contactString)) {
                 Log.i(TAG, "Found keep-alive connection, sending message $id.")
                 val message = storage.getMessage(id)
                 if (message?.message != null) {
-                    connections[recipientString]?.sendMessage(id, message.type, message.message)
+                    connections[contactString]?.sendMessage(id, message.type, message.message)
+                    listener.onMessageDelivered(contact, id, true)
                 }
                 added = true
             }
         }
-        // If there is no established connection we try to create one
         if (!added) {
-            val receiver = object : ResolverReceiver {
-                override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
-                    Log.i(TAG, "Resolved IPS: $ips")
-                    if (ips.isNotEmpty()) {
-                        ips.forEach {
-                            storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
-                        }
-                        sendMessage(recipient, recipientString, ips, id)
+            synchronized(unsentMessages) {
+                // If there is a Thread that is trying to connect to this contact
+                if (unsentMessages.containsKey(contactString)) {
+                    val messages = unsentMessages.remove(contactString)
+                    messages?.apply {
+                        add(id)
+                        unsentMessages[contactString] = this
                     }
-                }
+                } else {
+                    // If there is no established connection we try to create one
+                    unsentMessages[contactString] = mutableListOf(id)
+                    Thread {
+                        val receiver = object : ResolverReceiver {
+                            override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
+                                Log.i(TAG, "Resolved IPS: $ips")
+                                if (ips.isNotEmpty()) {
+                                    ips.forEach {
+                                        storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
+                                    }
+                                    val messages = synchronized(unsentMessages) {
+                                        unsentMessages.remove(contactString)
+                                    }
+                                    if (messages != null) {
+                                        Thread {
+                                            sendMessages(pubkey, contactString, ips, messages)
+                                        }.start()
+                                    }
+                                }
+                            }
 
-                override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
-                override fun onTimeout(pubkey: ByteArray) {}
-            }
+                            override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
+                            override fun onTimeout(pubkey: ByteArray) {}
+                        }
 
-            val peers = storage.getContactPeers(recipient)
-            if (peers.isNotEmpty()) {
-                Log.i(TAG, "Got ips locally")
-                added = sendMessage(recipient, recipientString, peers, id)
-                if (!added) {
-                    Log.i(TAG, "Locally found IPs are dead, resolving")
-                    resolver.resolveIps(recipient, receiver)
+                        val peers = storage.getContactPeers(contact)
+                        if (peers.isNotEmpty()) {
+                            Log.i(TAG, "Got ips locally")
+                            val messages = synchronized(unsentMessages) {
+                                unsentMessages.remove(contactString)
+                            }
+                            if (messages != null) {
+                                added = sendMessages(contact, contactString, peers, messages)
+                            }
+                            if (!added) {
+                                Log.i(TAG, "Locally found IPs are dead, resolving")
+                                resolver.resolveIps(contact, receiver)
+                            }
+                        } else {
+                            Log.i(TAG, "No ips found, resolving")
+                            resolver.resolveIps(contact, receiver)
+                        }
+                    }.start()
                 }
-            } else {
-                Log.i(TAG, "No ips found, resolving")
-                resolver.resolveIps(recipient, receiver)
             }
-        }
-        // If we couldn't create any connections we fail
-        if (!added) {
-            listener.onMessageDelivered(recipient, id, false)
         }
     }
 
-    private fun sendMessage(recipient: ByteArray, recipientString: String, peers: List<Peer>, id: Long): Boolean {
+    private fun sendMessages(recipient: ByteArray, recipientString: String, peers: List<Peer>, messages: List<Long>): Boolean {
         val sortedPeers = peers.sortedBy { it.priority }
         Log.i(TAG, "Found ${sortedPeers.size} peers for $recipientString")
         for (peer in sortedPeers) {
             val connection = connect(recipient, peer)
             if (connection != null) {
-                Log.i(TAG, "Created new connection, sending message $id.")
-                val message = storage.getMessage(id)
-                if (message?.message != null) {
-                    connection.sendMessage(id, message.type, message.message)
+                Log.i(TAG, "Created new connection, sending messages: $messages")
+                for (m in messages) {
+                    val message = storage.getMessage(m)
+                    if (message?.message != null) {
+                        connection.sendMessage(m, message.type, message.message)
+                    }
                 }
                 synchronized(connections) {
                     connections[recipientString] = connection
