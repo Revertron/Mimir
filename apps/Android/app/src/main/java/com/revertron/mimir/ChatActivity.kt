@@ -148,15 +148,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         popup.setForceShowIcon(true)
         popup.setOnMenuItemClickListener {
             when (it.itemId) {
-                R.id.menu_resend -> {
-                    val textview = view.findViewById<AppCompatTextView>(R.id.text)
-                    val intent = Intent(this, ConnectionService::class.java)
-                    intent.putExtra("command", "resend")
-                    intent.putExtra("id", view.tag as Long)
-                    intent.putExtra("pubkey", contact.pubkey)
-                    startService(intent)
-                    true
-                }
                 R.id.menu_copy -> {
                     val textview = view.findViewById<AppCompatTextView>(R.id.text)
                     val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
@@ -174,8 +165,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 }
             }
         }
-        val delivered = view.findViewById<View>(R.id.status_image).tag
-        popup.menu.findItem(R.id.menu_resend).isVisible = !(delivered as Boolean)
         popup.show()
     }
 }

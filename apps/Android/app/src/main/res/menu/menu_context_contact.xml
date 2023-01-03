@@ -2,5 +2,6 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/add_address" android:icon="@drawable/ic_add_address" android:title="@string/add_contact_address" />
     <item android:id="@+id/rename" android:icon="@drawable/ic_contact_rename" android:title="@string/rename_contact" />
+    <item android:id="@+id/copy_id" android:icon="@drawable/ic_copy" android:title="@string/copy_contact_id" />
     <item android:id="@+id/remove_contact" android:icon="@drawable/ic_contact_remove" android:title="@string/remove_contact" />
 </menu>

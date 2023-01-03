@@ -31,12 +31,12 @@
     <string name="menu_copy">Copy</string>
     <string name="menu_forward">Forward</string>
     <string name="menu_delete">Delete</string>
-    <string name="menu_resend">Resend</string>
     <string name="empty_name">You need to enter some name!</string>
     <string name="wrong_public_key">Wrong public key</string>
     <string name="remove_contact">Delete contact and chat</string>
     <string name="rename">Rename</string>
     <string name="rename_contact">Rename contact</string>
+    <string name="copy_contact_id">Copy contact ID</string>
     <string name="not_yet_implemented">Not yet implemented</string>
     <string name="contact_added">New contact added</string>
     <string name="contact_already_added">Contact with that key already added</string>

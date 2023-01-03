@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:id="@+id/menu_resend" android:title="@string/menu_resend" android:icon="@drawable/ic_resend" />
     <item android:id="@+id/menu_reply" android:title="@string/menu_reply" android:icon="@drawable/ic_reply" />
     <item android:id="@+id/menu_copy" android:title="@string/menu_copy" android:icon="@drawable/ic_copy" />
     <item android:id="@+id/menu_forward" android:title="@string/menu_forward" android:icon="@drawable/ic_forward" />

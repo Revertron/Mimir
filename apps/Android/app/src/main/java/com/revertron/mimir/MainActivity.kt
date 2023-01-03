@@ -2,6 +2,8 @@ package com.revertron.mimir
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -208,6 +210,13 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 }
                 R.id.rename -> {
                     showRenameContactDialog(contact)
+                    true
+                }
+                R.id.copy_id -> {
+                    val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("Mimir contact ID", Hex.toHexString(contact.pubkey))
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
                     true
                 }
                 R.id.remove_contact -> {
