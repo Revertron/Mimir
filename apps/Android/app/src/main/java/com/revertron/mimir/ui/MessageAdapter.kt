@@ -9,13 +9,14 @@ import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.storage.SqlStorage
+import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 
 class MessageAdapter(private val storage: SqlStorage, private val userId: Long, private val multiChat: Boolean, private val myName: String, private val contactName: String, private val onclick: View.OnClickListener?):
     RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
-    private val timeFormatter = SimpleDateFormat.getTimeInstance()
+    private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val messageIds = storage.getMessageIds(userId).toMutableList()
 
     class ViewHolder(view: View): RecyclerView.ViewHolder(view) {

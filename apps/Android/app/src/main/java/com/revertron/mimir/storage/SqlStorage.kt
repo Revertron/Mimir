@@ -325,6 +325,19 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return count
     }
 
+    private fun getLastMessageDelivered(userId: Long): Boolean? {
+        val db = this.readableDatabase
+        val cursor =
+            db.query("messages", arrayOf("delivered"), "contact = ? AND incoming = 0", arrayOf("$userId"), null, null, "time DESC", "1")
+        val result = if (cursor.moveToNext()) {
+            return cursor.getInt(0) > 0
+        } else {
+            null
+        }
+        cursor.close()
+        return result
+    }
+
     fun getUnsentMessages(): HashMap<ByteArray, List<Long>> {
         val result = HashMap<ByteArray, List<Long>>(5)
         val buf = HashMap<Long, MutableList<Long>>(5)
@@ -431,11 +444,12 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val id = cursor.getLong(0)
             val pubkey = cursor.getBlob(1)
             val name = cursor.getString(2)
-            list.add(Contact(id, pubkey, name, "", 0L, 0))
+            list.add(Contact(id, pubkey, name, "", 0L, false, 0))
         }
         cursor.close()
         for (c in list) {
             c.unread = getUnreadCount(c.id)
+            c.lastMessageDelivered = getLastMessageDelivered(c.id)
             val lastMessage = getLastMessage(c.id)
             c.lastMessage = lastMessage.first.orEmpty()
             c.lastMessageTime = lastMessage.second
