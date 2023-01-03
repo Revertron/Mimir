@@ -16,6 +16,7 @@ import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
+import io.getstream.avatarview.AvatarView
 import okio.blackholeSink
 import org.bouncycastle.util.encoders.Hex
 
@@ -40,9 +41,21 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val id = getStorage().getContactId(pubkey)
         contact = Contact(id, pubkey, name, "", 0L, false, 0)
 
-        supportActionBar?.title = contact.name
+        findViewById<AppCompatTextView>(R.id.title).text = contact.name
+        supportActionBar?.title = ""
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setOnMenuItemClickListener(this)
+
+        val avatar = findViewById<AvatarView>(R.id.avatar)
+        val initials = getInitials(contact)
+        avatar.avatarInitials = initials
+        val avatarColor = getAvatarColor(contact.pubkey)
+        avatar.avatarInitialsBackgroundColor = avatarColor
+        if (isColorDark(avatarColor)) {
+            avatar.avatarInitialsTextColor = 0xFFFFFFFF.toInt()
+        } else {
+            avatar.avatarInitialsTextColor = 0xFF000000.toInt()
+        }
 
         val editText = findViewById<AppCompatEditText>(R.id.message_edit)
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
