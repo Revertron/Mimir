@@ -302,30 +302,6 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
     }
 
-    fun getMessages(pubkey: ByteArray): List<Message> {
-        val id = getContactId(pubkey)
-        if (id <= 0) {
-            return emptyList()
-        }
-        val list = mutableListOf<Message>()
-        val db = this.readableDatabase
-        val columns = arrayOf("id", "incoming", "delivered", "time", "type", "message", "read")
-        val cursor = db.query("messages", columns, "contact = ?", arrayOf(id.toString()), null, null, "time", "")
-        while (cursor.moveToNext()) {
-            val messId = cursor.getLong(0)
-            val incoming = cursor.getInt(1) != 0
-            val delivered = cursor.getInt(2) != 0
-            val time = cursor.getLong(3)
-            val type = cursor.getInt(4)
-            val message = cursor.getBlob(5)
-            val read = cursor.getInt(6) != 0
-            //Log.i(TAG, "$message ::: $messId")
-            list.add(Message(messId, id, incoming, delivered, read, time, type, message))
-        }
-        cursor.close()
-        return list
-    }
-
     fun getMessageIds(userId: Long): List<Long> {
         val list = mutableListOf<Long>()
         val cursor = readableDatabase.query("messages", arrayOf("id"), "contact = ?", arrayOf("$userId"), null, null, "time")
@@ -339,7 +315,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     private fun getUnreadCount(userId: Long): Int {
         val db = this.readableDatabase
         val cursor =
-            db.query("messages", arrayOf("count(read)"), "contact = ? AND read = false", arrayOf("$userId"), null, null, null)
+            db.query("messages", arrayOf("count(read)"), "contact = ? AND read = 0", arrayOf("$userId"), null, null, null)
         val count = if (cursor.moveToNext()) {
             cursor.getInt(0)
         } else {
@@ -353,7 +329,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         val result = HashMap<ByteArray, List<Long>>(5)
         val buf = HashMap<Long, MutableList<Long>>(5)
         val db = this.readableDatabase
-        val cursor = db.query("messages", arrayOf("id", "contact"), "incoming = false AND delivered = false", null, null, null, null)
+        val cursor = db.query("messages", arrayOf("id", "contact"), "incoming = 0 AND delivered = 0", null, null, null, null)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
             val contact = cursor.getLong(1)
