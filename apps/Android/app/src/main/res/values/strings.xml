@@ -4,6 +4,8 @@
     <string name="channel_description_service">Connectivity service</string>
     <string name="channel_name_messages">Messages</string>
     <string name="channel_description_messages">Messages channel</string>
+    <string name="channel_name_messages_with_contact">Contact %d</string>
+    <string name="channel_description_messages_with_contact">Messages with contact %d</string>
     <string name="state_disabled">Disabled</string>
     <string name="state_enabled">Enabled</string>
     <string name="action_settings">Settings</string>

@@ -6,11 +6,15 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioManager.STREAM_NOTIFICATION
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.TaskStackBuilder
 import com.revertron.mimir.storage.StorageListener
 import org.bouncycastle.util.encoders.Hex
+
 
 class NotificationManager(val context: Context): StorageListener {
 
@@ -83,13 +87,9 @@ class NotificationManager(val context: Context): StorageListener {
     }
 
     private fun createMessageNotification(context: Context, contactId: Long, name: String, pubkey: ByteArray, message: String): Notification {
-        // Create the NotificationChannel, but only on API 26+ because
-        // the NotificationChannel class is new and not in the support library
-        val channelId = "Messages"
-        createNotificationChannels(context, channelId, pubkey, contactId)
+        createNotificationChannels(context, pubkey, contactId)
 
         val intent = Intent(context, ChatActivity::class.java).apply {
-            //this.flags = Intent.FLAG_ACTIVITY_NEW_TASK/* or Intent.FLAG_ACTIVITY_CLEAR_TASK*/
             putExtra("pubkey", pubkey)
             putExtra("name", name)
         }
@@ -101,39 +101,64 @@ class NotificationManager(val context: Context): StorageListener {
             getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
-        return NotificationCompat.Builder(context, channelId)
+        val (uri, _) = createAudioAttributes(context)
+        val hexString = Hex.toHexString(pubkey)
+
+        return NotificationCompat.Builder(context, hexString)
             .setShowWhen(true)
             .setContentTitle(name)
             .setContentText(message)
             .setSmallIcon(R.drawable.ic_mannaz_notification)
             .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(Notification.DEFAULT_LIGHTS or Notification.DEFAULT_VIBRATE)
             .setAutoCancel(true)
+            .setSound(uri)
             .build()
     }
 
-    private fun createNotificationChannels(context: Context, channelId: String, pubkey: ByteArray, contactId: Long) {
+    private fun createNotificationChannels(context: Context, pubkey: ByteArray, contactId: Long) {
+        // Create the NotificationChannel, but only on API 26+ because
+        // the NotificationChannel class is new and not in the support library
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channelName = context.getString(R.string.channel_name_messages)
-            val descriptionText = context.getString(R.string.channel_description_messages)
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val parentChannel = NotificationChannel(channelId, channelName, importance).apply {
-                description = descriptionText
+            val (uri, audioAttributes) = createAudioAttributes(context)
+
+            val parentChannelId = "Messages"
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val notificationManager: NotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            if (notificationManager.getNotificationChannel(parentChannelId) == null) {
+                val channelName = context.getString(R.string.channel_name_messages)
+                val descriptionText = context.getString(R.string.channel_description_messages)
+                val parentChannel = NotificationChannel(parentChannelId, channelName, importance).apply {
+                    description = descriptionText
+                    setSound(uri, audioAttributes)
+                }
+                // Register the channel with the system
+                notificationManager.createNotificationChannel(parentChannel)
             }
-            // Register the channel with the system
-            val notificationManager: NotificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(parentChannel)
 
             val hexString = Hex.toHexString(pubkey)
-            val channel = NotificationChannel(hexString, "Contact $contactId", importance).apply {
-                description = "Messages with $contactId"
+            val channelName = context.getString(R.string.channel_name_messages_with_contact, contactId)
+            val channel = NotificationChannel(hexString, channelName, importance).apply {
+                description = context.getString(R.string.channel_description_messages_with_contact, contactId)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    setConversationId(channelId, hexString)
+                    setConversationId(parentChannelId, hexString)
                 }
+                setSound(uri, audioAttributes)
             }
             // Register the channel with the system
             notificationManager.createNotificationChannel(channel)
         }
+    }
+
+    private fun createAudioAttributes(context: Context): Pair<Uri, AudioAttributes> {
+        val uri = Uri.parse("android.resource://" + context.packageName + "/" + R.raw.message_alert)
+        val audioAttributes = AudioAttributes.Builder()
+            .setLegacyStreamType(STREAM_NOTIFICATION)
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        return Pair(uri, audioAttributes)
     }
 }
