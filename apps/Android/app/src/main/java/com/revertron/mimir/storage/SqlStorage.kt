@@ -339,9 +339,9 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return result
     }
 
-    fun getUnsentMessages(): HashMap<ByteArray, List<Long>> {
+    fun getUnsentMessages(maxRetryTime: Int): HashMap<ByteArray, List<Long>> {
         val utcTimeMs = getUtcTimeMs()
-        val minTime = utcTimeMs - 86400000
+        val minTime = utcTimeMs - maxRetryTime
         val maxTime = utcTimeMs - 120000
 
         val result = HashMap<ByteArray, List<Long>>(5)

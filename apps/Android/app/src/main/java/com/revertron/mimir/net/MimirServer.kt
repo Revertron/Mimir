@@ -21,6 +21,8 @@ private const val CONNECTION_TIMEOUT = 3000
 private const val CONNECTION_PERIOD = 1000L
 //TODO move to gradle config maybe?
 private const val RESOLVER_ADDR = "[202:7991::880a:d4b2:de3b:2da1]"
+// For now we retry to send unsent messages for 3 days, but I will make it adjustable somehow later
+private const val THREE_DAYS = 86400 * 3 * 1000
 
 class MimirServer(
     val storage: SqlStorage,
@@ -140,7 +142,7 @@ class MimirServer(
 
     fun resendUnsent() {
         Log.i(TAG, "Resending unsent messages")
-        val unsent = storage.getUnsentMessages()
+        val unsent = storage.getUnsentMessages(THREE_DAYS)
         for (entry in unsent) {
             sendMessages(entry.key, entry.value)
         }
