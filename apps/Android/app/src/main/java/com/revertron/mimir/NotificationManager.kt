@@ -102,9 +102,10 @@ class NotificationManager(val context: Context): StorageListener {
         }
 
         val (uri, _) = createAudioAttributes(context)
-        val hexString = Hex.toHexString(pubkey)
+        val hashCode = pubkey.toList().hashCode()
+        val channelId = "Messages $hashCode"
 
-        return NotificationCompat.Builder(context, hexString)
+        return NotificationCompat.Builder(context, channelId)
             .setShowWhen(true)
             .setContentTitle(name)
             .setContentText(message)
@@ -121,12 +122,15 @@ class NotificationManager(val context: Context): StorageListener {
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager: NotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // First of all, we remove old channels
+            val hexString = Hex.toHexString(pubkey)
+            notificationManager.deleteNotificationChannel(hexString)
+
             val (uri, audioAttributes) = createAudioAttributes(context)
 
             val parentChannelId = "Messages"
             val importance = NotificationManager.IMPORTANCE_HIGH
-            val notificationManager: NotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
             if (notificationManager.getNotificationChannel(parentChannelId) == null) {
                 val channelName = context.getString(R.string.channel_name_messages)
                 val descriptionText = context.getString(R.string.channel_description_messages)
@@ -138,12 +142,13 @@ class NotificationManager(val context: Context): StorageListener {
                 notificationManager.createNotificationChannel(parentChannel)
             }
 
-            val hexString = Hex.toHexString(pubkey)
+            val hashCode = pubkey.toList().hashCode()
+            val channelId = "Messages $hashCode"
             val channelName = context.getString(R.string.channel_name_messages_with_contact, contactId)
-            val channel = NotificationChannel(hexString, channelName, importance).apply {
+            val channel = NotificationChannel(channelId, channelName, importance).apply {
                 description = context.getString(R.string.channel_description_messages_with_contact, contactId)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    setConversationId(parentChannelId, hexString)
+                    setConversationId(parentChannelId, channelId)
                 }
                 setSound(uri, audioAttributes)
             }
