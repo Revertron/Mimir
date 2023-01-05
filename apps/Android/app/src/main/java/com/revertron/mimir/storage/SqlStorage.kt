@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.core.database.getBlobOrNull
 import com.revertron.mimir.NotificationManager
 import com.revertron.mimir.getUtcTime
+import com.revertron.mimir.getUtcTimeMs
 import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.KeyGenerationParameters
@@ -304,7 +305,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 
     fun getMessageIds(userId: Long): List<Long> {
         val list = mutableListOf<Long>()
-        val cursor = readableDatabase.query("messages", arrayOf("id"), "contact = ?", arrayOf("$userId"), null, null, "time")
+        val cursor = readableDatabase.query("messages", arrayOf("id"), "contact = ?", arrayOf("$userId"), null, null, "id")
         while (cursor.moveToNext()) {
             list.add(cursor.getLong(0))
         }
@@ -328,7 +329,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     private fun getLastMessageDelivered(userId: Long): Boolean? {
         val db = this.readableDatabase
         val cursor =
-            db.query("messages", arrayOf("delivered"), "contact = ? AND incoming = 0", arrayOf("$userId"), null, null, "time DESC", "1")
+            db.query("messages", arrayOf("delivered"), "contact = ? AND incoming = 0", arrayOf("$userId"), null, null, "id DESC", "1")
         val result = if (cursor.moveToNext()) {
             return cursor.getInt(0) > 0
         } else {
@@ -339,10 +340,14 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     fun getUnsentMessages(): HashMap<ByteArray, List<Long>> {
+        val utcTimeMs = getUtcTimeMs()
+        val minTime = utcTimeMs - 86400000
+        val maxTime = utcTimeMs - 120000
+
         val result = HashMap<ByteArray, List<Long>>(5)
         val buf = HashMap<Long, MutableList<Long>>(5)
         val db = this.readableDatabase
-        val cursor = db.query("messages", arrayOf("id", "contact"), "incoming = 0 AND delivered = 0", null, null, null, null)
+        val cursor = db.query("messages", arrayOf("id", "contact"), "incoming = 0 AND delivered = 0 AND time < ? AND time > ?", arrayOf("$maxTime", "$minTime"), null, null, "id")
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
             val contact = cursor.getLong(1)
@@ -367,7 +372,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     fun getLastMessage(userId: Long): Pair<String?, Long> {
         var message: String? = null
         var time = 0L
-        val cursor = readableDatabase.query("messages", arrayOf("type", "message", "time"), "contact = ?", arrayOf("$userId"), null, null, "time DESC", "1")
+        val cursor = readableDatabase.query("messages", arrayOf("type", "message", "time"), "contact = ?", arrayOf("$userId"), null, null, "id DESC", "1")
         if (cursor.moveToNext()) {
             val type = cursor.getInt(0)
             val data = cursor.getBlob(1)
@@ -382,7 +387,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 
     fun getMessage(messageId: Long): Message? {
         val columns = arrayOf("contact", "incoming", "delivered", "read", "time", "type", "message")
-        val cursor = readableDatabase.query("messages", columns, "id = ?", arrayOf("$messageId"), null, null, "time", "1")
+        val cursor = readableDatabase.query("messages", columns, "id = ?", arrayOf("$messageId"), null, null, null, "1")
         if (cursor.moveToNext()) {
             val contactId = cursor.getLong(0)
             val incoming = cursor.getInt(1) != 0
@@ -502,7 +507,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             Log.i(TAG, "Found account $name with pubkey ${Hex.toHexString(pubkey)}")
             return AccountInfo(name, info, avatar, updated, clientId, AsymmetricCipherKeyPair(pub, priv))
         }
-        Log.e(TAG, "Didn't find account info $id")
+        Log.w(TAG, "Didn't find account info $id, or it didn't change since ${Date(ifUpdatedSince * 1000)}")
         return null
     }
 

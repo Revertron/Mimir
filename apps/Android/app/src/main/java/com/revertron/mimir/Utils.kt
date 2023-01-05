@@ -126,6 +126,24 @@ fun getUtcTime(): Long {
     return (calendar.timeInMillis - offset) / 1000
 }
 
+/**
+ * Gets current time in milliseconds in UTC timezone
+ */
+fun getUtcTimeMs(): Long {
+    val calendar = Calendar.getInstance()
+    val offset = calendar.timeZone.rawOffset
+    return calendar.timeInMillis - offset
+}
+
+/**
+ * Converts given time (presumably in UTC) to local timezone
+ */
+fun convertToTimeZone(time: Long): Long {
+    val calendar = Calendar.getInstance()
+    val offset = calendar.timeZone.rawOffset
+    return time + offset
+}
+
 fun isColorDark(color: Int): Boolean {
     val r = ((color shr 16) and 0xff) / 255.0
     val g = ((color shr 8) and 0xff) / 255.0

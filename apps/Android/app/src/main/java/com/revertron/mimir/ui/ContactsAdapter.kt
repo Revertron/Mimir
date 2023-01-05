@@ -6,10 +6,7 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.R
-import com.revertron.mimir.getAvatarColor
-import com.revertron.mimir.getInitials
-import com.revertron.mimir.isColorDark
+import com.revertron.mimir.*
 import io.getstream.avatarview.AvatarView
 import java.text.DateFormat
 import java.text.SimpleDateFormat
@@ -51,7 +48,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
         holder.lastMessage.text = contact.lastMessage.ifEmpty { "" }
         if (contact.lastMessageTime > 0) {
             holder.lastMessageTime.visibility = View.VISIBLE
-            val date = Date(contact.lastMessageTime)
+            val date = Date(convertToTimeZone(contact.lastMessageTime))
             val diff = Date().time - date.time
             if (diff > 86400 * 1000) {
                 holder.lastMessageTime.text = dateFormatter.format(date)

@@ -8,6 +8,7 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
+import com.revertron.mimir.convertToTimeZone
 import com.revertron.mimir.storage.SqlStorage
 import java.text.DateFormat
 import java.text.SimpleDateFormat
@@ -55,7 +56,7 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
             holder.name.visibility = View.GONE
         }
         holder.message.text = String(message.message!!)
-        holder.time.text = timeFormatter.format(Date(message.time))
+        holder.time.text = timeFormatter.format(Date(convertToTimeZone(message.time)))
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered
         if (message.delivered) {

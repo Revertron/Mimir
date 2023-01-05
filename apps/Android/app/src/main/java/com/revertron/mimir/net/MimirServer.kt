@@ -127,7 +127,8 @@ class MimirServer(
     private fun startResendThread() {
         Thread {
             while (working.get()) {
-                sleep(60000)
+                // We try to resend messages once in 2 minutes
+                sleep(120000)
                 if (working.get()) {
                     resendUnsent()
                 } else {
@@ -138,10 +139,6 @@ class MimirServer(
     }
 
     fun resendUnsent() {
-        if (getUtcTime() < lastResendTime + 30) {
-            Log.i(TAG, "Too early to resend")
-            return
-        }
         Log.i(TAG, "Resending unsent messages")
         val unsent = storage.getUnsentMessages()
         for (entry in unsent) {
@@ -153,6 +150,7 @@ class MimirServer(
         val contactString = Hex.toHexString(contact)
         var added = false
         lastResendTime = getUtcTime()
+        Log.d(TAG, "Messages to resend: $messages to contact: $contactString")
         synchronized(connections) {
             if (connections.contains(contactString)) {
                 Log.i(TAG, "Found keep-alive connection, sending messages: $messages")
@@ -169,18 +167,21 @@ class MimirServer(
             synchronized(unsentMessages) {
                 // If there is a Thread that is trying to connect to this contact
                 if (unsentMessages.containsKey(contactString)) {
-                    val messages = unsentMessages.remove(contactString)
-                    messages?.apply {
+                    val oldMessages = unsentMessages.remove(contactString)
+                    oldMessages?.apply {
                         addAll(messages)
                         val newList = this.distinct()
                         clear()
                         addAll(newList)
                         unsentMessages[contactString] = this
                     }
+                    Log.d(TAG, "Added messages $messages to existing queue")
                 } else {
                     // If there is no established connection we try to create one
                     unsentMessages[contactString] = messages.toMutableList()
+                    Log.d(TAG, "Added new messages to resend: $messages")
                     Thread {
+                        Log.d(TAG, "Starting to resend $messages to $contactString")
                         val receiver = object : ResolverReceiver {
                             override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
                                 Log.i(TAG, "Resolved IPS: $ips")
@@ -222,7 +223,7 @@ class MimirServer(
                                 resolver.resolveIps(contact, receiver)
                             }
                         } else {
-                            Log.i(TAG, "No ips found, resolving")
+                            Log.i(TAG, "No local ips found, resolving")
                             resolver.resolveIps(contact, receiver)
                         }
                     }.start()

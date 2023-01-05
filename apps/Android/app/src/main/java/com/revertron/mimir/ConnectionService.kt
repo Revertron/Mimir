@@ -58,7 +58,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val keyString = Hex.toHexString(pubkey)
                 val message = intent.getStringExtra("message")
                 if (pubkey != null && message != null) {
-                    val id = storage.addMessage(pubkey, false, false, System.currentTimeMillis(), 0, message.toByteArray())
+                    val id = storage.addMessage(pubkey, false, false, getUtcTimeMs(), 0, message.toByteArray())
                     Log.i(TAG, "Message $id to $keyString")
                     Thread{
                         mimirServer?.sendMessages(pubkey, listOf(id))
@@ -114,7 +114,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onMessageReceived(from: ByteArray, address: String, id: Long, type: Int, message: ByteArray) {
         val storage = (application as App).storage
-        storage.addMessage(from, true, true, System.currentTimeMillis(), type, message)
+        storage.addMessage(from, true, true, getUtcTimeMs(), type, message)
     }
 
     override fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean) {

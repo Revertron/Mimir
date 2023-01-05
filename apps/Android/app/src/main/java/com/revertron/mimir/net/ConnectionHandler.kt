@@ -65,7 +65,6 @@ class ConnectionHandler(
                     if (message != null) {
                         try {
                             writeMessage(dos, message.second)
-                            lastActiveTime = System.currentTimeMillis()
                         } catch (e: Exception) {
                             e.printStackTrace()
                             socket.close()
