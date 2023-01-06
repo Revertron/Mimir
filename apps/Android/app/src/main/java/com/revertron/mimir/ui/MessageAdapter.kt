@@ -88,6 +88,14 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
         notifyItemInserted(messageIds.size - 1)
     }
 
+    fun deleteMessageId(messageId: Long) {
+        val index = messageIds.indexOf(messageId)
+        if (index > 0) {
+            messageIds.remove(messageId)
+            notifyItemRemoved(index)
+        }
+    }
+
     fun setMessageDelivered(id: Long, delivered: Boolean) {
         for ((index, message) in messageIds.withIndex()) {
             if (message == id) {

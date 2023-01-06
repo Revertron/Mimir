@@ -1,10 +1,12 @@
 package com.revertron.mimir
 
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.MenuItem
 import android.view.View
@@ -12,13 +14,10 @@ import android.widget.Toast
 import androidx.appcompat.widget.*
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
 import io.getstream.avatarview.AvatarView
-import okio.blackholeSink
-import org.bouncycastle.util.encoders.Hex
 
 
 class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
@@ -158,7 +157,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 }
                 R.id.menu_reply -> { false }
                 R.id.menu_forward -> { false }
-                R.id.menu_delete -> { false }
+                R.id.menu_delete -> {
+                    showDeleteMessageConfirmDialog(view.tag as Long)
+                    true
+                }
                 else -> {
                     Log.w(TAG, "Not implemented handler for menu item ${it.itemId}")
                     false
@@ -166,5 +168,23 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             }
         }
         popup.show()
+    }
+
+    fun showDeleteMessageConfirmDialog(messageId: Long) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
+        builder.setTitle(getString(R.string.delete_message_dialog_title))
+        builder.setMessage(R.string.delete_message_dialog_text)
+        builder.setIcon(R.drawable.ic_delete)
+        builder.setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
+            (application as App).storage.deleteMessage(messageId)
+            val recycler = findViewById<RecyclerView>(R.id.messages_list)
+            val adapter = recycler.adapter as MessageAdapter
+            adapter.deleteMessageId(messageId)
+        }
+        builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
+            dialog.cancel()
+        }
+        builder.show()
     }
 }

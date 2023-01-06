@@ -557,6 +557,10 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             db.delete("ips", "id = ?", arrayOf("$id"))
         }
     }
+
+    fun deleteMessage(messageId: Long) {
+        writableDatabase.delete("messages", "id=?", arrayOf("$messageId"))
+    }
 }
 
 data class AccountInfo(val name: String, val info: String, val avatar: String, val updated: Long, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)
