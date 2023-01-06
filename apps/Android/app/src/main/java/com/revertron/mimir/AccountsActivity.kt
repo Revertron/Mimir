@@ -13,6 +13,7 @@ import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.Toolbar
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import java.net.URLEncoder
 
 class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,7 +56,8 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         }
 
         findViewById<View>(R.id.button_link).setOnClickListener {
-            val link = "mimir://${pubKeyEdit.text}#$name"
+            val encoded = URLEncoder.encode(name, "UTF-8")
+            val link = "mimir://${pubKeyEdit.text}#$encoded"
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("mimir link", link)
             clipboard.setPrimaryClip(clip)

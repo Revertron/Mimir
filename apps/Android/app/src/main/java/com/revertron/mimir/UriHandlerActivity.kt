@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatTextView
 import org.bouncycastle.util.encoders.Hex
+import java.net.URLDecoder
+import java.net.URLEncoder
 
 
 class UriHandlerActivity : BaseActivity() {
@@ -50,7 +52,7 @@ class UriHandlerActivity : BaseActivity() {
             if (addContact(pubkey, name)) return true
         } else {
             val pubkey = uri.path ?: return false
-            val name = uri.fragment
+            val name = URLDecoder.decode(uri.fragment, "UTF-8")
             if (addContact(pubkey, name)) return true
         }
         Toast.makeText(this, R.string.contact_addition_error, Toast.LENGTH_LONG).show()
