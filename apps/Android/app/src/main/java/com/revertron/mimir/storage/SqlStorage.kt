@@ -459,6 +459,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             c.lastMessage = lastMessage.first.orEmpty()
             c.lastMessageTime = lastMessage.second
         }
+        list.sortByDescending { it.lastMessageTime }
 
         return list
     }

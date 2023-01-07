@@ -43,11 +43,15 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
     override fun onResume() {
         super.onResume()
-        val contacts = (application as App).storage.getContactList()
-        val adapter = ContactsAdapter(contacts, this, this)
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
-        recycler.adapter = adapter
-        recycler.layoutManager = LinearLayoutManager(this)
+        if (recycler.adapter == null) {
+            val contacts = (application as App).storage.getContactList()
+            val adapter = ContactsAdapter(contacts, this, this)
+            recycler.adapter = adapter
+            recycler.layoutManager = LinearLayoutManager(this)
+        } else {
+            refreshContacts()
+        }
     }
 
     override fun onDestroy() {
@@ -113,10 +117,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
     override fun onMessageReceived(id: Long, contactId: Long): Boolean {
         runOnUiThread {
-            val contacts = (application as App).storage.getContactList()
-            val adapter = ContactsAdapter(contacts, this, this)
-            val recycler = findViewById<RecyclerView>(R.id.contacts_list)
-            recycler.adapter = adapter
+            refreshContacts()
         }
         return false
     }
@@ -234,12 +235,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         popup.show()
     }
 
-    @SuppressLint("NotifyDataSetChanged")
     private fun refreshContacts() {
         val contacts = (application as App).storage.getContactList()
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         val adapter = recycler.adapter as ContactsAdapter
         adapter.setContacts(contacts)
-        adapter.notifyDataSetChanged()
     }
 }

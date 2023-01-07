@@ -1,5 +1,6 @@
 package com.revertron.mimir.ui
 
+import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -90,7 +91,9 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
         return dataSet.size
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     fun setContacts(contacts: List<Contact>) {
         dataSet = contacts
+        notifyDataSetChanged()
     }
 }
