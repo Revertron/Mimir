@@ -3,6 +3,7 @@ package com.revertron.mimir
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 
 class BootUpReceiver : BroadcastReceiver() {
@@ -19,6 +20,12 @@ class BootUpReceiver : BroadcastReceiver() {
         val serviceIntent = Intent(context, ConnectionService::class.java).apply {
             putExtra("command", "start")
         }
-        context.startService(serviceIntent)
+        try {
+            context.startService(serviceIntent)
+        } catch (e: IllegalStateException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            }
+        }
     }
 }
