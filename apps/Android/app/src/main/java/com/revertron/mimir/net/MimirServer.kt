@@ -142,6 +142,9 @@ class MimirServer(
 
     fun resendUnsent() {
         Log.i(TAG, "Resending unsent messages")
+        synchronized(unsentMessages) {
+            unsentMessages.clear()
+        }
         val unsent = storage.getUnsentMessages(THREE_DAYS)
         for (entry in unsent) {
             sendMessages(entry.key, entry.value)
@@ -199,6 +202,8 @@ class MimirServer(
                                             sendMessages(pubkey, contactString, ips, messages)
                                         }.start()
                                     }
+                                } else {
+                                    unsentMessages.remove(contactString)
                                 }
                             }
 

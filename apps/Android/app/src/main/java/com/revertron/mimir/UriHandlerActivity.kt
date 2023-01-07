@@ -51,7 +51,7 @@ class UriHandlerActivity : BaseActivity() {
             val name = uri.fragment
             if (addContact(pubkey, name)) return true
         } else {
-            val pubkey = uri.path ?: return false
+            val pubkey = (uri.path ?: return false).replace("/", "")
             val name = URLDecoder.decode(uri.fragment, "UTF-8")
             if (addContact(pubkey, name)) return true
         }
