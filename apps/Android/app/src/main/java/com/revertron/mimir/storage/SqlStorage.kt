@@ -339,37 +339,41 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return result
     }
 
-    fun getUnsentMessages(maxRetryTime: Int): HashMap<ByteArray, List<Long>> {
-        val utcTimeMs = getUtcTimeMs()
-        val minTime = utcTimeMs - maxRetryTime
-        val maxTime = utcTimeMs - 120000
-
-        val result = HashMap<ByteArray, List<Long>>(5)
-        val buf = HashMap<Long, MutableList<Long>>(5)
+    fun getUnsentMessages(contact: ByteArray): List<Long> {
+        val result = mutableListOf<Long>()
+        val contactId = getContactId(contact)
+        if (contactId < 0) {
+            return result
+        }
         val db = this.readableDatabase
-        val cursor = db.query("messages", arrayOf("id", "contact"), "incoming = 0 AND delivered = 0 AND time < ? AND time > ?", arrayOf("$maxTime", "$minTime"), null, null, "id")
+        val cursor = db.query("messages", arrayOf("id"), "incoming = 0 AND delivered = 0 AND contact = ?", arrayOf("$contactId"), null, null, "id")
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
-            val contact = cursor.getLong(1)
-            if (buf.containsKey(contact)) {
-                val b = buf.remove(contact)!!
-                b.add(id)
-                buf[contact] = b
-            } else {
-                buf[contact] = mutableListOf(id)
-            }
+            result.add(id)
         }
         cursor.close()
-        for (entry in buf) {
-            val pubkey = getContactPubkey(entry.key)
-            if (pubkey != null) {
-                result[pubkey] = entry.value
-            }
-        }
         return result
     }
 
-    fun getLastMessage(userId: Long): Pair<String?, Long> {
+    fun getContactsWithUnsentMessages(): HashSet<ByteArray> {
+        val result = HashSet<ByteArray>(5)
+        val buf = HashSet<Long>(5)
+        val db = this.readableDatabase
+        val cursor = db.query("messages", arrayOf("contact"), "incoming = 0 AND delivered = 0", null, null, null, "id")
+        while (cursor.moveToNext()) {
+            val contact = cursor.getLong(0)
+            if (!buf.contains(contact)) {
+                getContactPubkey(contact)?.apply {
+                    buf.add(contact)
+                    result.add(this)
+                }
+            }
+        }
+        cursor.close()
+        return result
+    }
+
+    private fun getLastMessage(userId: Long): Pair<String?, Long> {
         var message: String? = null
         var time = 0L
         val cursor = readableDatabase.query("messages", arrayOf("type", "message", "time"), "contact = ?", arrayOf("$userId"), null, null, "id DESC", "1")

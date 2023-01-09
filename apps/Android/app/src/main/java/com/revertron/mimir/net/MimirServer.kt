@@ -21,8 +21,6 @@ private const val CONNECTION_TIMEOUT = 3000
 private const val CONNECTION_PERIOD = 1000L
 //TODO move to gradle config maybe?
 private const val RESOLVER_ADDR = "[202:7991::880a:d4b2:de3b:2da1]"
-// For now we retry to send unsent messages for 3 days, but I will make it adjustable somehow later
-private const val THREE_DAYS = 86400 * 3 * 1000
 
 class MimirServer(
     val storage: SqlStorage,
@@ -39,14 +37,14 @@ class MimirServer(
 
     private val working = AtomicBoolean(true)
     private val connections = HashMap<String, ConnectionHandler>(5)
-    private val unsentMessages = HashMap<String, MutableList<Long>>(5)
+    private val connectContacts = HashSet<String>(5)
+    private var hasNewMessages = false
     private var serverSocket: ServerSocket? = null
     private lateinit var resolver: Resolver
     private val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
     private val privkey = (keyPair.private as Ed25519PrivateKeyParameters).encoded
     private var lastAnnounceTime = 0L
     private var announceTtl = 0L
-    private var lastResendTime = 0L
 
     override fun run() {
         var online = false
@@ -77,7 +75,7 @@ class MimirServer(
                         if (!online) {
                             online = true
                             listener.onServerStateChanged(online)
-                            resendUnsent()
+                            sendUnsent()
                         }
                         socket = serverSocket!!.accept()
                         Log.i(TAG, "New client from: $socket")
@@ -130,9 +128,16 @@ class MimirServer(
         Thread {
             while (working.get()) {
                 // We try to resend messages once in 2 minutes
-                sleep(120000)
+                val start = System.currentTimeMillis()
+                while (System.currentTimeMillis() - start < 120000) {
+                    sleep(1000)
+                    if (hasNewMessages) {
+                        hasNewMessages = false
+                        break
+                    }
+                }
                 if (working.get()) {
-                    resendUnsent()
+                    sendUnsent()
                 } else {
                     break
                 }
@@ -140,129 +145,121 @@ class MimirServer(
         }.start()
     }
 
-    fun resendUnsent() {
-        Log.i(TAG, "Resending unsent messages")
-        synchronized(unsentMessages) {
-            unsentMessages.clear()
-        }
-        val unsent = storage.getUnsentMessages(THREE_DAYS)
-        for (entry in unsent) {
-            sendMessages(entry.key, entry.value)
+    fun sendMessages() {
+        hasNewMessages = true
+    }
+
+    private fun sendUnsent() {
+        Log.i(TAG, "Sending unsent messages")
+        hasNewMessages = false
+        val contacts = storage.getContactsWithUnsentMessages()
+        Log.i(TAG, "Contacts with unsent messages: ${contacts.size}")
+        for (contact in contacts) {
+            connectContact(contact)
         }
     }
 
-    fun sendMessages(contact: ByteArray, messages: List<Long>) {
+    private fun connectContact(contact: ByteArray) {
         val contactString = Hex.toHexString(contact)
-        var added = false
-        lastResendTime = getUtcTime()
-        Log.d(TAG, "Messages to resend: $messages to contact: $contactString")
         synchronized(connections) {
             if (connections.contains(contactString)) {
-                Log.i(TAG, "Found keep-alive connection, sending messages: $messages")
-                for (m in messages) {
-                    val message = storage.getMessage(m)
-                    if (message?.message != null && !message.delivered) {
-                        connections[contactString]?.sendMessage(m, message.type, message.message)
-                    }
-                }
-                added = true
+                Log.i(TAG, "Found established connection, trying to send")
+                sendUnsentMessages(contact)
+                return
             }
         }
-        if (!added) {
-            synchronized(unsentMessages) {
-                // If there is a Thread that is trying to connect to this contact
-                if (unsentMessages.containsKey(contactString)) {
-                    val oldMessages = unsentMessages.remove(contactString)
-                    oldMessages?.apply {
-                        addAll(messages)
-                        val newList = this.distinct()
-                        clear()
-                        addAll(newList)
-                        unsentMessages[contactString] = this
+        synchronized(connectContacts) {
+            if (connectContacts.contains(contactString)) {
+                Log.i(TAG, "We already are connecting to $contactString")
+                return
+            }
+            // Keeping some track of connecting contacts
+            connectContacts.add(contactString)
+        }
+        Thread {
+            Log.d(TAG, "Starting connection to $contactString")
+            val receiver = object : ResolverReceiver {
+                override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
+                    Log.i(TAG, "Resolved IPS: $ips")
+                    if (ips.isNotEmpty()) {
+                        ips.forEach {
+                            storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
+                        }
+                        // We don't want to make an endless loop, so we give it a null receiver
+                        connectContact(contact, contactString, ips, null)
+                    } else {
+                        Log.i(TAG, "Didn't find alive IPs for $contactString, giving up")
+                        synchronized(connectContacts) {
+                            connectContacts.remove(contactString)
+                        }
                     }
-                    Log.d(TAG, "Added messages $messages to existing queue")
-                } else {
-                    // If there is no established connection we try to create one
-                    unsentMessages[contactString] = messages.toMutableList()
-                    Log.d(TAG, "Added new messages to resend: $messages")
-                    Thread {
-                        Log.d(TAG, "Starting to resend $messages to $contactString")
-                        val receiver = object : ResolverReceiver {
-                            override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
-                                Log.i(TAG, "Resolved IPS: $ips")
-                                if (ips.isNotEmpty()) {
-                                    ips.forEach {
-                                        storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
-                                    }
-                                    val messages = synchronized(unsentMessages) {
-                                        unsentMessages.remove(contactString)
-                                    }
-                                    if (messages != null) {
-                                        Thread {
-                                            sendMessages(pubkey, contactString, ips, messages)
-                                        }.start()
-                                    }
-                                } else {
-                                    unsentMessages.remove(contactString)
-                                }
-                            }
-
-                            override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
-                            override fun onError(pubkey: ByteArray) {
-                                Log.e(TAG, "Error resolving IPs")
-                                synchronized(unsentMessages) {
-                                    unsentMessages.remove(contactString)
-                                }
-                            }
-                        }
-
-                        val peers = storage.getContactPeers(contact)
-                        if (peers.isNotEmpty()) {
-                            Log.i(TAG, "Got ips locally")
-                            val messages = synchronized(unsentMessages) {
-                                unsentMessages.remove(contactString)
-                            }
-                            if (messages != null) {
-                                added = sendMessages(contact, contactString, peers, messages)
-                            }
-                            if (!added) {
-                                Log.i(TAG, "Locally found IPs are dead, resolving")
-                                resolver.resolveIps(contact, receiver)
-                            }
-                        } else {
-                            Log.i(TAG, "No local ips found, resolving")
-                            resolver.resolveIps(contact, receiver)
-                        }
-                    }.start()
                 }
+
+                override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
+                override fun onError(pubkey: ByteArray) {
+                    Log.e(TAG, "Error resolving IPs")
+                    synchronized(connectContacts) {
+                        connectContacts.remove(contactString)
+                    }
+                }
+            }
+
+            val peers = storage.getContactPeers(contact)
+            connectContact(contact, contactString, peers, receiver)
+        }.start()
+    }
+
+    private fun connectContact(contact: ByteArray, contactString: String, peers: List<Peer>, receiver: ResolverReceiver?) {
+        if (peers.isNotEmpty()) {
+            val sortedPeers = peers
+                .sortedBy { it.priority }
+                .distinctBy { it.address }
+            Log.i(TAG, "Found ${sortedPeers.size} peers for contact $contactString")
+            var connected = false
+            for (peer in sortedPeers) {
+                val connection = connect(contact, peer)
+                if (connection != null) {
+                    Log.i(TAG, "Created new connection to $contactString")
+                    synchronized(connections) {
+                        connections[contactString] = connection
+                    }
+                    connected = true
+                    break
+                } else {
+                    Log.e(TAG, "Can not connect to $contactString")
+                    synchronized(connectContacts) {
+                        connectContacts.remove(contactString)
+                    }
+                }
+            }
+            if (!connected && receiver != null) {
+                Log.i(TAG, "Locally found IPs are dead, resolving")
+                resolver.resolveIps(contact, receiver)
+            }
+        } else {
+            if (receiver != null) {
+                Log.i(TAG, "No local ips found, resolving")
+                resolver.resolveIps(contact, receiver)
             }
         }
     }
 
-    private fun sendMessages(recipient: ByteArray, recipientString: String, peers: List<Peer>, messages: List<Long>): Boolean {
-        val sortedPeers = peers
-            .sortedBy { it.priority }
-            .distinctBy { it.address }
-        Log.i(TAG, "Found ${sortedPeers.size} peers for $recipientString")
-        for (peer in sortedPeers) {
-            val connection = connect(recipient, peer)
-            if (connection != null) {
-                Log.i(TAG, "Created new connection, sending messages: $messages")
-                for (m in messages) {
-                    val message = storage.getMessage(m)
-                    if (message?.message != null && !message.delivered) {
-                        connection.sendMessage(m, message.type, message.message)
-                    }
-                }
+    private fun sendUnsentMessages(contact: ByteArray) {
+        val unsentMessages = storage.getUnsentMessages(contact)
+        if (unsentMessages.isEmpty()) {
+            return
+        }
+        Log.i(TAG, "Found ${unsentMessages.size} messages, sending")
+        val publicKey = Hex.toHexString(contact)
+        for (m in unsentMessages) {
+            val message = storage.getMessage(m)
+            if (message?.message != null) {
                 synchronized(connections) {
-                    connections[recipientString] = connection
-                    return true
+                    val connection = connections[publicKey]
+                    connection?.sendMessage(m, message.type, message.message)
                 }
-            } else {
-                Log.e(TAG, "Can not connect to $recipientString")
             }
         }
-        return false
     }
 
     private fun connect(recipient: ByteArray, peer: Peer): ConnectionHandler? {
@@ -320,7 +317,12 @@ class MimirServer(
                 connections[publicKey] = connectionHandler
             }
         }
+        synchronized(connectContacts) {
+            val publicKey = Hex.toHexString(from)
+            connectContacts.remove(publicKey)
+        }
         listener.onClientConnected(from, address, clientId)
+        sendUnsentMessages(from)
     }
 
     override fun onMessageReceived(from: ByteArray, address: String, id: Long, type: Int, message: ByteArray) {

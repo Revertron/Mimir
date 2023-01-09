@@ -170,7 +170,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         popup.show()
     }
 
-    fun showDeleteMessageConfirmDialog(messageId: Long) {
+    private fun showDeleteMessageConfirmDialog(messageId: Long) {
         val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
         val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
         builder.setTitle(getString(R.string.delete_message_dialog_title))

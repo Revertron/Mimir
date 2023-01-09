@@ -61,7 +61,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     val id = storage.addMessage(pubkey, false, false, getUtcTimeMs(), 0, message.toByteArray())
                     Log.i(TAG, "Message $id to $keyString")
                     Thread{
-                        mimirServer?.sendMessages(pubkey, listOf(id))
+                        mimirServer?.sendMessages()
                     }.start()
                 }
             }
@@ -71,14 +71,14 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 Log.i(TAG, "Resending message $id")
                 if (pubkey != null) {
                     Thread{
-                        mimirServer?.sendMessages(pubkey, listOf(id))
+                        mimirServer?.sendMessages()
                     }.start()
                 }
             }
             "resend_all" -> {
                 Thread {
                     Log.i(TAG, "Resending unsent messages")
-                    mimirServer?.resendUnsent()
+                    mimirServer?.sendMessages()
                 }.start()
             }
         }
