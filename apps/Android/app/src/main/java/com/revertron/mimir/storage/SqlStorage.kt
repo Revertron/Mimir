@@ -175,6 +175,10 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     fun addContact(pubkey: ByteArray, name: String): Long {
+        val id = getContactId(pubkey)
+        if (id > 0) {
+            return id
+        }
         val values = ContentValues().apply {
             put("pubkey", pubkey)
             put("name", name)
