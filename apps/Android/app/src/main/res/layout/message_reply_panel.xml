@@ -15,7 +15,7 @@
         android:layout_width="4dp"
         android:layout_height="match_parent"
         android:layout_marginEnd="6dp"
-        android:background="@color/white" />
+        android:background="?attr/replySignColor" />
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="0dp"

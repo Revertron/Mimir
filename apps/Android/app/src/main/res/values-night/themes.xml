@@ -24,6 +24,7 @@
         <item name="iconInvertedColor">@color/black</item>
         <item name="unreadBadgeBackColor">@color/gray_80</item>
         <item name="unreadBadgeColor">@color/white</item>
+        <item name="replySignColor">@color/gray_AA</item>
 
         <item name="editTextStyle">@style/EditTextStyle</item>
         <!--<item name="toolbarStyle">@style/MimirToolbar</item>-->

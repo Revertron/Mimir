@@ -24,6 +24,7 @@
         <item name="iconInvertedColor">@color/white</item>
         <item name="unreadBadgeBackColor">@color/gray_80</item>
         <item name="unreadBadgeColor">@color/white</item>
+        <item name="replySignColor">@color/message_outgoing_dark_normal</item>
 
         <item name="editTextStyle">@style/EditTextStyle</item>
         <item name="android:editTextStyle">@style/EditTextStyle</item>

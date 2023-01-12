@@ -7,4 +7,5 @@
     <attr name="iconInvertedColor" format="color" />
     <attr name="unreadBadgeColor" format="color" />
     <attr name="unreadBadgeBackColor" format="color" />
+    <attr name="replySignColor" format="color" />
 </resources>
