@@ -28,6 +28,9 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
     lateinit var contact: Contact
     var replyTo = 0L
+    lateinit var replyPanel: LinearLayoutCompat
+    lateinit var replyName: AppCompatTextView
+    lateinit var replyText: AppCompatTextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,8 +60,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             avatar.avatarInitialsTextColor = 0xFF000000.toInt()
         }
 
-        val replyPanel = findViewById<LinearLayoutCompat>(R.id.reply_panel)
+        replyPanel = findViewById(R.id.reply_panel)
         replyPanel.visibility = View.GONE
+        replyName = findViewById(R.id.reply_contact_name)
+        replyText = findViewById(R.id.reply_text)
         findViewById<AppCompatImageView>(R.id.reply_close).setOnClickListener {
             replyPanel.visibility = View.GONE
             replyTo = 0L
@@ -72,7 +77,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 editText.text?.clear()
                 sendMessage(contact.pubkey, text, replyTo)
                 replyPanel.visibility = View.GONE
-                findViewById<AppCompatTextView>(R.id.reply_text).text = ""
+                replyText.text = ""
                 replyTo = 0L
             }
         }
@@ -170,9 +175,9 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 R.id.menu_reply -> {
                     val id = (view.tag as Long)
                     val message = getStorage().getMessage(id)
-                    findViewById<AppCompatTextView>(R.id.reply_contact_name).text = contact.name
-                    findViewById<AppCompatTextView>(R.id.reply_text).text = message?.getText()
-                    findViewById<LinearLayoutCompat>(R.id.reply_panel).visibility = View.VISIBLE
+                    replyName.text = contact.name
+                    replyText.text = message?.getText()
+                    replyPanel.visibility = View.VISIBLE
                     replyTo = message?.guid ?: 0L
                     Log.i(TAG, "Replying to guid $replyTo")
                     false
