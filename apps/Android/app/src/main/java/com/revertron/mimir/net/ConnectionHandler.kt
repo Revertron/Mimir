@@ -229,7 +229,7 @@ class ConnectionHandler(
                 }
                 MSG_TYPE_MESSAGE_TEXT -> {
                     val message = readMessage(dis) ?: return false
-                    Log.i(TAG, "Got message ${message.id}")
+                    Log.i(TAG, "Got message ${message.id}, in reply to ${message.replyTo}")
                     writeOk(dos, message.id)
                     synchronized(listener) {
                         peer?.let { listener.onMessageReceived(it, address, message.id, message.guid, message.replyTo, message.type, message.data) }
@@ -245,7 +245,7 @@ class ConnectionHandler(
 
     private fun isMessageForMe(hello: ClientHello): Boolean {
         val publicKey = (keyPair.public as Ed25519PublicKeyParameters).encoded
-        Log.i(TAG, "My ${Hex.toHexString(publicKey)} and his ${Hex.toHexString(hello.receiver)}")
+        Log.d(TAG, "My ${Hex.toHexString(publicKey)} and his ${Hex.toHexString(hello.receiver)}")
         return publicKey.contentEquals(hello.receiver)
     }
 
