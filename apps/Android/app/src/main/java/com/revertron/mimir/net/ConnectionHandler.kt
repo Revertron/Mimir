@@ -232,7 +232,7 @@ class ConnectionHandler(
                     Log.i(TAG, "Got message ${message.id}")
                     writeOk(dos, message.id)
                     synchronized(listener) {
-                        peer?.let { listener.onMessageReceived(it, address, message.id, message.type, message.data) }
+                        peer?.let { listener.onMessageReceived(it, address, message.id, message.guid, message.replyTo, message.type, message.data) }
                     }
                 }
             }
@@ -253,13 +253,9 @@ class ConnectionHandler(
         peer = pubkey
     }
 
-    fun setPeerPublicKey(pubkey: String) {
-        peer = Hex.decode(pubkey)
-    }
-
-    fun sendMessage(id: Long, type: Int, message: ByteArray) {
+    fun sendMessage(id: Long, guid: Long, replyTo: Long, type: Int, message: ByteArray) {
         synchronized(buffer) {
-            val message = Message(id, type, message)
+            val message = Message(id, guid, replyTo, type, message)
             buffer.add(id to message)
         }
     }

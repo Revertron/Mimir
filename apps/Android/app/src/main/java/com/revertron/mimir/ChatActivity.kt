@@ -27,6 +27,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     }
 
     lateinit var contact: Contact
+    var replyTo = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,13 +57,23 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             avatar.avatarInitialsTextColor = 0xFF000000.toInt()
         }
 
+        val replyPanel = findViewById<LinearLayoutCompat>(R.id.reply_panel)
+        replyPanel.visibility = View.GONE
+        findViewById<AppCompatImageView>(R.id.reply_close).setOnClickListener {
+            replyPanel.visibility = View.GONE
+            replyTo = 0L
+        }
+
         val editText = findViewById<AppCompatEditText>(R.id.message_edit)
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
         sendButton.setOnClickListener {
             val text: String = editText.text.toString().trim()
             if (text.isNotEmpty()) {
                 editText.text?.clear()
-                sendMessage(contact.pubkey, text)
+                sendMessage(contact.pubkey, text, replyTo)
+                replyPanel.visibility = View.GONE
+                findViewById<AppCompatTextView>(R.id.reply_text).text = ""
+                replyTo = 0L
             }
         }
         val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this)
@@ -96,11 +107,12 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         return true
     }
 
-    private fun sendMessage(pubkey: ByteArray, text: String) {
+    private fun sendMessage(pubkey: ByteArray, text: String, replyTo: Long) {
         val intent = Intent(this, ConnectionService::class.java)
         intent.putExtra("command", "send")
         intent.putExtra("pubkey", pubkey)
         intent.putExtra("message", text)
+        intent.putExtra("replyTo", replyTo)
         startService(intent)
     }
 
@@ -155,7 +167,16 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                     Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
                     true
                 }
-                R.id.menu_reply -> { false }
+                R.id.menu_reply -> {
+                    val id = (view.tag as Long)
+                    val message = getStorage().getMessage(id)
+                    findViewById<AppCompatTextView>(R.id.reply_contact_name).text = contact.name
+                    findViewById<AppCompatTextView>(R.id.reply_text).text = message?.getText()
+                    findViewById<LinearLayoutCompat>(R.id.reply_panel).visibility = View.VISIBLE
+                    replyTo = message?.guid ?: 0L
+                    Log.i(TAG, "Replying to guid $replyTo")
+                    false
+                }
                 R.id.menu_forward -> { false }
                 R.id.menu_delete -> {
                     showDeleteMessageConfirmDialog(view.tag as Long)

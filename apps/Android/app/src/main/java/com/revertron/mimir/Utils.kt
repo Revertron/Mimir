@@ -153,7 +153,7 @@ fun isColorDark(color: Int): Boolean {
 }
 
 fun getAvatarColor(pubkey: ByteArray): Int {
-    val hashCode = pubkey.toList().hashCode()
+    val hashCode = pubkey.contentHashCode()
     return darkColors[abs(hashCode) % darkColors.size].toInt()
 }
 

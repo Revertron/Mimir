@@ -11,7 +11,6 @@ import android.util.Log
 import androidx.core.database.getBlobOrNull
 import com.revertron.mimir.NotificationManager
 import com.revertron.mimir.getUtcTime
-import com.revertron.mimir.getUtcTimeMs
 import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.KeyGenerationParameters
@@ -21,22 +20,40 @@ import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.security.SecureRandom
 import java.util.*
-import kotlin.collections.HashMap
 
 class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 5
+        const val DATABASE_VERSION = 6
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
         const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, port INTEGER DEFAULT 5050, priority INTEGER DEFAULT 3, expiration INTEGER DEFAULT 3600)"
-        const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, incoming BOOL, delivered BOOL, read BOOL, time INTEGER, type INTEGER, message BLOB)"
+        const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, guid INTEGER, replyTo INTEGER, incoming BOOL, delivered BOOL, read BOOL, time INTEGER, type INTEGER, message BLOB)"
     }
 
-    data class Message(val id: Long, val contact: Long, val incoming: Boolean, var delivered: Boolean, val read: Boolean, val time: Long, val type: Int, val message: ByteArray?)
+    data class Message(
+        val id: Long,
+        val contact: Long,
+        val guid: Long,
+        val replyTo: Long,
+        val incoming: Boolean,
+        var delivered: Boolean,
+        val read: Boolean,
+        val time: Long,
+        val type: Int,
+        val message: ByteArray?
+    ) {
+        fun getText(): String {
+            return if (message != null) {
+                String(message)
+            } else {
+                "<Empty>"
+            }
+        }
+    }
 
     val listeners = mutableListOf<StorageListener>()
     private val notificationManager = NotificationManager(context)
@@ -78,6 +95,24 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             migrateAccountsToBlob(db)
             migrateContactsToBlob(db)
             migrateMessagesToBlob(db)
+        }
+
+        if (newVersion > oldVersion && newVersion == 6) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN guid INTEGER DEFAULT 0")
+            db.execSQL("ALTER TABLE messages ADD COLUMN replyTo INTEGER DEFAULT 0")
+            val columns = arrayOf("id", "time", "message")
+            val cursor = db.query("messages", columns, null, null, null, null, "id", null)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(0)
+                val time = cursor.getLong(1)
+                val data = cursor.getBlob(2)
+                val guid = generateGuid(time, data)
+                val values = ContentValues().apply {
+                    put("guid", guid)
+                }
+                db.update("messages", values, "id = ?", arrayOf("$id"))
+            }
+            cursor.close()
         }
     }
 
@@ -246,13 +281,19 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
     }
 
-    fun addMessage(contact: ByteArray, incoming: Boolean, delivered: Boolean, time: Long, type: Int, message: ByteArray): Long {
+    fun addMessage(contact: ByteArray, guid: Long, replyTo: Long, incoming: Boolean, delivered: Boolean, time: Long, type: Int, message: ByteArray): Long {
         var id = getContactId(contact)
         if (id <= 0) {
             id = addContact(contact, "")
         }
+        var guid = guid
+        if (guid == 0L) {
+            guid = generateGuid(time, message)
+        }
         val values = ContentValues().apply {
             put("contact", id)
+            put("guid", guid)
+            put("replyTo", replyTo)
             put("incoming", incoming)
             put("delivered", delivered)
             put("time", time)
@@ -394,19 +435,42 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     fun getMessage(messageId: Long): Message? {
-        val columns = arrayOf("contact", "incoming", "delivered", "read", "time", "type", "message")
+        val columns = arrayOf("contact", "guid", "replyTo", "incoming", "delivered", "read", "time", "type", "message")
         val cursor = readableDatabase.query("messages", columns, "id = ?", arrayOf("$messageId"), null, null, null, "1")
         if (cursor.moveToNext()) {
             val contactId = cursor.getLong(0)
-            val incoming = cursor.getInt(1) != 0
-            val delivered = cursor.getInt(2) != 0
-            val read = cursor.getInt(3) != 0
-            val time = cursor.getLong(4)
-            val type = cursor.getInt(5)
-            val message = cursor.getBlobOrNull(6)
-            //Log.i(TAG, "$message ::: $messId")
+            val guid = cursor.getLong(1)
+            val replyTo = cursor.getLong(2)
+            val incoming = cursor.getInt(3) != 0
+            val delivered = cursor.getInt(4) != 0
+            val read = cursor.getInt(5) != 0
+            val time = cursor.getLong(6)
+            val type = cursor.getInt(7)
+            val message = cursor.getBlobOrNull(8)
+            //Log.i(TAG, "$messageId: $guid")
             cursor.close()
-            return Message(messageId, contactId, incoming, delivered, read, time, type, message)
+            return Message(messageId, contactId, guid, replyTo, incoming, delivered, read, time, type, message)
+        }
+        cursor.close()
+        return null
+    }
+
+    fun getMessageByGuid(guid: Long): Message? {
+        val columns = arrayOf("contact", "id", "replyTo", "incoming", "delivered", "read", "time", "type", "message")
+        val cursor = readableDatabase.query("messages", columns, "guid = ?", arrayOf("$guid"), null, null, null, "1")
+        if (cursor.moveToNext()) {
+            val contactId = cursor.getLong(0)
+            val id = cursor.getLong(1)
+            val replyTo = cursor.getLong(2)
+            val incoming = cursor.getInt(3) != 0
+            val delivered = cursor.getInt(4) != 0
+            val read = cursor.getInt(5) != 0
+            val time = cursor.getLong(6)
+            val type = cursor.getInt(7)
+            val message = cursor.getBlobOrNull(8)
+            //Log.i(TAG, "$guid: $guid")
+            cursor.close()
+            return Message(id, contactId, guid, replyTo, incoming, delivered, read, time, type, message)
         }
         cursor.close()
         return null
@@ -569,6 +633,10 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 
     fun deleteMessage(messageId: Long) {
         writableDatabase.delete("messages", "id=?", arrayOf("$messageId"))
+    }
+
+    fun generateGuid(time: Long, data: ByteArray): Long {
+        return (time.hashCode().toLong() shl 32) or data.contentHashCode().toLong()
     }
 }
 

@@ -25,12 +25,18 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
         val message: AppCompatTextView
         val time: AppCompatTextView
         val sent: AppCompatImageView
+        val replyToName: AppCompatTextView
+        val replyToText: AppCompatTextView
+        val replyToPanel: View
 
         init {
             name = view.findViewById(R.id.name)
             message = view.findViewById(R.id.text)
             time = view.findViewById(R.id.time)
             sent = view.findViewById(R.id.status_image)
+            replyToName = view.findViewById(R.id.reply_contact_name)
+            replyToText = view.findViewById(R.id.reply_text)
+            replyToPanel = view.findViewById(R.id.reply_panel)
         }
     }
 
@@ -59,6 +65,25 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
         holder.time.text = timeFormatter.format(Date(convertToTimeZone(message.time)))
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered
+
+        if (message.replyTo != 0L) {
+            val replyToMessage = storage.getMessageByGuid(message.replyTo)
+            if (replyToMessage != null) {
+                holder.replyToPanel.visibility = View.VISIBLE
+                holder.replyToName.text = contactName
+                holder.replyToText.text = replyToMessage.getText()
+            } else {
+                // Message may be deleted
+                holder.replyToPanel.visibility = View.GONE
+                holder.replyToName.text = ""
+                holder.replyToText.text = ""
+            }
+        } else {
+            holder.replyToPanel.visibility = View.GONE
+            holder.replyToName.text = ""
+            holder.replyToText.text = ""
+        }
+
         if (message.delivered) {
             holder.sent.setImageResource(R.drawable.ic_message_delivered)
         } else {
@@ -75,6 +100,7 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
     }
 
     override fun getItemViewType(position: Int): Int {
+        //TODO optimize double get of message from DB
         val message = storage.getMessage(messageIds[position]) ?: return 0
         return if (message.incoming) 0 else 1
     }

@@ -21,7 +21,7 @@ data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: By
 data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
 data class InfoResponse(val time: Long, val nickname: String, val info: String, val avatar: ByteArray?)
-data class Message(val id: Long, val type: Int, val data: ByteArray)
+data class Message(val id: Long, val guid: Long, val replyTo: Long, val type: Int, val data: ByteArray)
 data class Ok(val id: Long)
 
 private const val TAG = "Messages"
@@ -146,11 +146,16 @@ fun writeChallengeAnswer(dos: DataOutputStream, challenge: ChallengeAnswer, stre
     return true
 }
 
-// val id: Long, val type: Int, val data: ByteArray
+/**
+ * Reads message from socket
+ */
 fun readMessage(dis: DataInputStream): Message? {
     val id = dis.readLong()
+    val guid = dis.readLong()
+    val replyTo = dis.readLong()
     val type = dis.readInt()
     val size = dis.readInt()
+    //TODO check for too big sizes
     val data = ByteArray(size)
     var count = 0
     Log.i(TAG, "Id is $id, size is $size, reading bytes...")
@@ -162,15 +167,19 @@ fun readMessage(dis: DataInputStream): Message? {
         }
         count += read
     }
-    return Message(id, type, data)
+    return Message(id, guid, replyTo, type, data)
 }
 
-// val id: Long, val type: Int, val data: ByteArray
+/**
+ * Writes message to socket
+ */
 fun writeMessage(dos: DataOutputStream, message: Message, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT): Boolean {
     val size = 8 + 4 + 4 + message.data.size
     writeHeader(dos, stream, type, size)
 
     dos.writeLong(message.id)
+    dos.writeLong(message.guid)
+    dos.writeLong(message.replyTo)
     dos.writeInt(message.type)
     dos.writeInt(message.data.size)
     dos.write(message.data)

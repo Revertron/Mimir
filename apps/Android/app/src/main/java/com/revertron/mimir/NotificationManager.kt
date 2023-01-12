@@ -102,7 +102,7 @@ class NotificationManager(val context: Context): StorageListener {
         }
 
         val (uri, _) = createAudioAttributes(context)
-        val hashCode = pubkey.toList().hashCode()
+        val hashCode = pubkey.contentHashCode()
         val channelId = "Messages $hashCode"
 
         return NotificationCompat.Builder(context, channelId)
@@ -142,7 +142,7 @@ class NotificationManager(val context: Context): StorageListener {
                 notificationManager.createNotificationChannel(parentChannel)
             }
 
-            val hashCode = pubkey.toList().hashCode()
+            val hashCode = pubkey.contentHashCode()
             val channelId = "Messages $hashCode"
             val channelName = context.getString(R.string.channel_name_messages_with_contact, contactId)
             val channel = NotificationChannel(channelId, channelName, importance).apply {

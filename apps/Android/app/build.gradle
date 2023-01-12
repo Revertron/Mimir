@@ -45,6 +45,7 @@ dependencies {
 
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.72'
     implementation "io.getstream:avatarview-coil:1.0.4"
+    implementation 'junit:junit:4.12'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.4'
