@@ -50,11 +50,11 @@ class NotificationManager(val context: Context): StorageListener {
 
     override fun onMessageReceived(id: Long, contactId: Long): Boolean {
         val message = App.app.storage.getMessage(id)
-        if (message?.message == null) {
+        if (message?.data == null) {
             return false
         }
         val mes = synchronized(messages) {
-            var text = String(message.message)
+            var text = message.getText()
             text = if (text.length > 50) {
                 text.substring(0, 50)
             } else {

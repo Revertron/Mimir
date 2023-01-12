@@ -179,9 +179,9 @@ fun writeMessage(dos: DataOutputStream, message: Message, stream: Int = 0, type:
     writeHeader(dos, stream, type, size)
 
     dos.writeLong(message.guid)
+    dos.writeLong(message.replyTo)
     dos.writeLong(message.sendTime)
     dos.writeLong(message.editTime)
-    dos.writeLong(message.replyTo)
     dos.writeInt(message.type)
     dos.writeInt(message.data.size)
     dos.write(message.data)

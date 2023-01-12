@@ -71,7 +71,7 @@ class MessageAdapter(
         } else {
             holder.name.visibility = View.GONE
         }
-        holder.message.text = String(message.message!!)
+        holder.message.text = message.getText()
         holder.time.text = formatTime(message.time)
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered

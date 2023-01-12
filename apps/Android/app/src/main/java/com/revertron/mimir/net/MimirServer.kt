@@ -253,10 +253,11 @@ class MimirServer(
         val publicKey = Hex.toHexString(contact)
         for (m in unsentMessages) {
             val message = storage.getMessage(m)
-            if (message?.message != null) {
+            if (message?.data != null) {
                 synchronized(connections) {
                     val connection = connections[publicKey]
-                    connection?.sendMessage(message.guid, message.replyTo, message.time, message.edit, message.type, message.message)
+                    Log.i(TAG, "Sending message ${message.guid} with id ${message.id}")
+                    connection?.sendMessage(message.guid, message.replyTo, message.time, message.edit, message.type, message.data)
                 }
             }
         }

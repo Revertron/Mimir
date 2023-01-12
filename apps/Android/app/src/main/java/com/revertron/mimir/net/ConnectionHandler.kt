@@ -221,7 +221,7 @@ class ConnectionHandler(
                         } else if (peerStatus == Status.Challenge2Answered && ok.id == 0L) {
                             // Now we, as client node, are authorized
                             peerStatus = Status.Auth2Done
-                        } else if (ok.id > 0) {
+                        } else if (ok.id != 0L) {
                             //TODO Check that we really sent this ok.id to this user ;)
                             listener.onMessageDelivered(peer!!, ok.id, true)
                         }

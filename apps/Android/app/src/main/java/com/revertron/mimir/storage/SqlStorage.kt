@@ -45,11 +45,11 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         val time: Long,
         val edit: Long,
         val type: Int,
-        val message: ByteArray?
+        val data: ByteArray?
     ) {
         fun getText(): String {
-            return if (message != null) {
-                String(message)
+            return if (data != null) {
+                String(data)
             } else {
                 "<Empty>"
             }
@@ -335,12 +335,13 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             put("delivered", delivered)
         }
         if (this.writableDatabase.update("messages", values, "guid = ? AND contact = ?", arrayOf("$guid", "$contact")) > 0) {
-            Log.i(TAG, "Message $guid delivered = $delivered")
+            val id = getMessageIdByGuid(guid)
+            Log.i(TAG, "Message $id - $guid delivered = $delivered")
+            for (listener in listeners) {
+                listener.onMessageDelivered(id, delivered)
+            }
+            notificationManager.onMessageDelivered(id, delivered)
         }
-        for (listener in listeners) {
-            listener.onMessageDelivered(guid, delivered)
-        }
-        notificationManager.onMessageDelivered(guid, delivered)
     }
 
     fun setMessageRead(contactId: Long, id: Long, read: Boolean) {
@@ -471,26 +472,15 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return null
     }
 
-    fun getMessageByGuid(guid: Long): Message? {
-        val columns = arrayOf("contact", "id", "replyTo", "incoming", "delivered", "read", "time", "edit", "type", "message")
-        val cursor = readableDatabase.query("messages", columns, "guid = ?", arrayOf("$guid"), null, null, null, "1")
-        if (cursor.moveToNext()) {
-            val contactId = cursor.getLong(0)
-            val id = cursor.getLong(1)
-            val replyTo = cursor.getLong(2)
-            val incoming = cursor.getInt(3) != 0
-            val delivered = cursor.getInt(4) != 0
-            val read = cursor.getInt(5) != 0
-            val time = cursor.getLong(6)
-            val edit = cursor.getLong(7)
-            val type = cursor.getInt(8)
-            val message = cursor.getBlobOrNull(9)
-            //Log.i(TAG, "$guid: $guid")
-            cursor.close()
-            return Message(id, contactId, guid, replyTo, incoming, delivered, read, time, edit, type, message)
+    fun getMessageIdByGuid(guid: Long): Long {
+        val db = this.readableDatabase
+        val statement = db.compileStatement("SELECT id FROM messages WHERE guid=? LIMIT 1")
+        statement.bindLong(1, guid)
+        return try {
+            statement.simpleQueryForLong()
+        } catch (e: SQLiteDoneException) {
+            -1
         }
-        cursor.close()
-        return null
     }
 
     fun getContactId(pubkey: ByteArray): Long {
