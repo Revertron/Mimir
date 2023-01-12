@@ -14,10 +14,18 @@ import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 
-class MessageAdapter(private val storage: SqlStorage, private val userId: Long, private val multiChat: Boolean, private val myName: String, private val contactName: String, private val onclick: View.OnClickListener?):
-    RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
+class MessageAdapter(
+    private val storage: SqlStorage,
+    private val userId: Long,
+    private val multiChat: Boolean,
+    private val myName: String,
+    private val contactName: String,
+    private val onClick: View.OnClickListener,
+    private val onReplyClick: View.OnClickListener
+): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
+    private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
     private val messageIds = storage.getMessageIds(userId).toMutableList()
 
     class ViewHolder(view: View): RecyclerView.ViewHolder(view) {
@@ -47,8 +55,10 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
             R.layout.message_outgoing_layout
         }
         val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
-        view.setOnClickListener(onclick)
-        //view.setOnLongClickListener(onlongclick)
+        view.setOnClickListener(onClick)
+        //TODO make item background reflect touches
+        view.findViewById<View>(R.id.reply_panel).setOnClickListener(onReplyClick)
+
         return ViewHolder(view)
     }
 
@@ -62,14 +72,15 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
             holder.name.visibility = View.GONE
         }
         holder.message.text = String(message.message!!)
-        holder.time.text = timeFormatter.format(Date(convertToTimeZone(message.time)))
+        holder.time.text = formatTime(message.time)
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered
 
         if (message.replyTo != 0L) {
-            val replyToMessage = storage.getMessageByGuid(message.replyTo)
+            val replyToMessage = storage.getMessage(message.replyTo, true)
             if (replyToMessage != null) {
                 holder.replyToPanel.visibility = View.VISIBLE
+                holder.replyToPanel.tag = replyToMessage.id
                 holder.replyToName.text = contactName
                 holder.replyToText.text = replyToMessage.getText()
             } else {
@@ -97,6 +108,16 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
         }
         //TODO somehow propagate this event to notification manager to cancel notification if it exists
         storage.setMessageRead(userId, message.id, true)
+    }
+
+    private fun formatTime(time: Long): String {
+        val date = Date(convertToTimeZone(time))
+        val diff = Date().time - date.time
+        return if (diff > 86400 * 1000) {
+            "${dateFormatter.format(date)} ${timeFormatter.format(date)}"
+        } else {
+            timeFormatter.format(date)
+        }
     }
 
     override fun getItemViewType(position: Int): Int {
@@ -129,5 +150,14 @@ class MessageAdapter(private val storage: SqlStorage, private val userId: Long, 
                 break
             }
         }
+    }
+
+    fun getMessageIdPosition(id: Long): Int {
+        for ((index, message) in messageIds.withIndex()) {
+            if (message == id) {
+                return index
+            }
+        }
+        return -1
     }
 }

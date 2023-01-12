@@ -27,10 +27,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     }
 
     lateinit var contact: Contact
-    var replyTo = 0L
     lateinit var replyPanel: LinearLayoutCompat
     lateinit var replyName: AppCompatTextView
-    lateinit var replyText: AppCompatTextView
+    private lateinit var replyText: AppCompatTextView
+    var replyTo = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,11 +81,22 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 replyTo = 0L
             }
         }
-        val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this)
+        val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this, onClickOnReply())
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         getStorage().listeners.add(this)
+    }
+
+    private fun onClickOnReply() = fun(it: View) {
+        //TODO animate target view
+        val id = it.tag as Long
+        val recycler = findViewById<RecyclerView>(R.id.messages_list)
+        val adapter = recycler.adapter as MessageAdapter
+        val position = adapter.getMessageIdPosition(id)
+        if (position >= 0) {
+            recycler.smoothScrollToPosition(position)
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {

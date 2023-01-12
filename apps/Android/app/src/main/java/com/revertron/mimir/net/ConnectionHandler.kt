@@ -229,10 +229,10 @@ class ConnectionHandler(
                 }
                 MSG_TYPE_MESSAGE_TEXT -> {
                     val message = readMessage(dis) ?: return false
-                    Log.i(TAG, "Got message ${message.id}, in reply to ${message.replyTo}")
-                    writeOk(dos, message.id)
+                    Log.i(TAG, "Got message ${message.guid}, in reply to ${message.replyTo}")
+                    writeOk(dos, message.guid)
                     synchronized(listener) {
-                        peer?.let { listener.onMessageReceived(it, address, message.id, message.guid, message.replyTo, message.type, message.data) }
+                        peer?.let { listener.onMessageReceived(it, message.guid, message.replyTo, message.sendTime, message.editTime, message.type, message.data) }
                     }
                 }
             }
@@ -253,9 +253,9 @@ class ConnectionHandler(
         peer = pubkey
     }
 
-    fun sendMessage(id: Long, guid: Long, replyTo: Long, type: Int, message: ByteArray) {
+    fun sendMessage(guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, data: ByteArray) {
         synchronized(buffer) {
-            val message = Message(id, guid, replyTo, type, message)
+            val message = Message(guid, replyTo, sendTime, editTime, type, data)
             buffer.add(id to message)
         }
     }

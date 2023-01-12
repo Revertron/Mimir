@@ -256,7 +256,7 @@ class MimirServer(
             if (message?.message != null) {
                 synchronized(connections) {
                     val connection = connections[publicKey]
-                    connection?.sendMessage(m, message.guid, message.replyTo, message.type, message.message)
+                    connection?.sendMessage(message.guid, message.replyTo, message.time, message.edit, message.type, message.message)
                 }
             }
         }
@@ -325,12 +325,12 @@ class MimirServer(
         sendUnsentMessages(from)
     }
 
-    override fun onMessageReceived(from: ByteArray, address: String, id: Long, guid: Long, replyTo: Long, type: Int, message: ByteArray) {
-        listener.onMessageReceived(from, address, id, guid, replyTo, type, message)
+    override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
+        listener.onMessageReceived(from, guid, replyTo, sendTime, editTime, type, message)
     }
 
-    override fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean) {
-        listener.onMessageDelivered(to, id, delivered)
+    override fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean) {
+        listener.onMessageDelivered(to, guid, delivered)
     }
 
     override fun onConnectionClosed(from: ByteArray, address: String) {
@@ -362,8 +362,8 @@ interface EventListener {
     fun onTrackerPing(online: Boolean)
     fun onClientIPChanged(old: String, new: String) {}
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
-    fun onMessageReceived(from: ByteArray, address: String, id: Long, guid: Long, replyTo: Long, type: Int, message: ByteArray)
-    fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean)
+    fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray)
+    fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean)
     fun onConnectionClosed(from: ByteArray, address: String) {}
 }
 

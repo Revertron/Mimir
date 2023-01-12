@@ -60,7 +60,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val replyTo = intent.getLongExtra("replyTo", 0L)
                 Log.i(TAG, "Replying to $replyTo")
                 if (pubkey != null && message != null) {
-                    val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, message.toByteArray())
+                    val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, 0, message.toByteArray())
                     Log.i(TAG, "Message $id to $keyString")
                     Thread{
                         mimirServer?.sendMessages()
@@ -114,13 +114,13 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         storage.saveIp(from, address, CONNECTION_PORT, clientId, 0, expiration)
     }
 
-    override fun onMessageReceived(from: ByteArray, address: String, id: Long, guid: Long, replyTo: Long, type: Int, message: ByteArray) {
+    override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
         val storage = (application as App).storage
-        storage.addMessage(from, guid, replyTo, true, true, getUtcTimeMs(), type, message)
+        storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, message)
     }
 
-    override fun onMessageDelivered(to: ByteArray, id: Long, delivered: Boolean) {
-        (application as App).storage.setMessageDelivered(to, id, delivered)
+    override fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean) {
+        (application as App).storage.setMessageDelivered(to, guid, delivered)
     }
 
     override fun getMyInfo(ifUpdatedSince: Long): InfoResponse? {

@@ -21,7 +21,7 @@ data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: By
 data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
 data class InfoResponse(val time: Long, val nickname: String, val info: String, val avatar: ByteArray?)
-data class Message(val id: Long, val guid: Long, val replyTo: Long, val type: Int, val data: ByteArray)
+data class Message(val guid: Long, val replyTo: Long, val sendTime: Long, val editTime: Long, val type: Int, val data: ByteArray)
 data class Ok(val id: Long)
 
 private const val TAG = "Messages"
@@ -150,24 +150,25 @@ fun writeChallengeAnswer(dos: DataOutputStream, challenge: ChallengeAnswer, stre
  * Reads message from socket
  */
 fun readMessage(dis: DataInputStream): Message? {
-    val id = dis.readLong()
     val guid = dis.readLong()
     val replyTo = dis.readLong()
+    val sendTime = dis.readLong()
+    val editTime = dis.readLong()
     val type = dis.readInt()
     val size = dis.readInt()
     //TODO check for too big sizes
     val data = ByteArray(size)
     var count = 0
-    Log.i(TAG, "Id is $id, size is $size, reading bytes...")
+    Log.d(TAG, "Guid $guid, size is $size, reading bytes...")
     while (count < size) {
         val read = dis.read(data, count, size - count)
-        Log.i(TAG, "Read $read bytes")
+        Log.d(TAG, "Read $read bytes")
         if (read < 0) {
             return null
         }
         count += read
     }
-    return Message(id, guid, replyTo, type, data)
+    return Message(guid, replyTo, sendTime, editTime, type, data)
 }
 
 /**
@@ -177,8 +178,9 @@ fun writeMessage(dos: DataOutputStream, message: Message, stream: Int = 0, type:
     val size = 8 + 4 + 4 + message.data.size
     writeHeader(dos, stream, type, size)
 
-    dos.writeLong(message.id)
     dos.writeLong(message.guid)
+    dos.writeLong(message.sendTime)
+    dos.writeLong(message.editTime)
     dos.writeLong(message.replyTo)
     dos.writeInt(message.type)
     dos.writeInt(message.data.size)
