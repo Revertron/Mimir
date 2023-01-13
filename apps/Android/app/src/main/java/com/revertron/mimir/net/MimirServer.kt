@@ -256,7 +256,7 @@ class MimirServer(
             if (message?.data != null) {
                 synchronized(connections) {
                     val connection = connections[publicKey]
-                    Log.i(TAG, "Sending message ${message.guid} with id ${message.id}")
+                    Log.i(TAG, "Sending message ${message.guid} with id ${message.id} and time ${message.time}")
                     connection?.sendMessage(message.guid, message.replyTo, message.time, message.edit, message.type, message.data)
                 }
             }

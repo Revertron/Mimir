@@ -8,7 +8,6 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
-import com.revertron.mimir.convertToTimeZone
 import com.revertron.mimir.storage.SqlStorage
 import java.text.DateFormat
 import java.text.SimpleDateFormat
@@ -111,7 +110,7 @@ class MessageAdapter(
     }
 
     private fun formatTime(time: Long): String {
-        val date = Date(convertToTimeZone(time))
+        val date = Date(time)
         val diff = Date().time - date.time
         return if (diff > 86400 * 1000) {
             "${dateFormatter.format(date)} ${timeFormatter.format(date)}"

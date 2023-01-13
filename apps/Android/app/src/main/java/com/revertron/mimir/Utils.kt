@@ -122,8 +122,7 @@ fun validPublicKey(text: String): Boolean {
  */
 fun getUtcTime(): Long {
     val calendar = Calendar.getInstance()
-    val offset = calendar.timeZone.rawOffset
-    return (calendar.timeInMillis - offset) / 1000
+    return calendar.timeInMillis / 1000
 }
 
 /**
@@ -131,17 +130,7 @@ fun getUtcTime(): Long {
  */
 fun getUtcTimeMs(): Long {
     val calendar = Calendar.getInstance()
-    val offset = calendar.timeZone.rawOffset
-    return calendar.timeInMillis - offset
-}
-
-/**
- * Converts given time (presumably in UTC) to local timezone
- */
-fun convertToTimeZone(time: Long): Long {
-    val calendar = Calendar.getInstance()
-    val offset = calendar.timeZone.rawOffset
-    return time + offset
+    return calendar.timeInMillis
 }
 
 fun isColorDark(color: Int): Boolean {

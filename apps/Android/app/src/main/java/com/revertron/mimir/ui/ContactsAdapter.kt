@@ -49,7 +49,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
         holder.lastMessage.text = contact.lastMessage.ifEmpty { "" }
         if (contact.lastMessageTime > 0) {
             holder.lastMessageTime.visibility = View.VISIBLE
-            val date = Date(convertToTimeZone(contact.lastMessageTime))
+            val date = Date(contact.lastMessageTime)
             val diff = Date().time - date.time
             if (diff > 86400 * 1000) {
                 holder.lastMessageTime.text = dateFormatter.format(date)
