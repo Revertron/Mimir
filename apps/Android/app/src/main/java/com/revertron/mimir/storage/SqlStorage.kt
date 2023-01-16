@@ -336,7 +336,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
         if (this.writableDatabase.update("messages", values, "guid = ? AND contact = ?", arrayOf("$guid", "$contact")) > 0) {
             val id = getMessageIdByGuid(guid)
-            Log.i(TAG, "Message $id - $guid delivered = $delivered")
+            Log.i(TAG, "Message $id with guid $guid delivered = $delivered")
             for (listener in listeners) {
                 listener.onMessageDelivered(id, delivered)
             }
@@ -472,7 +472,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return null
     }
 
-    fun getMessageIdByGuid(guid: Long): Long {
+    private fun getMessageIdByGuid(guid: Long): Long {
         val db = this.readableDatabase
         val statement = db.compileStatement("SELECT id FROM messages WHERE guid=? LIMIT 1")
         statement.bindLong(1, guid)
@@ -642,8 +642,8 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         writableDatabase.delete("messages", "id=?", arrayOf("$messageId"))
     }
 
-    fun generateGuid(time: Long, data: ByteArray): Long {
-        return (time.hashCode().toLong() shl 32) or data.contentHashCode().toLong()
+    private fun generateGuid(time: Long, data: ByteArray): Long {
+        return (data.contentHashCode().toLong() shl 32) xor time
     }
 }
 

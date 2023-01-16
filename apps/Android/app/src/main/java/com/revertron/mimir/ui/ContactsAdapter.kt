@@ -71,6 +71,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
                 } else {
                     holder.deliveredIcon.setImageResource(R.drawable.ic_message_not_sent)
                 }
+                holder.deliveredIcon.visibility = View.VISIBLE
             } else {
                 holder.deliveredIcon.visibility = View.GONE
             }

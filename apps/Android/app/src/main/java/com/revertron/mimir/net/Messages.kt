@@ -1,6 +1,8 @@
 package com.revertron.mimir.net
 
 import android.util.Log
+import org.json.JSONException
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -150,25 +152,43 @@ fun writeChallengeAnswer(dos: DataOutputStream, challenge: ChallengeAnswer, stre
  * Reads message from socket
  */
 fun readMessage(dis: DataInputStream): Message? {
-    val guid = dis.readLong()
-    val replyTo = dis.readLong()
-    val sendTime = dis.readLong()
-    val editTime = dis.readLong()
-    val type = dis.readInt()
-    val size = dis.readInt()
-    //TODO check for too big sizes
-    val data = ByteArray(size)
+    var size = dis.readInt()
+    var data = ByteArray(size)
     var count = 0
-    Log.d(TAG, "Guid $guid, size is $size, reading bytes...")
     while (count < size) {
         val read = dis.read(data, count, size - count)
-        Log.d(TAG, "Read $read bytes")
         if (read < 0) {
             return null
         }
         count += read
     }
-    return Message(guid, replyTo, sendTime, editTime, type, data)
+
+    try {
+        val json = JSONObject(String(data))
+        val guid = json.getLong("guid")
+        val replyTo = json.optLong("replyTo", 0)
+        val sendTime = json.optLong("sendTime", 0)
+        val editTime = json.optLong("editTime", 0)
+        val type = json.optInt("type", 0)
+        size = json.optInt("payloadSize", 0)
+        if (size > 0) {
+            data = ByteArray(size)
+            count = 0
+            while (count < size) {
+                val read = dis.read(data, count, size - count)
+                if (read < 0) {
+                    return null
+                }
+                count += read
+            }
+        } else {
+            data = ByteArray(0)
+        }
+        return Message(guid, replyTo, sendTime, editTime, type, data)
+    } catch (e: JSONException) {
+        Log.e(TAG, "Error parsing JSON: $e")
+        return null
+    }
 }
 
 /**
@@ -178,13 +198,26 @@ fun writeMessage(dos: DataOutputStream, message: Message, stream: Int = 0, type:
     val size = 8 + 4 + 4 + message.data.size
     writeHeader(dos, stream, type, size)
 
-    dos.writeLong(message.guid)
-    dos.writeLong(message.replyTo)
-    dos.writeLong(message.sendTime)
-    dos.writeLong(message.editTime)
-    dos.writeInt(message.type)
-    dos.writeInt(message.data.size)
-    dos.write(message.data)
+    val json = JSONObject()
+    json.put("guid", message.guid)
+    if (message.replyTo != 0L) {
+        json.put("replyTo", message.replyTo)
+    }
+    json.put("sendTime", message.sendTime)
+    if (message.editTime != 0L) {
+        json.put("editTime", message.editTime)
+    }
+    json.put("type", message.type)
+    if (message.data.isNotEmpty()) {
+        json.put("payloadSize", message.data.size)
+    }
+    val jsonData = json.toString().toByteArray()
+
+    dos.writeInt(jsonData.size)
+    dos.write(jsonData)
+    if (message.data.isNotEmpty()) {
+        dos.write(message.data)
+    }
     dos.flush()
     return true
 }
