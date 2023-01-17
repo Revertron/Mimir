@@ -383,7 +383,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         val cursor =
             db.query("messages", arrayOf("delivered"), "contact = ? AND incoming = 0", arrayOf("$userId"), null, null, "id DESC", "1")
         val result = if (cursor.moveToNext()) {
-            return cursor.getInt(0) > 0
+            cursor.getInt(0) > 0
         } else {
             null
         }
@@ -447,6 +447,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         } else {
             Pair("guid", "id = ?")
         }
+        var result: Message? = null
         val columns = arrayOf("contact", pair.first, "replyTo", "incoming", "delivered", "read", "time", "edit", "type", "message")
         val cursor = readableDatabase.query("messages", columns, pair.second, arrayOf("$messageId"), null, null, null, "1")
         if (cursor.moveToNext()) {
@@ -461,26 +462,27 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val type = cursor.getInt(8)
             val message = cursor.getBlobOrNull(9)
             //Log.i(TAG, "$messageId: $guid")
-            cursor.close()
-            return if (byGuid) {
+            result = if (byGuid) {
                 Message(idOrGuid, contactId, messageId, replyTo, incoming, delivered, read, time, edit, type, message)
             } else {
                 Message(messageId, contactId, idOrGuid, replyTo, incoming, delivered, read, time, edit, type, message)
             }
         }
         cursor.close()
-        return null
+        return result
     }
 
     private fun getMessageIdByGuid(guid: Long): Long {
         val db = this.readableDatabase
         val statement = db.compileStatement("SELECT id FROM messages WHERE guid=? LIMIT 1")
         statement.bindLong(1, guid)
-        return try {
+        val result = try {
             statement.simpleQueryForLong()
         } catch (e: SQLiteDoneException) {
             -1
         }
+        statement.close()
+        return result
     }
 
     fun getContactId(pubkey: ByteArray): Long {
@@ -587,6 +589,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             Log.i(TAG, "Found account $name with pubkey ${Hex.toHexString(pubkey)}")
             return AccountInfo(name, info, avatar, updated, clientId, AsymmetricCipherKeyPair(pub, priv))
         }
+        cursor.close()
         Log.w(TAG, "Didn't find account info $id, or it didn't change since ${Date(ifUpdatedSince * 1000)}")
         return null
     }

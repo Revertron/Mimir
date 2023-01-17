@@ -27,6 +27,7 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
 
     private val random = Random(System.currentTimeMillis())
     private val nonces = HashMap<Int, Pair<ByteArray, ResolverReceiver>>()
+    private val timeouts = HashMap<Int, Thread>()
     private val socket = DatagramSocket()
 
     init {
@@ -43,6 +44,9 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
                 val nonce = dis.readInt()
                 val command = dis.readByte()
                 val pair = nonces.remove(nonce) ?: continue
+                synchronized(timeouts) {
+                    timeouts.remove(nonce)?.interrupt()
+                }
                 when (command.toInt()) {
                     CMD_ANNOUNCE -> {
                         val ttl = dis.readLong()
@@ -51,7 +55,10 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
                     CMD_GET_IPS -> {
                         val count = dis.readByte()
                         Log.i(TAG, "Got $count ips")
-                        if (count <= 0) continue
+                        if (count <= 0) {
+                            pair.second.onError(pair.first)
+                            continue
+                        }
                         val results = mutableListOf<Peer>()
                         val ipBuf = ByteArray(16)
                         val sigBuf = ByteArray(64)
@@ -106,7 +113,9 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         val packet = DatagramPacket(request, request.size, tracker)
         try {
             socket.send(packet)
+            startTimeoutThread(nonce, receiver)
         } catch (e: IOException) {
+            Log.e(TAG, "Error sending packet: $e")
             val pair = nonces.remove(nonce)!!
             pair.second.onError(pubkey)
         }
@@ -134,11 +143,39 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         val packet = DatagramPacket(request, request.size, tracker)
         try {
             socket.send(packet)
+            startTimeoutThread(nonce, receiver)
             Log.i(TAG, "Announce packet sent")
         } catch (e: IOException) {
+            Log.e(TAG, "Error sending packet: $e")
             val pair = nonces.remove(nonce)!!
             pair.second.onError(pubkey)
         }
+    }
+
+    private fun startTimeoutThread(nonce: Int, receiver: ResolverReceiver): Thread {
+        val t = Thread {
+            //Log.d(TAG, "Timeout thread for $nonce started")
+            try {
+                Thread.sleep(10000)
+                synchronized(nonces) {
+                    if (nonces.containsKey(nonce)) {
+                        //Log.d(TAG, "Timeout thread for $nonce got timeout")
+                        val pair = nonces.remove(nonce)!!
+                        receiver.onError(pair.first)
+                    }
+                }
+            } catch (e: InterruptedException) {
+                //Log.d(TAG, "Timeout thread for $nonce interrupted")
+            }
+            synchronized(timeouts) {
+                timeouts.remove(nonce)
+            }
+        }
+        synchronized(timeouts) {
+            timeouts.put(nonce, t)
+        }
+        t.start()
+        return t
     }
 }
 
