@@ -23,7 +23,10 @@
     <string name="cancel">Cancel</string>
     <string name="message">Message</string>
     <string name="my_public_key">My public key:</string>
+    <string name="contact_public_key">Public key:</string>
     <string name="my_name_title">My name:</string>
+    <string name="contact_name_label">Name:</string>
+    <string name="contact_info">Contact info</string>
     <string name="save_button">Save</string>
     <string name="account">Account</string>
     <string name="my_name_hint">Thor Odinson</string>

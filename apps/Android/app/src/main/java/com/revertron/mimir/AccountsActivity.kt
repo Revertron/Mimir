@@ -8,7 +8,6 @@ import android.text.TextWatcher
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.Toolbar
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
@@ -31,7 +30,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         var name = accountInfo.name
         val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded).uppercase()
 
-        val myNameEdit = findViewById<AppCompatEditText>(R.id.my_name)
+        val myNameEdit = findViewById<AppCompatEditText>(R.id.contact_name)
         myNameEdit.setText(name)
         // Saving the name when it changes
         myNameEdit.addTextChangedListener(object : TextWatcher {
@@ -45,7 +44,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
             }
         })
 
-        val pubKeyEdit = findViewById<AppCompatEditText>(R.id.my_public_key)
+        val pubKeyEdit = findViewById<AppCompatEditText>(R.id.contact_public_key)
         pubKeyEdit.setText(public)
 
         findViewById<View>(R.id.button_copy).setOnClickListener {
@@ -55,13 +54,26 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
             Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<View>(R.id.button_link).setOnClickListener {
+        val host = getMimirUriHost()
+
+        val buttonLink = findViewById<View>(R.id.button_link)
+        buttonLink.setOnClickListener {
             val encoded = URLEncoder.encode(name, "UTF-8")
-            val link = "mimir://${pubKeyEdit.text}#$encoded"
+            val link = "https://$host/u/${pubKeyEdit.text}/$encoded"
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("mimir link", link)
             clipboard.setPrimaryClip(clip)
             Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+        }
+
+        buttonLink.setOnLongClickListener {
+            val encoded = URLEncoder.encode(name, "UTF-8")
+            val link = "mimir://mm/u/${pubKeyEdit.text}/$encoded"
+            val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("mimir link", link)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+            true
         }
 
         findViewById<View>(R.id.button_qrcode).setOnClickListener {

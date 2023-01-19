@@ -55,6 +55,13 @@ fun createServiceNotification(context: Context, state: State): Notification {
         .build()
 }
 
+/**
+ * It is used in intent-filter in AndroidManifest, keep it in sync
+ */
+fun getMimirUriHost(): String {
+    return "mm.yggdrasil.link"
+}
+
 fun getYggdrasilAddress(): InetAddress? {
     val interfaces: List<NetworkInterface> = try {
         Collections.list(NetworkInterface.getNetworkInterfaces())

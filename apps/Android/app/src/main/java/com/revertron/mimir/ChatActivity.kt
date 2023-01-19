@@ -6,10 +6,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.ContextThemeWrapper
-import android.view.Gravity
-import android.view.MenuItem
-import android.view.View
+import android.view.*
 import android.widget.Toast
 import androidx.appcompat.widget.*
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -47,7 +44,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         findViewById<AppCompatTextView>(R.id.title).text = contact.name
         supportActionBar?.title = ""
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setOnMenuItemClickListener(this)
 
         val avatar = findViewById<AvatarView>(R.id.avatar)
         val initials = getInitials(contact)
@@ -99,12 +95,31 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         }
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        super.onCreateOptionsMenu(menu)
+        menuInflater.inflate(R.menu.menu_contact, menu)
+        return true
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            finish()
-            overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
-            return true
+        when (item.itemId) {
+            android.R.id.home -> {
+                finish()
+                overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+                return true
+            }
+            R.id.contact_info -> {
+                val intent = Intent(this, ContactActivity::class.java)
+                intent.putExtra("pubkey", contact.pubkey)
+                intent.putExtra("name", contact.name)
+                startActivity(intent)
+                overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+            }
+            else -> {
+                Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+            }
         }
+
         return super.onOptionsItemSelected(item)
     }
 

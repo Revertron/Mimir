@@ -7,8 +7,7 @@
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
-        app:menu="@menu/menu_main"
-        app:title="@string/account"
+        app:title="@string/contact_info"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:minHeight="?attr/actionBarSize"
@@ -29,7 +28,7 @@
         app:layout_constraintTop_toBottomOf="@id/toolbar"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        android:text="@string/my_name_title" />
+        android:text="@string/contact_name_label" />
 
     <androidx.appcompat.widget.AppCompatEditText
         android:id="@+id/contact_name"
@@ -38,7 +37,6 @@
         android:layout_marginLeft="16dp"
         android:layout_marginRight="16dp"
         android:layout_marginTop="8dp"
-        android:hint="@string/my_name_hint"
         app:layout_constraintTop_toBottomOf="@id/contact_name_title"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent" />
@@ -50,7 +48,7 @@
         android:layout_marginTop="16dp"
         android:layout_marginLeft="16dp"
         android:layout_marginRight="16dp"
-        android:text="@string/my_public_key"
+        android:text="@string/contact_public_key"
         app:layout_constraintTop_toBottomOf="@id/contact_name"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent" />

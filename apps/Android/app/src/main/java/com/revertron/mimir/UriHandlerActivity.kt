@@ -46,13 +46,11 @@ class UriHandlerActivity : BaseActivity() {
         if (uri == null) {
             return false
         }
-        if (uri.scheme == "mimir") {
-            val pubkey = uri.host ?: return false
-            val name = uri.fragment
-            if (addContact(pubkey, name)) return true
-        } else {
-            val pubkey = (uri.path ?: return false).replace("/", "")
-            val name = URLDecoder.decode(uri.fragment, "UTF-8")
+        val parts = uri.path?.split("/") ?: return false
+        // parts[0] contains the type of entity that we are trying to add (user, chat, news)
+        if (parts.size >= 2) {
+            val pubkey = parts[1]
+            val name = if (parts.size == 3) URLDecoder.decode(parts[2], "UTF-8") else ""
             if (addContact(pubkey, name)) return true
         }
         Toast.makeText(this, R.string.contact_addition_error, Toast.LENGTH_LONG).show()
