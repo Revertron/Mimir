@@ -7,6 +7,7 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.Toolbar
 import org.bouncycastle.util.encoders.Hex
 import java.net.URLEncoder
@@ -31,7 +32,11 @@ class ContactActivity: BaseActivity() {
 
         findViewById<AppCompatEditText>(R.id.contact_name).setText(name)
         val pubKeyEdit = findViewById<AppCompatEditText>(R.id.contact_public_key)
-        pubKeyEdit.setText(Hex.toHexString(pubkey))
+        val public = Hex.toHexString(pubkey)
+        pubKeyEdit.setText(public)
+
+        val qrCodeImageView = findViewById<AppCompatImageView>(R.id.qr_code)
+        updateQrCode(name, public, qrCodeImageView)
 
         findViewById<View>(R.id.button_copy).setOnClickListener {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
@@ -58,10 +63,6 @@ class ContactActivity: BaseActivity() {
             clipboard.setPrimaryClip(clip)
             Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
             true
-        }
-
-        findViewById<View>(R.id.button_qrcode).setOnClickListener {
-            Toast.makeText(applicationContext, getString(R.string.not_yet_implemented) , Toast.LENGTH_SHORT).show()
         }
     }
 

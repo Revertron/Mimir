@@ -8,13 +8,17 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import android.widget.ImageView
 import androidx.core.app.NotificationCompat
+import com.google.zxing.BarcodeFormat
+import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.DecoderException
 import org.bouncycastle.util.encoders.Hex
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.net.URLEncoder
 import java.util.*
 import kotlin.math.abs
 
@@ -60,6 +64,13 @@ fun createServiceNotification(context: Context, state: State): Notification {
  */
 fun getMimirUriHost(): String {
     return "mm.yggdrasil.link"
+}
+
+fun updateQrCode(name: String, pubKey: String, imageView: ImageView) {
+    val encoded = URLEncoder.encode(name, "UTF-8")
+    val link = "mimir://mm/u/${pubKey}/$encoded"
+    val qrCode = BarcodeEncoder().encodeBitmap(link, BarcodeFormat.QR_CODE, 600, 600)
+    imageView.setImageBitmap(qrCode)
 }
 
 fun getYggdrasilAddress(): InetAddress? {

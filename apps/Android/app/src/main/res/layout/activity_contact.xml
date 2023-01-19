@@ -65,6 +65,18 @@
         app:layout_constraintLeft_toLeftOf="parent"
         android:editable="false" />
 
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/qr_code"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginTop="16dp"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/contact_public_key"
+        android:src="@drawable/ic_qrcode" />
+
     <androidx.appcompat.widget.LinearLayoutCompat
         android:id="@+id/share_buttons"
         android:layout_width="match_parent"
@@ -74,7 +86,7 @@
         android:layout_marginTop="8dp"
         android:weightSum="5"
         android:gravity="center"
-        app:layout_constraintTop_toBottomOf="@id/contact_public_key"
+        app:layout_constraintTop_toBottomOf="@id/qr_code"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent">
 
@@ -92,13 +104,6 @@
             android:layout_weight="1"
             android:padding="16dp"
             android:src="@drawable/ic_link" />
-        <androidx.appcompat.widget.AppCompatImageButton
-            android:id="@+id/button_qrcode"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:padding="16dp"
-            android:src="@drawable/ic_qrcode" />
     </androidx.appcompat.widget.LinearLayoutCompat>
 
 

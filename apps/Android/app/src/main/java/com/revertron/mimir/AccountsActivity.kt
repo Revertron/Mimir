@@ -9,7 +9,10 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.Toolbar
+import com.google.zxing.BarcodeFormat
+import com.journeyapps.barcodescanner.BarcodeEncoder
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.net.URLEncoder
@@ -30,6 +33,8 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         var name = accountInfo.name
         val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded).uppercase()
 
+        val qrCodeImageView = findViewById<AppCompatImageView>(R.id.qr_code)
+
         val myNameEdit = findViewById<AppCompatEditText>(R.id.contact_name)
         myNameEdit.setText(name)
         // Saving the name when it changes
@@ -40,6 +45,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
                 val newName = s.toString()
                 if (getStorage().updateName(accountNumber, newName)) {
                     name = newName
+                    updateQrCode(name, public, qrCodeImageView)
                 }
             }
         })
@@ -76,9 +82,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
             true
         }
 
-        findViewById<View>(R.id.button_qrcode).setOnClickListener {
-            Toast.makeText(applicationContext, getString(R.string.not_yet_implemented) , Toast.LENGTH_SHORT).show()
-        }
+        updateQrCode(name, public, qrCodeImageView)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
