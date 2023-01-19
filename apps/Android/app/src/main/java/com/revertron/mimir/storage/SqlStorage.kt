@@ -425,20 +425,27 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return result
     }
 
-    private fun getLastMessage(userId: Long): Pair<String?, Long> {
-        var message: String? = null
-        var time = 0L
-        val cursor = readableDatabase.query("messages", arrayOf("type", "message", "time"), "contact = ?", arrayOf("$userId"), null, null, "id DESC", "1")
+    private fun getLastMessage(userId: Long): Message? {
+        var result: Message? = null
+        val columns = arrayOf("id", "contact", "guid", "replyTo", "incoming", "delivered", "read", "time", "edit", "type", "message")
+        val cursor = readableDatabase.query("messages", columns, "contact = ?", arrayOf("$userId"), null, null, "id DESC", "1")
         if (cursor.moveToNext()) {
-            val type = cursor.getInt(0)
-            val data = cursor.getBlob(1)
-            if (type == 0) {
-                message = String(data)
-            }
-            time = cursor.getLong(2)
+            val id = cursor.getLong(0)
+            val contactId = cursor.getLong(1)
+            val guid = cursor.getLong(2)
+            val replyTo = cursor.getLong(3)
+            val incoming = cursor.getInt(4) != 0
+            val delivered = cursor.getInt(5) != 0
+            val read = cursor.getInt(6) != 0
+            val time = cursor.getLong(7)
+            val edit = cursor.getLong(8)
+            val type = cursor.getInt(9)
+            val message = cursor.getBlob(10)
+            //Log.i(TAG, "$messageId: $guid")
+            result = Message(id, contactId, guid, replyTo, incoming, delivered, read, time, edit, type, message)
         }
         cursor.close()
-        return message to time
+        return result
     }
 
     fun getMessage(messageId: Long, byGuid: Boolean = false): Message? {
@@ -530,17 +537,14 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             val id = cursor.getLong(0)
             val pubkey = cursor.getBlob(1)
             val name = cursor.getString(2)
-            list.add(Contact(id, pubkey, name, "", 0L, false, 0))
+            list.add(Contact(id, pubkey, name, null, 0))
         }
         cursor.close()
         for (c in list) {
             c.unread = getUnreadCount(c.id)
-            c.lastMessageDelivered = getLastMessageDelivered(c.id)
-            val lastMessage = getLastMessage(c.id)
-            c.lastMessage = lastMessage.first.orEmpty()
-            c.lastMessageTime = lastMessage.second
+            c.lastMessage = getLastMessage(c.id)
         }
-        list.sortByDescending { it.lastMessageTime }
+        list.sortByDescending { it.lastMessage?.time }
 
         return list
     }

@@ -46,10 +46,10 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val contact = dataSet[position]
         holder.contactName.text = contact.name.ifEmpty { holder.itemView.context.getString(R.string.unknown_nickname) }
-        holder.lastMessage.text = contact.lastMessage.ifEmpty { "" }
-        if (contact.lastMessageTime > 0) {
+        holder.lastMessage.text = contact.lastMessage?.getText() ?: ""
+        if ((contact.lastMessage?.time ?: 0) > 0) {
             holder.lastMessageTime.visibility = View.VISIBLE
-            val date = Date(contact.lastMessageTime)
+            val date = Date(contact.lastMessage?.time ?: 0)
             val diff = Date().time - date.time
             if (diff > 86400 * 1000) {
                 holder.lastMessageTime.text = dateFormatter.format(date)
@@ -65,8 +65,8 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
             holder.deliveredIcon.visibility = View.GONE
         } else {
             holder.unreadCount.visibility = View.GONE
-            if (contact.lastMessageDelivered != null) {
-                if (contact.lastMessageDelivered!!) {
+            if (contact.lastMessage?.delivered != null) {
+                if (contact.lastMessage?.delivered!!) {
                     holder.deliveredIcon.setImageResource(R.drawable.ic_message_delivered)
                 } else {
                     holder.deliveredIcon.setImageResource(R.drawable.ic_message_not_sent)
@@ -96,5 +96,16 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: V
     fun setContacts(contacts: List<Contact>) {
         dataSet = contacts
         notifyDataSetChanged()
+    }
+
+    fun setMessageDelivered(id: Long) {
+        for ((index, contact) in dataSet.withIndex()) {
+            if (contact.lastMessage != null) {
+                if (contact.lastMessage?.id == id) {
+                    contact.lastMessage?.delivered = true
+                    notifyItemChanged(index)
+                }
+            }
+        }
     }
 }

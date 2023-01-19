@@ -178,15 +178,17 @@ class MimirServer(
         }
         Thread {
             Log.d(TAG, "Starting connection to $contactString")
+            val peers = storage.getContactPeers(contact)
             val receiver = object : ResolverReceiver {
                 override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
                     Log.i(TAG, "Resolved IPS: $ips")
-                    if (ips.isNotEmpty()) {
-                        ips.forEach {
+                    val newIps = ips.subtract(peers.toSet())
+                    if (newIps.isNotEmpty()) {
+                        newIps.forEach {
                             storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
                         }
                         // We don't want to make an endless loop, so we give it a null receiver
-                        connectContact(contact, contactString, ips, null)
+                        connectContact(contact, contactString, newIps.toList(), null)
                     } else {
                         Log.i(TAG, "Didn't find alive IPs for $contactString, giving up")
                         synchronized(connectContacts) {
@@ -204,7 +206,6 @@ class MimirServer(
                 }
             }
 
-            val peers = storage.getContactPeers(contact)
             connectContact(contact, contactString, peers, receiver)
         }.start()
     }

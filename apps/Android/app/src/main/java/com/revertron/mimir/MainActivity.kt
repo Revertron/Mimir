@@ -235,6 +235,15 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         popup.show()
     }
 
+    override fun onMessageDelivered(id: Long, delivered: Boolean) {
+        runOnUiThread {
+            super.onMessageDelivered(id, delivered)
+            val recycler = findViewById<RecyclerView>(R.id.contacts_list)
+            val adapter = recycler.adapter as ContactsAdapter
+            adapter.setMessageDelivered(id)
+        }
+    }
+
     private fun refreshContacts() {
         val contacts = (application as App).storage.getContactList()
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)

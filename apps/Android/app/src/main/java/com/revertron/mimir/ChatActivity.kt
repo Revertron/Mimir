@@ -42,7 +42,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         val id = getStorage().getContactId(pubkey)
-        contact = Contact(id, pubkey, name, "", 0L, false, 0)
+        contact = Contact(id, pubkey, name, null, 0)
 
         findViewById<AppCompatTextView>(R.id.title).text = contact.name
         supportActionBar?.title = ""
