@@ -33,6 +33,13 @@ class ContactActivity: BaseActivity() {
         val pubKeyEdit = findViewById<AppCompatEditText>(R.id.contact_public_key)
         pubKeyEdit.setText(Hex.toHexString(pubkey))
 
+        findViewById<View>(R.id.button_copy).setOnClickListener {
+            val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("mimir public key", pubKeyEdit.text)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+        }
+
         val buttonLink = findViewById<View>(R.id.button_link)
         buttonLink.setOnClickListener {
             val encoded = URLEncoder.encode(name, "UTF-8")
