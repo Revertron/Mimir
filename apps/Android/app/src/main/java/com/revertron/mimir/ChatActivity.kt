@@ -76,7 +76,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
         sendButton.setOnClickListener {
             val text: String = editText.text.toString().trim()
-            if (text.isNotEmpty()) {
+            if (text.isNotEmpty() || attachmentJson != null) {
                 editText.text?.clear()
                 sendMessage(contact.pubkey, text, replyTo)
                 replyPanel.visibility = View.GONE

@@ -60,6 +60,9 @@ fun readClientHello(dis: DataInputStream, read_address: Boolean): ClientHello? {
         count += read
     }
     size = dis.readInt()
+    if (size != 32) {
+        return null
+    }
     val receiver = ByteArray(size)
     count = 0
     while (count < size) {
@@ -72,6 +75,9 @@ fun readClientHello(dis: DataInputStream, read_address: Boolean): ClientHello? {
     val clientId = dis.readInt()
     val address = if (read_address) {
         val size = dis.readInt()
+        if (size != 16) {
+            return null
+        }
         val buf = ByteArray(size)
         dis.read(buf)
         InetAddress.getByAddress(buf)
@@ -213,6 +219,7 @@ fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stre
     val data: ByteArray
     var jsonSize = -1
     if (message.data.isNotEmpty()) {
+        var add = 0
         when (message.type) {
             1 -> {
                 val meta = JSONObject(String(message.data))
@@ -221,12 +228,13 @@ fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stre
                 val picture = getFileContents(file.absolutePath)
                 //TODO optimize memory
                 data = message.data.plus(picture)
+                add = 4
             }
             else -> {
                 data = message.data
             }
         }
-        json.put("payloadSize", data.size + 4)
+        json.put("payloadSize", data.size + add)
     } else {
         data = message.data
     }
