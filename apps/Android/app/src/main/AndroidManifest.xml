@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <application
         android:allowBackup="true"
@@ -41,6 +42,7 @@
         </activity>
 
         <activity android:name=".ContactActivity" android:exported="false" />
+        <activity android:name=".PictureActivity" android:exported="false" />
 
         <activity android:name=".UriHandlerActivity" android:exported="true" android:parentActivityName=".MainActivity">
             <intent-filter>

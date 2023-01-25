@@ -1,17 +1,21 @@
 package com.revertron.mimir.ui
 
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.storage.SqlStorage
+import org.json.JSONObject
+import java.io.File
 import java.text.DateFormat
 import java.text.SimpleDateFormat
-import java.util.Date
+import java.util.*
 
 class MessageAdapter(
     private val storage: SqlStorage,
@@ -20,7 +24,8 @@ class MessageAdapter(
     private val myName: String,
     private val contactName: String,
     private val onClick: View.OnClickListener,
-    private val onReplyClick: View.OnClickListener
+    private val onReplyClick: View.OnClickListener,
+    private val onPictureClick: View.OnClickListener
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
@@ -30,6 +35,8 @@ class MessageAdapter(
     class ViewHolder(view: View): RecyclerView.ViewHolder(view) {
         val name: AppCompatTextView
         val message: AppCompatTextView
+        val picture: AppCompatImageView
+        val picturePanel: FrameLayout
         val time: AppCompatTextView
         val sent: AppCompatImageView
         val replyToName: AppCompatTextView
@@ -39,6 +46,8 @@ class MessageAdapter(
         init {
             name = view.findViewById(R.id.name)
             message = view.findViewById(R.id.text)
+            picture = view.findViewById(R.id.picture)
+            picturePanel = view.findViewById(R.id.picture_panel)
             time = view.findViewById(R.id.time)
             sent = view.findViewById(R.id.status_image)
             replyToName = view.findViewById(R.id.reply_contact_name)
@@ -57,6 +66,7 @@ class MessageAdapter(
         view.setOnClickListener(onClick)
         //TODO make item background reflect touches
         view.findViewById<View>(R.id.reply_panel).setOnClickListener(onReplyClick)
+        view.findViewById<View>(R.id.picture).setOnClickListener(onPictureClick)
 
         return ViewHolder(view)
     }
@@ -71,6 +81,30 @@ class MessageAdapter(
             holder.name.visibility = View.GONE
         }
         holder.message.text = message.getText()
+        if (message.type == 1) {
+            if (message.data != null) {
+                val json = JSONObject(String(message.data))
+                val cachePath = holder.itemView.context.cacheDir.absolutePath + "/files/" + json.getString("name")
+                val filePath = holder.itemView.context.filesDir.absolutePath + "/files/" + json.getString("name")
+                val cacheFile = File(cachePath)
+                if (cacheFile.exists()) {
+                    val uri: Uri = Uri.fromFile(cacheFile)
+                    holder.picture.setImageURI(uri)
+                    holder.picture.tag = Uri.fromFile(File(filePath))
+                } else {
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        val uri: Uri = Uri.fromFile(file)
+                        holder.picture.setImageURI(uri)
+                        holder.picture.tag = uri
+                    }
+                }
+                holder.picturePanel.visibility = View.VISIBLE
+            }
+        } else {
+            holder.picture.setImageDrawable(null)
+            holder.picturePanel.visibility = View.GONE
+        }
         holder.time.text = formatTime(message.time)
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered

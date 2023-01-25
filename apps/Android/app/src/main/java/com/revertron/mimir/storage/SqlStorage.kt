@@ -18,6 +18,7 @@ import org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONObject
 import java.security.SecureRandom
 import java.util.*
 
@@ -49,7 +50,15 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     ) {
         fun getText(): String {
             return if (data != null) {
-                String(data)
+                when (type) {
+                    1 -> {
+                        val json = JSONObject(String(data))
+                        json.getString("text")
+                    }
+                    else -> {
+                        String(data)
+                    }
+                }
             } else {
                 "<Empty>"
             }

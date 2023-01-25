@@ -65,6 +65,34 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent">
 
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/attachment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/attachment_image"
+                android:src="@drawable/contact_no_avatar"
+                android:layout_width="0dp"
+                android:layout_height="140dp"
+                android:maxHeight="140dp"
+                android:layout_marginTop="8dp"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintRight_toRightOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"/>
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/attachment_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                android:padding="16dp"
+                android:src="@drawable/ic_close" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
         <androidx.appcompat.widget.LinearLayoutCompat
             android:id="@+id/reply_panel"
             android:layout_width="match_parent"
@@ -122,15 +150,23 @@
             android:orientation="horizontal"
             android:paddingTop="8dp">
 
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/attach_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/button_rounded"
+                android:src="@drawable/ic_attachment"
+                android:padding="8dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginBottom="8dp"
+                android:layout_gravity="bottom" />
+
             <androidx.appcompat.widget.AppCompatEditText
                 android:id="@+id/message_edit"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/send_button"
-                android:layout_marginStart="16dp"
+                android:layout_marginStart="8dp"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="8dp"
                 android:inputType="textCapSentences|textMultiLine"
@@ -140,16 +176,13 @@
             <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/send_button"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:background="@drawable/button_rounded"
                 android:src="@drawable/ic_send_new"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintRight_toRightOf="parent"
-                app:layout_constraintTop_toTopOf="@+id/message_edit"
-                android:paddingLeft="8dp"
-                android:paddingRight="8dp"
-                android:layout_marginEnd="16dp"
-                android:layout_marginBottom="8dp" />
+                android:padding="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:layout_gravity="bottom" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 

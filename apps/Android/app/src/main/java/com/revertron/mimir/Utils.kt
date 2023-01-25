@@ -4,10 +4,19 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.res.AssetFileDescriptor
+import android.database.Cursor
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
+import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import android.util.Log
+import android.webkit.MimeTypeMap
 import android.widget.ImageView
 import androidx.core.app.NotificationCompat
 import com.google.zxing.BarcodeFormat
@@ -16,11 +25,18 @@ import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.DecoderException
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONObject
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.*
 import kotlin.math.abs
+
+const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
 
 fun createServiceNotification(context: Context, state: State): Notification {
     // Create the NotificationChannel, but only on API 26+ because
@@ -71,6 +87,164 @@ fun updateQrCode(name: String, pubKey: String, imageView: ImageView) {
     val link = "mimir://mm/u/${pubKey}/$encoded"
     val qrCode = BarcodeEncoder().encodeBitmap(link, BarcodeFormat.QR_CODE, 600, 600)
     imageView.setImageBitmap(qrCode)
+}
+
+/**
+ * Copies picture file to app directory, creates preview
+ *
+ * @return Hash of file, null if some error occurs
+ */
+fun prepareFileForMessage(context: Context, uri: Uri): JSONObject? {
+    val tag = "prepareFileForMessage"
+    val size = uri.length(context)
+    if (size > PICTURE_MAX_SIZE) {
+        Log.e(tag, "File is too big")
+        return null
+    }
+    val contentResolver = context.contentResolver
+    val inputStream = contentResolver.openInputStream(uri)
+    val imagesDir = File(context.filesDir, "files")
+    if (!imagesDir.exists()) {
+        imagesDir.mkdirs()
+    }
+    val fileName = randomString(16)
+    val ext = getMimeType(context, uri)
+    val fullName = "$fileName.$ext"
+    val outputFile = File(imagesDir, fullName)
+    val outputStream = FileOutputStream(outputFile)
+    inputStream.use { input ->
+        outputStream.use { output ->
+            val copied = input?.copyTo(output) ?: {
+                Log.e(tag, "File is not accessible")
+                null
+            }
+            if (copied != size) {
+                Log.e(tag, "Error copying file to app storage!")
+                return null
+            }
+        }
+    }
+    val hash = getFileHash(outputFile)
+    val json = JSONObject()
+    json.put("name", fullName)
+    json.put("size", size)
+    json.put("hash", Hex.toHexString(hash))
+    return json
+}
+
+fun getFileHash(file: File): ByteArray {
+    val messageDigest = MessageDigest.getInstance("SHA-256")
+    val inputStream = FileInputStream(file)
+    val buffer = ByteArray(8192)
+    var bytesRead: Int
+    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+        messageDigest.update(buffer, 0, bytesRead)
+    }
+    inputStream.close()
+    return messageDigest.digest()
+}
+
+fun getMimeType(context: Context, uri: Uri): String? {
+    //Check uri format to avoid null
+    val extension: String? = if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
+        //If scheme is a content
+        val mime = MimeTypeMap.getSingleton()
+        mime.getExtensionFromMimeType(context.contentResolver.getType(uri))
+    } else {
+        //If scheme is a File
+        //This will replace white spaces with %20 and also other special characters. This will avoid returning null values on file name with spaces and special characters.
+        MimeTypeMap.getFileExtensionFromUrl(Uri.fromFile(File(uri.path)).toString())
+    }
+    return extension
+}
+
+fun getImagePreview(context: Context, fileName: String, maxSize: Int, quality: Int): Bitmap? {
+    val imagesDir = File(context.filesDir, "files")
+    val cacheDir = File(context.cacheDir, "files")
+    val previewFile = File(cacheDir, fileName)
+    val created = if (!previewFile.exists()) {
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs()
+        }
+        val originalFile = File(imagesDir, fileName).absolutePath
+        createImagePreview(originalFile, previewFile.absolutePath, maxSize, quality)
+    } else {
+        false
+    }
+    if (created) {
+        return BitmapFactory.decodeFile(previewFile.absolutePath)
+    } else {
+        val originalFile = File(imagesDir, fileName).absolutePath
+        return BitmapFactory.decodeFile(originalFile)
+    }
+}
+
+fun createImagePreview(filePath: String, previewPath: String, maxSize: Int, quality: Int): Boolean {
+    val file = File(filePath)
+    if (file.length() < 500 * 1024) {
+        return false
+    }
+    val bitmap = BitmapFactory.decodeFile(filePath) ?: return false
+    val inWidth: Int = bitmap.width
+    val inHeight: Int = bitmap.height
+    if (inWidth <= maxSize && inHeight <= maxSize) {
+        bitmap.recycle()
+        return false
+    }
+    val outWidth: Int
+    val outHeight: Int
+    if (inWidth > inHeight) {
+        outWidth = maxSize
+        outHeight = inHeight * maxSize / inWidth
+    } else {
+        outHeight = maxSize
+        outWidth = inWidth * maxSize / inHeight
+    }
+    val scaledBitmap = Bitmap.createScaledBitmap(bitmap, outWidth, outHeight, true)
+    bitmap.recycle()
+    val previewFile = File(previewPath)
+    val outputStream = FileOutputStream(previewFile)
+    outputStream.use {
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+    }
+    scaledBitmap.recycle()
+    return true
+}
+
+fun deleteFileAndPreview(context: Context, fileName: String) {
+    val imagesDir = File(context.filesDir, "files")
+    val cacheDir = File(context.cacheDir, "files")
+    File(imagesDir, fileName).delete()
+    File(cacheDir, fileName).delete()
+}
+
+fun getFileContents(filePath: String): ByteArray {
+    val file = File(filePath)
+    val inputStream = FileInputStream(file)
+    val bytes = inputStream.readBytes()
+    inputStream.close()
+    return bytes
+}
+
+fun saveFileForMessage(context: Context, fileName: String, data: ByteArray) {
+    val imagesDir = File(context.filesDir, "files")
+    if (!imagesDir.exists()) {
+        imagesDir.mkdirs()
+    }
+    val outputFile = File(imagesDir, fileName)
+    val outputStream = FileOutputStream(outputFile)
+    outputStream.use {
+        it.write(data)
+        it.flush()
+    }
+    val cacheDir = File(context.cacheDir, "files")
+    if (!cacheDir.exists()) {
+        cacheDir.mkdirs()
+    }
+    val previewFile = File(cacheDir, fileName)
+    val originalFile = File(imagesDir, fileName).absolutePath
+    //TODO refactor this methods to make it more clear
+    createImagePreview(originalFile, previewFile.absolutePath, 512, 80)
 }
 
 fun getYggdrasilAddress(): InetAddress? {
@@ -217,4 +391,86 @@ fun getInitials(contact: Contact): String {
 
 enum class State {
     Disabled, Enabled;
+}
+
+fun Uri.length(context: Context): Long {
+
+    val TAG = "Uri.length"
+
+    val fromContentProviderColumn = fun(): Long {
+        // Try to get content length from the content provider column OpenableColumns.SIZE
+        // which is recommended to implement by all the content providers
+        var cursor: Cursor? = null
+        return try {
+            cursor = context.contentResolver.query(
+                this,
+                arrayOf(OpenableColumns.SIZE),
+                null,
+                null,
+                null
+            ) ?: throw Exception("Content provider returned null or crashed")
+            val sizeColumnIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (sizeColumnIndex != -1 && cursor.count > 0) {
+                cursor.moveToFirst()
+                cursor.getLong(sizeColumnIndex)
+            } else {
+                -1
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, e.message ?: e.javaClass.simpleName)
+            -1
+        } finally {
+            cursor?.close()
+        }
+    }
+
+    val fromFileDescriptor = fun(): Long {
+        // Try to get content length from content scheme uri or file scheme uri
+        var fileDescriptor: ParcelFileDescriptor? = null
+        return try {
+            fileDescriptor = context.contentResolver.openFileDescriptor(this, "r")
+                ?: throw Exception("Content provider recently crashed")
+            fileDescriptor.statSize
+        } catch (e: Exception) {
+            Log.d(TAG, e.message ?: e.javaClass.simpleName)
+            -1
+        } finally {
+            fileDescriptor?.close()
+        }
+    }
+
+    val fromAssetFileDescriptor = fun(): Long {
+        // Try to get content length from content scheme uri, file scheme uri or android resource scheme uri
+        var assetFileDescriptor: AssetFileDescriptor? = null
+        return try {
+            assetFileDescriptor = context.contentResolver.openAssetFileDescriptor(this, "r")
+                ?: throw Exception("Content provider recently crashed")
+            assetFileDescriptor.length
+        } catch (e: Exception) {
+            Log.d(TAG, e.message ?: e.javaClass.simpleName)
+            -1
+        } finally {
+            assetFileDescriptor?.close()
+        }
+    }
+
+    return when (scheme) {
+        ContentResolver.SCHEME_FILE -> {
+            fromFileDescriptor()
+        }
+        ContentResolver.SCHEME_CONTENT -> {
+            val length = fromContentProviderColumn()
+            if (length >= 0) {
+                length
+            } else {
+                fromFileDescriptor()
+            }
+        }
+        ContentResolver.SCHEME_ANDROID_RESOURCE -> {
+            fromAssetFileDescriptor()
+        }
+        else -> {
+            -1
+        }
+    }
 }

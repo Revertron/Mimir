@@ -64,7 +64,7 @@ class ConnectionHandler(
                     }
                     if (message != null) {
                         try {
-                            writeMessage(dos, message.second)
+                            writeMessage(dos, message.second, infoProvider.getFilesDirectory())
                         } catch (e: Exception) {
                             e.printStackTrace()
                             socket.close()

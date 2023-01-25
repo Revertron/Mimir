@@ -373,4 +373,5 @@ interface InfoProvider {
     fun getMyInfo(ifUpdatedSince: Long): InfoResponse?
     fun getContactUpdateTime(pubkey: ByteArray): Long
     fun updateContactInfo(pubkey: ByteArray, info: InfoResponse)
+    fun getFilesDirectory(): String
 }

@@ -45,6 +45,7 @@
     <string name="rename_contact">Rename contact</string>
     <string name="copy_contact_id">Copy contact ID</string>
     <string name="not_yet_implemented">Not yet implemented</string>
+    <string name="too_big_picture">Picture file must be less or equal to 5 Mb</string>
     <string name="contact_added">New contact added</string>
     <string name="contact_already_added">Contact with that key already added</string>
     <string name="contact_addition_error_wrong_key">Wrong public key, error adding contact</string>

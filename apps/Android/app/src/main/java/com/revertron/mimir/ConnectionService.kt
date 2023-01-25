@@ -11,6 +11,10 @@ import androidx.preference.PreferenceManager
 import com.revertron.mimir.net.*
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.DataInputStream
+import java.io.File
 
 class ConnectionService : Service(), EventListener, InfoProvider {
 
@@ -58,9 +62,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val keyString = Hex.toHexString(pubkey)
                 val message = intent.getStringExtra("message")
                 val replyTo = intent.getLongExtra("replyTo", 0L)
+                val type = intent.getIntExtra("type", 0)
                 Log.i(TAG, "Replying to $replyTo")
                 if (pubkey != null && message != null) {
-                    val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, 0, message.toByteArray())
+                    val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, type, message.toByteArray())
                     Log.i(TAG, "Message $id to $keyString")
                     Thread{
                         mimirServer?.sendMessages()
@@ -116,7 +121,22 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
         val storage = (application as App).storage
-        storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, message)
+        if (type == 1) {
+            //TODO fix multiple vulnerabilities
+            val bais = ByteArrayInputStream(message)
+            val dis = DataInputStream(bais)
+            val metaSize = dis.readInt()
+            val meta = ByteArray(metaSize)
+            dis.read(meta)
+            val json = JSONObject(String(meta))
+            val rest = dis.available()
+            val buf = ByteArray(rest)
+            dis.read(buf)
+            saveFileForMessage(this, json.getString("name"), buf)
+            storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, meta)
+        } else {
+            storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, message)
+        }
     }
 
     override fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean) {
@@ -143,5 +163,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val id = storage.getContactId(pubkey)
         Log.i(TAG, "Renaming contact $id to ${info.nickname}")
         storage.renameContact(id, info.nickname, false)
+    }
+
+    override fun getFilesDirectory(): String {
+        return filesDir.absolutePath + "/files"
     }
 }

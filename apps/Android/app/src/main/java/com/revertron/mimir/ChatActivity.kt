@@ -4,29 +4,36 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.*
 import android.widget.Toast
 import androidx.appcompat.widget.*
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
 import io.getstream.avatarview.AvatarView
+import org.json.JSONObject
 
 
 class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
 
     companion object {
         const val TAG = "ChatActivity"
+        const val PICK_IMAGE_REQUEST_CODE = 123
     }
 
     lateinit var contact: Contact
     lateinit var replyPanel: LinearLayoutCompat
     lateinit var replyName: AppCompatTextView
     private lateinit var replyText: AppCompatTextView
+    private lateinit var attachmentPanel: ConstraintLayout
+    private lateinit var attachmentPreview: AppCompatImageView
+    private var attachmentJson: JSONObject? = null
     var replyTo = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,7 +84,23 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 replyTo = 0L
             }
         }
-        val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this, onClickOnReply())
+        findViewById<AppCompatImageButton>(R.id.attach_button).setOnClickListener {
+            selectAndSendPicture()
+        }
+        attachmentPanel = findViewById(R.id.attachment)
+        attachmentPanel.visibility = View.GONE
+        attachmentPreview = findViewById(R.id.attachment_image)
+        val attachmentCancel = findViewById<AppCompatImageView>(R.id.attachment_cancel)
+        attachmentCancel.setOnClickListener {
+            attachmentPreview.setImageDrawable(null)
+            attachmentPanel.visibility = View.GONE
+            attachmentJson?.getString("name")?.apply {
+                deleteFileAndPreview(this@ChatActivity, this)
+            }
+            attachmentJson = null
+        }
+
+        val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this, onClickOnReply(), onClickOnPicture())
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
@@ -93,6 +116,13 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         if (position >= 0) {
             recycler.smoothScrollToPosition(position)
         }
+    }
+
+    private fun onClickOnPicture() = fun(it: View) {
+        val uri = it.tag as Uri
+        val intent = Intent(this, PictureActivity::class.java)
+        intent.data = uri
+        startActivity(intent)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -138,13 +168,51 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         return true
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_IMAGE_REQUEST_CODE && resultCode == RESULT_OK) {
+            if (data == null || data.data == null) {
+                Log.e(TAG, "Error getting picture")
+                return
+            }
+            val selectedPictureUri = data.data!!
+            if (selectedPictureUri.length(this) > PICTURE_MAX_SIZE) {
+                Toast.makeText(this, getString(R.string.too_big_picture), Toast.LENGTH_SHORT).show()
+                return
+            }
+            val message = prepareFileForMessage(this, selectedPictureUri)
+            Log.i(TAG, "File message for $selectedPictureUri is $message")
+            if (message != null) {
+                val fileName = message.getString("name")
+                val preview = getImagePreview(this, fileName, 512, 80)
+                attachmentPreview.setImageBitmap(preview)
+                attachmentPanel.visibility = View.VISIBLE
+                attachmentJson = message
+            }
+        }
+    }
+
     private fun sendMessage(pubkey: ByteArray, text: String, replyTo: Long) {
         val intent = Intent(this, ConnectionService::class.java)
         intent.putExtra("command", "send")
         intent.putExtra("pubkey", pubkey)
-        intent.putExtra("message", text)
         intent.putExtra("replyTo", replyTo)
+        if (attachmentJson != null) {
+            intent.putExtra("type", 1)
+            attachmentJson!!.put("text", text)
+            intent.putExtra("message", attachmentJson.toString())
+            attachmentPanel.visibility = View.GONE
+            attachmentJson = null
+        } else {
+            intent.putExtra("message", text)
+        }
         startService(intent)
+    }
+
+    private fun selectAndSendPicture() {
+        val intent = Intent(Intent.ACTION_PICK)
+        intent.type = "image/*"
+        startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
     }
 
     override fun onMessageSent(id: Long, contactId: Long) {

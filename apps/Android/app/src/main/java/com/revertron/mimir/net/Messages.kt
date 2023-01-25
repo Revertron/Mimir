@@ -1,11 +1,13 @@
 package com.revertron.mimir.net
 
 import android.util.Log
+import com.revertron.mimir.getFileContents
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.File
 import java.net.InetAddress
 
 const val MSG_TYPE_HELLO = 1
@@ -194,7 +196,7 @@ fun readMessage(dis: DataInputStream): Message? {
 /**
  * Writes message to socket
  */
-fun writeMessage(dos: DataOutputStream, message: Message, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT): Boolean {
+fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT): Boolean {
     val size = 8 + 4 + 4 + message.data.size
     writeHeader(dos, stream, type, size)
 
@@ -208,15 +210,35 @@ fun writeMessage(dos: DataOutputStream, message: Message, stream: Int = 0, type:
         json.put("editTime", message.editTime)
     }
     json.put("type", message.type)
+    val data: ByteArray
+    var jsonSize = -1
     if (message.data.isNotEmpty()) {
-        json.put("payloadSize", message.data.size)
+        when (message.type) {
+            1 -> {
+                val meta = JSONObject(String(message.data))
+                jsonSize = message.data.size
+                val file = File(filePath, meta.getString("name"))
+                val picture = getFileContents(file.absolutePath)
+                //TODO optimize memory
+                data = message.data.plus(picture)
+            }
+            else -> {
+                data = message.data
+            }
+        }
+        json.put("payloadSize", data.size + 4)
+    } else {
+        data = message.data
     }
     val jsonData = json.toString().toByteArray()
 
     dos.writeInt(jsonData.size)
     dos.write(jsonData)
-    if (message.data.isNotEmpty()) {
-        dos.write(message.data)
+    if (data.isNotEmpty()) {
+        if (jsonSize >= 0) {
+            dos.writeInt(jsonSize)
+        }
+        dos.write(data)
     }
     dos.flush()
     return true
