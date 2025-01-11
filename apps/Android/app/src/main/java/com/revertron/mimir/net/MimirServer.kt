@@ -20,7 +20,7 @@ private const val CONNECTION_TRIES = 5
 private const val CONNECTION_TIMEOUT = 3000
 private const val CONNECTION_PERIOD = 1000L
 //TODO move to gradle config maybe?
-private const val RESOLVER_ADDR = "[202:7991::880a:d4b2:de3b:2da1]"
+private const val RESOLVER_ADDR = "[208:62:45:62:59b8:f1a2:62ca:f87c]"
 
 class MimirServer(
     val storage: SqlStorage,
