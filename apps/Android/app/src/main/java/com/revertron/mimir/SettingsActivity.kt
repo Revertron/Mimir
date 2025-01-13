@@ -6,6 +6,7 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.SeekBar
 import android.widget.SeekBar.OnSeekBarChangeListener
+import android.widget.Toast
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.Toolbar
 import androidx.preference.PreferenceManager
@@ -13,6 +14,7 @@ import androidx.preference.PreferenceManager
 const val IP_CACHE_TTL = "ip_cache_ttl"
 const val IP_CACHE_PROGRESS = "ip_cache_progress"
 const val IP_CACHE_DEFAULT_TTL = 43200
+const val VOICE_MESSAGES_ENABLED = "voice_messages_enabled"
 
 class SettingsActivity : BaseActivity() {
 
@@ -56,6 +58,16 @@ class SettingsActivity : BaseActivity() {
             }
 
         })
+        val voiceMessagesSwitch = findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.voice_messages_switch)
+        voiceMessagesSwitch.isChecked = preferences.getBoolean(VOICE_MESSAGES_ENABLED, true)
+        voiceMessagesSwitch.setOnCheckedChangeListener { _, isChecked ->
+            preferences.edit().putBoolean(VOICE_MESSAGES_ENABLED, isChecked).apply()
+            Toast.makeText(this, 
+                if (isChecked) R.string.voice_messages_enabled 
+                else R.string.voice_messages_disabled, 
+                Toast.LENGTH_SHORT).show()
+        }
+
         val lastPing = findViewById<AppCompatTextView>(R.id.last_tracker_ping_time)
         val lastPingTime = preferences.getLong("trackerPingTime", 0L)
         lastPing.text = getString(R.string.tracker_ping_time, getUtcTime() - lastPingTime)

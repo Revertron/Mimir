@@ -94,7 +94,7 @@ fun updateQrCode(name: String, pubKey: String, imageView: ImageView) {
  *
  * @return Hash of file, null if some error occurs
  */
-fun prepareFileForMessage(context: Context, uri: Uri): JSONObject? {
+fun prepareFileForMessage(context: Context, uri: Uri, isVoiceMessage: Boolean = false): JSONObject? {
     val tag = "prepareFileForMessage"
     val size = uri.length(context)
     if (size > PICTURE_MAX_SIZE) {
@@ -108,7 +108,7 @@ fun prepareFileForMessage(context: Context, uri: Uri): JSONObject? {
         imagesDir.mkdirs()
     }
     val fileName = randomString(16)
-    val ext = getMimeType(context, uri)
+    val ext = if (isVoiceMessage) "m4a" else getMimeType(context, uri)
     val fullName = "$fileName.$ext"
     val outputFile = File(imagesDir, fullName)
     val outputStream = FileOutputStream(outputFile)
@@ -273,6 +273,25 @@ fun isSubnetYggdrasilAddress(address: InetAddress): Boolean {
 }
 
 fun isAddressFromSubnet(address: InetAddress, subnet: InetAddress): Boolean {
+    // Логирование для отладки
+    Log.d("NetworkUtils", "Checking address: ${address.hostAddress}")
+    Log.d("NetworkUtils", "Against subnet: ${subnet.hostAddress}")
+
+    // Проверка диапазонов 200:: и 300::
+    val addressStr = address.hostAddress ?: return false
+    val subnetStr = subnet.hostAddress ?: return false
+
+    // Проверяем, что оба адреса начинаются с 200:: или 300::
+    val validPrefixes = listOf("200:", "300:")
+    val addressPrefix = addressStr.substring(0, 4)
+    val subnetPrefix = subnetStr.substring(0, 4)
+
+    if (!validPrefixes.contains(addressPrefix) || !validPrefixes.contains(subnetPrefix)) {
+        Log.w("NetworkUtils", "Invalid prefix - address: $addressPrefix, subnet: $subnetPrefix")
+        return false
+    }
+
+    // Проверяем, что адреса находятся в одной подсети
     for (b in 1..7) {
         if (address.address[b] != subnet.address[b]) {
             return false

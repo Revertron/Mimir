@@ -35,55 +35,75 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         val t = Thread {
             val buf = ByteArray(1024)
             val packet = DatagramPacket(buf, buf.size)
+            socket.soTimeout = 30000 // Увеличиваем таймаут до 30 секунд
             while (!Thread.interrupted()) {
-                socket.receive(packet)
+                try {
+                    socket.receive(packet)
+                } catch (e: SocketTimeoutException) {
+                    Log.w(TAG, "Socket receive timeout, retrying...")
+                    continue
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error receiving packet", e)
+                    break
+                }
                 if (packet.length == 0) continue
                 val time = getUtcTime()
                 val bais = ByteArrayInputStream(packet.data, 0, packet.length)
                 val dis = DataInputStream(bais)
-                val nonce = dis.readInt()
-                val command = dis.readByte()
-                val pair = nonces.remove(nonce) ?: continue
-                synchronized(timeouts) {
-                    timeouts.remove(nonce)?.interrupt()
-                }
-                when (command.toInt()) {
-                    CMD_ANNOUNCE -> {
-                        val ttl = dis.readLong()
-                        pair.second.onAnnounceResponse(pair.first, ttl)
+                try {
+                    val nonce = dis.readInt()
+                    val command = dis.readByte()
+                    val pair = nonces.remove(nonce) ?: continue
+                    synchronized(timeouts) {
+                        timeouts.remove(nonce)?.interrupt()
                     }
-                    CMD_GET_IPS -> {
-                        val count = dis.readByte()
-                        Log.i(TAG, "Got $count ips")
-                        if (count <= 0) {
-                            pair.second.onError(pair.first)
-                            continue
-                        }
-                        val results = mutableListOf<Peer>()
-                        val ipBuf = ByteArray(16)
-                        val sigBuf = ByteArray(64)
-                        for (r in 1..count) {
-                            Log.i(TAG, "Reading address $r")
-                            dis.readFully(ipBuf)
-                            val ip = Inet6Address.getByAddress(ipBuf)
-                            dis.readFully(sigBuf)
-                            val port = dis.readShort()
-                            val priority = dis.readByte()
-                            val clientId = dis.readInt()
-                            val ttl = dis.readLong()
-                            Log.i(TAG, "Got ip $ip")
-                            val public = Ed25519PublicKeyParameters(pair.first)
-                            if (!Sign.verify(public, ipBuf, sigBuf)) {
-                                Log.w(TAG, "Wrong IP signature!")
-                                continue
+                    try {
+                        when (command.toInt()) {
+                            CMD_ANNOUNCE -> {
+                                val ttl = dis.readLong()
+                                pair.second.onAnnounceResponse(pair.first, ttl)
                             }
-                            val address = ip.toString().replace("/", "")
-                            Log.i(TAG, "Got TTL: $ttl")
-                            results.add(Peer(address, port, clientId, priority.toInt(), time + ttl))
+                            CMD_GET_IPS -> {
+                                val count = dis.readByte()
+                                Log.i(TAG, "Got $count ips")
+                                if (count <= 0) {
+                                    pair.second.onError(pair.first)
+                                    continue
+                                }
+                                val results = mutableListOf<Peer>()
+                                val ipBuf = ByteArray(16)
+                                val sigBuf = ByteArray(64)
+                                for (r in 1..count) {
+                                    Log.i(TAG, "Reading address $r")
+                                    dis.readFully(ipBuf)
+                                    val ip = Inet6Address.getByAddress(ipBuf)
+                                    dis.readFully(sigBuf)
+                                    val port = dis.readShort()
+                                    val priority = dis.readByte()
+                                    val clientId = dis.readInt()
+                                    val ttl = dis.readLong()
+                                    Log.i(TAG, "Got ip $ip")
+                                    val public = Ed25519PublicKeyParameters(pair.first)
+                                    if (!Sign.verify(public, ipBuf, sigBuf)) {
+                                        Log.w(TAG, "Wrong IP signature!")
+                                        continue
+                                    }
+                                    val address = ip.toString().replace("/", "")
+                                    Log.i(TAG, "Got TTL: $ttl")
+                                    results.add(Peer(address, port, clientId, priority.toInt(), time + ttl))
+                                }
+                                Log.i(TAG, "Resolved $results")
+                                pair.second.onResolveResponse(pair.first, results)
+                            }
+                            else -> {
+                                Log.w(TAG, "Unknown command: $command")
+                            }
                         }
-                        Log.i(TAG, "Resolved $results")
-                        pair.second.onResolveResponse(pair.first, results)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing command", e)
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing packet", e)
                 }
             }
         }
@@ -154,25 +174,24 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
 
     private fun startTimeoutThread(nonce: Int, receiver: ResolverReceiver): Thread {
         val t = Thread {
-            //Log.d(TAG, "Timeout thread for $nonce started")
             try {
-                Thread.sleep(10000)
+                Thread.sleep(30000) // Увеличиваем таймаут до 30 секунд
                 synchronized(nonces) {
                     if (nonces.containsKey(nonce)) {
-                        //Log.d(TAG, "Timeout thread for $nonce got timeout")
                         val pair = nonces.remove(nonce)!!
                         receiver.onError(pair.first)
+                        Log.w(TAG, "Timeout for nonce $nonce")
                     }
                 }
             } catch (e: InterruptedException) {
-                //Log.d(TAG, "Timeout thread for $nonce interrupted")
+                // Timeout interrupted
             }
             synchronized(timeouts) {
                 timeouts.remove(nonce)
             }
         }
         synchronized(timeouts) {
-            timeouts.put(nonce, t)
+            timeouts[nonce] = t
         }
         t.start()
         return t

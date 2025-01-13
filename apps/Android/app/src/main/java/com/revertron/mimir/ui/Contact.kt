@@ -7,5 +7,6 @@ data class Contact(
     val pubkey: ByteArray,
     val name: String,
     var lastMessage: SqlStorage.Message?,
-    var unread: Int
+    var unread: Int,
+    var voiceMessagesEnabled: Boolean = false // По умолчанию отключено
 )

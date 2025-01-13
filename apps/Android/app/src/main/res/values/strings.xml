@@ -22,6 +22,13 @@
     <string name="contact_add">Add</string>
     <string name="cancel">Cancel</string>
     <string name="message">Message</string>
+    <string name="recording_canceled">Recording canceled</string>
+    <string name="recording_too_short">Recording must be at least 1 second</string>
+    <string name="playback_error">Playback error</string>
+    <string name="play_voice_message">Play voice message</string>
+    <string name="record_voice_message">Record a voice message</string>
+    <string name="recording_in_progress">Recording in progress...</string>
+    <string name="recording_error">Recording error</string>
     <string name="my_public_key">My public key:</string>
     <string name="contact_public_key">Public key:</string>
     <string name="my_name_title">My name:</string>
@@ -61,4 +68,19 @@
     <string name="three_days">3 days</string>
     <string name="fifteen_days">15 days</string>
     <string name="tracker_ping_time">Tracker ping was %d seconds ago</string>
+    <string name="enable_voice_messages">Enable voice messages</string>
+    <string name="voice_messages_enabled">Voice messages enabled</string>
+    <string name="voice_messages_disabled">Voice messages disabled</string>
+    <string name="recipient_voice_messages_disabled">The recipient has disconnected voice messages</string>
+    <string name="slide_to_cancel">Slide up to cancel</string>
+    <string name="voice_message_duration" formatted="false">%d:%02d</string>
+    <string name="message_empty_error">Message cannot be empty</string>
+    <string name="invalid_attachment_error">Invalid attachment</string>
+    <string name="unsupported_attachment_error">Unsupported attachment type</string>
+    <string name="no_connection">No connection</string>
+    <string name="message_prepare_error">Message preparation error</string>
+    <string name="message_send_error">Message sending error</string>
+    <string name="no_connection_with_contact">No connection with contact</string>
+    <string name="voice_messages_disabled_title">Voice messages disabled</string>
+    <string name="recipient_voice_messages_disabled_message">This user has disabled receiving voice messages. You cannot send him a voice message.</string>
 </resources>

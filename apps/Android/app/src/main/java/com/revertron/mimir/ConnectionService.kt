@@ -20,12 +20,28 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     companion object {
         const val TAG = "ConnectionService"
+        private var instance: ConnectionService? = null
+        
+        @JvmStatic
+        fun isConnected(): Boolean {
+            return instance?.mimirServer?.isOnline ?: false
+        }
     }
 
-    var mimirServer: MimirServer? = null
+    private var mimirServer: MimirServer? = null
 
     override fun onBind(intent: Intent): IBinder? {
         return null
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        instance = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -65,11 +81,32 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val type = intent.getIntExtra("type", 0)
                 Log.i(TAG, "Replying to $replyTo")
                 if (pubkey != null && message != null) {
-                    val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, type, message.toByteArray())
-                    Log.i(TAG, "Message $id to $keyString")
-                    Thread{
-                        mimirServer?.sendMessages()
-                    }.start()
+                    try {
+                        val messageData = when (type) {
+                            0 -> { // Текстовое сообщение
+                                val json = JSONObject(message)
+                                val text = json.getString("text")
+                                Log.d(TAG, "Processing text message: $text")
+                                text.toByteArray(Charsets.UTF_8)
+                            }
+                            1 -> { // Сообщение с вложением
+                                Log.d(TAG, "Processing attachment message: $message")
+                                message.toByteArray(Charsets.UTF_8)
+                            }
+                            else -> {
+                                Log.e(TAG, "Unknown message type: $type")
+                                return START_NOT_STICKY
+                            }
+                        }
+                        
+                        val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, type, messageData)
+                        Log.i(TAG, "Message $id to $keyString")
+                        Thread {
+                            mimirServer?.sendMessages()
+                        }.start()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing message", e)
+                    }
                 }
             }
             "resend" -> {
@@ -121,8 +158,17 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
         val storage = (application as App).storage
+        val preferences = PreferenceManager.getDefaultSharedPreferences(this)
+        val voiceMessagesEnabled = preferences.getBoolean(VOICE_MESSAGES_ENABLED, true)
+        
         if (type == 1) {
-            //TODO fix multiple vulnerabilities
+            // Проверяем, включены ли голосовые сообщения
+            if (!voiceMessagesEnabled) {
+                Log.i(TAG, "Voice message rejected - voice messages disabled")
+                return
+            }
+            
+            // Обрабатываем голосовое сообщение
             val bais = ByteArrayInputStream(message)
             val dis = DataInputStream(bais)
             val metaSize = dis.readInt()
@@ -135,6 +181,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             saveFileForMessage(this, json.getString("name"), buf)
             storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, meta)
         } else {
+            // Обрабатываем обычное сообщение
             storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, message)
         }
     }
@@ -151,7 +198,34 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val file = getFileStreamPath(info.avatar)
             avatar = file.readBytes()
         }
-        return InfoResponse(info.updated, info.name, info.info, avatar)
+        
+        // Добавляем настройку голосовых сообщений в info
+        val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
+        val voiceMessagesEnabled = preferences.getBoolean(VOICE_MESSAGES_ENABLED, true)
+        val infoJson = JSONObject(info.info.ifEmpty { "{}" })
+        infoJson.put("voiceMessagesEnabled", voiceMessagesEnabled)
+        
+        // Добавляем время последнего обновления настроек
+        infoJson.put("settingsUpdated", System.currentTimeMillis())
+        
+        return InfoResponse(info.updated, info.name, infoJson.toString(), avatar)
+    }
+
+    override fun getContactInfo(pubkey: ByteArray): com.revertron.mimir.net.InfoResponse? {
+        val storage = (application as App).storage
+        val storageResponse = storage.getContactInfo(pubkey)
+        val contactId = storage.getContactId(pubkey)
+        val contactName = storage.getContactName(contactId)
+        val updateTime = storage.getContactUpdateTime(pubkey)
+        
+        return storageResponse?.let {
+            com.revertron.mimir.net.InfoResponse(
+                time = updateTime,
+                nickname = contactName,
+                info = it.info,
+                avatar = null // TODO: Implement avatar support if needed
+            )
+        }
     }
 
     override fun getContactUpdateTime(pubkey: ByteArray): Long {
@@ -163,6 +237,15 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val id = storage.getContactId(pubkey)
         Log.i(TAG, "Renaming contact $id to ${info.nickname}")
         storage.renameContact(id, info.nickname, false)
+        
+        // Обновляем настройку голосовых сообщений контакта
+        try {
+            val infoJson = JSONObject(info.info)
+            val voiceMessagesEnabled = infoJson.optBoolean("voiceMessagesEnabled", true)
+            storage.updateContactVoiceMessagesEnabled(id, voiceMessagesEnabled)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing contact info", e)
+        }
     }
 
     override fun getFilesDirectory(): String {
