@@ -1,5 +1,7 @@
 package com.revertron.mimir.net
 
+import org.json.JSONObject
+
 import android.util.Log
 import com.revertron.mimir.isAddressFromSubnet
 import com.revertron.mimir.isSubnetYggdrasilAddress
@@ -63,8 +65,27 @@ class ConnectionHandler(
                         }
                     }
                     if (message != null) {
-                        try {
-                            writeMessage(dos, message.second, infoProvider.getFilesDirectory())
+                    try {
+                        val contactInfo = infoProvider.getContactInfo(peer!!)
+                        val voiceMessagesEnabled = try {
+                            val infoJson = JSONObject(contactInfo?.info ?: "{}")
+                            infoJson.optBoolean("voiceMessagesEnabled", true)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing contact info", e)
+                            true
+                        }
+                        
+                        // Проверяем тип сообщения и флаг voiceMessagesEnabled
+                        if (message.second.type == 1 && !voiceMessagesEnabled) {
+                            Log.i(TAG, "Voice messages are disabled for recipient. Skipping message ${message.second.guid}")
+                            synchronized(buffer) {
+                                buffer.removeAll { it.first == message.first }
+                            }
+                            listener.onMessageDelivered(peer!!, message.first, false)
+                            continue
+                        }
+                        
+                        writeMessage(dos, message.second, infoProvider.getFilesDirectory(), voiceMessagesEnabled = voiceMessagesEnabled)
                         } catch (e: Exception) {
                             e.printStackTrace()
                             socket.close()
@@ -209,22 +230,47 @@ class ConnectionHandler(
                     }
                 }
                 MSG_TYPE_OK -> {
-                    val ok = readOk(dis)
-                    if (ok != null) {
-                        Log.i(TAG, "Message with id ${ok.id} received by peer")
-                        //TODO process Ok as real confirmation
-                        if (peerStatus == Status.ChallengeAnswered && ok.id == 0L) {
-                            // Now we, as client node, need to authorize the server node
-                            val challenge = getChallenge()
-                            writeChallenge(dos, challenge!!, type = MSG_TYPE_CHALLENGE2)
-                            peerStatus = Status.Challenge2Sent
-                        } else if (peerStatus == Status.Challenge2Answered && ok.id == 0L) {
-                            // Now we, as client node, are authorized
-                            peerStatus = Status.Auth2Done
-                        } else if (ok.id != 0L) {
-                            //TODO Check that we really sent this ok.id to this user ;)
-                            listener.onMessageDelivered(peer!!, ok.id, true)
+                    try {
+                        val ok = readOk(dis)
+                        if (ok != null) {
+                            Log.i(TAG, "Message with id ${ok.id} received by peer")
+                            
+                            // Проверяем, что сообщение действительно было отправлено
+                            val messageExists = synchronized(buffer) {
+                                buffer.any { it.first == ok.id }
+                            }
+                            
+                            if (!messageExists && ok.id != 0L) {
+                                // Если сообщение уже было удалено из буфера, просто подтверждаем доставку
+                                Log.i(TAG, "Message ${ok.id} already confirmed")
+                                writeOk(dos, ok.id)
+                                listener.onMessageDelivered(peer!!, ok.id, true)
+                                return true
+                            }
+
+                            if (peerStatus == Status.ChallengeAnswered && ok.id == 0L) {
+                                // Now we, as client node, need to authorize the server node
+                                val challenge = getChallenge()
+                                writeChallenge(dos, challenge!!, type = MSG_TYPE_CHALLENGE2)
+                                peerStatus = Status.Challenge2Sent
+                            } else if (peerStatus == Status.Challenge2Answered && ok.id == 0L) {
+                                // Now we, as client node, are authorized
+                                peerStatus = Status.Auth2Done
+                            } else if (ok.id != 0L) {
+                                // Удаляем подтвержденное сообщение из буфера
+                                synchronized(buffer) {
+                                    buffer.removeAll { it.first == ok.id }
+                                }
+                                Log.i(TAG, "Message ${ok.id} successfully delivered")
+                                // Отправляем подтверждение получения подтверждения
+                                writeOk(dos, ok.id)
+                                listener.onMessageDelivered(peer!!, ok.id, true)
+                            }
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing delivery confirmation", e)
+                        // Если произошла ошибка, оставляем сообщение в буфере для повторной отправки
+                        return false
                     }
                 }
                 MSG_TYPE_MESSAGE_TEXT -> {
@@ -256,7 +302,7 @@ class ConnectionHandler(
     fun sendMessage(guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, data: ByteArray) {
         synchronized(buffer) {
             val message = Message(guid, replyTo, sendTime, editTime, type, data)
-            buffer.add(id to message)
+            buffer.add(guid to message)
         }
     }
 

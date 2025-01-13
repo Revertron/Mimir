@@ -3,6 +3,7 @@ package com.revertron.mimir.net
 import android.util.Log
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.getYggdrasilAddress
+import org.json.JSONObject
 import com.revertron.mimir.storage.Peer
 import com.revertron.mimir.storage.SqlStorage
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
@@ -36,6 +37,8 @@ class MimirServer(
     }
 
     private val working = AtomicBoolean(true)
+    private var _isOnline = false
+    val isOnline: Boolean get() = _isOnline
     private val connections = HashMap<String, ConnectionHandler>(5)
     private val connectContacts = HashSet<String>(5)
     private var hasNewMessages = false
@@ -74,6 +77,7 @@ class MimirServer(
                         }
                         if (!online) {
                             online = true
+                            _isOnline = true
                             listener.onServerStateChanged(online)
                             sendUnsent()
                         }
@@ -100,6 +104,7 @@ class MimirServer(
                 lastAnnounceTime = 0L
                 if (online && getYggdrasilAddress() == null) {
                     online = false
+                    _isOnline = false
                     listener.onServerStateChanged(online)
                 }
                 connections.values.forEach {
@@ -252,9 +257,26 @@ class MimirServer(
         }
         Log.i(TAG, "Found ${unsentMessages.size} messages, sending")
         val publicKey = Hex.toHexString(contact)
+        
+        // Получаем настройки голосовых сообщений контакта
+        val contactInfo = infoProvider.getContactInfo(contact)
+        val voiceMessagesEnabled = try {
+            val infoJson = JSONObject(contactInfo?.info ?: "{}")
+            infoJson.optBoolean("voiceMessagesEnabled", true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing contact info", e)
+            true
+        }
+        
         for (m in unsentMessages) {
             val message = storage.getMessage(m)
             if (message?.data != null) {
+                // Проверяем тип сообщения и настройки получателя
+                if (message.type == 1 && !voiceMessagesEnabled) {
+                    Log.i(TAG, "Skipping voice message ${message.guid} - voice messages disabled for recipient")
+                    continue
+                }
+                
                 synchronized(connections) {
                     val connection = connections[publicKey]
                     Log.i(TAG, "Sending message ${message.guid} with id ${message.id} and time ${message.time}")
@@ -270,7 +292,8 @@ class MimirServer(
                 Log.d(TAG, "Connection attempt $i for ${peer.address}")
                 val socket = Socket()
                 val socketAddress = InetSocketAddress(InetAddress.getByName(peer.address), peer.port.toInt())
-                socket.connect(socketAddress, CONNECTION_TIMEOUT)
+                socket.connect(socketAddress, 10000) // Увеличиваем таймаут до 10 секунд
+                Log.i(TAG, "Successfully connected to ${peer.address}")
                 if (socket.isConnected) {
                     val connection = ConnectionHandler(clientId, keyPair, socket, this, infoProvider)
                     connection.peerStatus = Status.ConnectedOut
@@ -371,6 +394,7 @@ interface EventListener {
 
 interface InfoProvider {
     fun getMyInfo(ifUpdatedSince: Long): InfoResponse?
+    fun getContactInfo(pubkey: ByteArray): InfoResponse?
     fun getContactUpdateTime(pubkey: ByteArray): Long
     fun updateContactInfo(pubkey: ByteArray, info: InfoResponse)
     fun getFilesDirectory(): String

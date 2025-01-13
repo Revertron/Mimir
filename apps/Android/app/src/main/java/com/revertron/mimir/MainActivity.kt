@@ -1,5 +1,7 @@
 package com.revertron.mimir
 
+import android.Manifest
+import android.os.Build
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.ClipData
@@ -29,6 +31,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
 
         val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
         setSupportActionBar(toolbar)

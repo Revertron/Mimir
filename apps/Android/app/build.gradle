@@ -10,7 +10,7 @@ android {
     defaultConfig {
         applicationId "com.revertron.mimir"
         minSdk 21
-        targetSdk 31
+        targetSdk 33
         versionCode 17
         versionName "1.9.2"
 
@@ -47,6 +47,10 @@ dependencies {
     implementation "io.getstream:avatarview-coil:1.0.4"
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'junit:junit:4.12'
+
+    // Audio dependencies
+    implementation 'androidx.media:media:1.6.0'
+    implementation 'com.google.android.exoplayer:exoplayer:2.18.1'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.4'

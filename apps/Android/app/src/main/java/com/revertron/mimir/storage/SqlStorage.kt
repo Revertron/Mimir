@@ -22,15 +22,21 @@ import org.json.JSONObject
 import java.security.SecureRandom
 import java.util.*
 
-class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
+interface InfoProvider {
+    fun getContactInfo(pubkey: ByteArray): InfoResponse?
+}
+
+data class InfoResponse(val info: String)
+
+class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION), InfoProvider {
 
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 7
+        const val DATABASE_VERSION = 8
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
-        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
+        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER, voice_messages_enabled BOOL DEFAULT 1)"
         const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, port INTEGER DEFAULT 5050, priority INTEGER DEFAULT 3, expiration INTEGER DEFAULT 3600)"
         const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, guid INTEGER, replyTo INTEGER, incoming BOOL, delivered BOOL, read BOOL, time INTEGER, edit INTEGER, type INTEGER, message BLOB)"
     }
@@ -50,14 +56,18 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     ) {
         fun getText(): String {
             return if (data != null) {
-                when (type) {
-                    1 -> {
-                        val json = JSONObject(String(data))
-                        json.getString("text")
+                try {
+                    when (type) {
+                        0 -> String(data, Charsets.UTF_8)
+                        1 -> {
+                            val json = JSONObject(String(data))
+                            json.optString("text", "<Attachment>")
+                        }
+                        else -> "<Unknown message type>"
                     }
-                    else -> {
-                        String(data)
-                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error getting message text", e)
+                    "<Error>"
                 }
             } else {
                 "<Empty>"
@@ -127,6 +137,10 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 
         if (newVersion > oldVersion && newVersion == 7) {
             db.execSQL("ALTER TABLE messages ADD COLUMN edit INTEGER DEFAULT 0")
+        }
+
+        if (newVersion > oldVersion && newVersion == 8) {
+            db.execSQL("ALTER TABLE contacts ADD COLUMN voice_messages_enabled BOOL DEFAULT 1")
         }
     }
 
@@ -304,6 +318,44 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         if (guid == 0L) {
             guid = generateGuid(sendTime, message)
         }
+        
+        // Обработка разных типов сообщений
+            val messageData = when (type) {
+                0 -> { // Текстовое сообщение
+                    try {
+                        // Если данные уже строка - используем как текст
+                        if (message[0] != '{'.code.toByte()) {
+                            String(message, Charsets.UTF_8).toByteArray()
+                        } else {
+                            // Если данные в формате JSON - извлекаем текст
+                            val json = JSONObject(String(message))
+                            val text = json.getString("text")
+                            text.toByteArray(Charsets.UTF_8)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing text message", e)
+                        return -1
+                    }
+                }
+            1 -> { // Сообщение с вложением
+                try {
+                    val json = JSONObject(String(message))
+                    if (!json.has("name") || json.getString("name").isNullOrEmpty()) {
+                        // Если имя отсутствует, генерируем временное имя
+                        json.put("name", "attachment_${System.currentTimeMillis()}")
+                    }
+                    json.toString().toByteArray()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing attachment message", e)
+                    return -1
+                }
+            }
+            else -> {
+                Log.e(TAG, "Unknown message type: $type")
+                return -1
+            }
+        }
+        
         val values = ContentValues().apply {
             put("contact", id)
             put("guid", guid)
@@ -313,7 +365,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             put("time", sendTime)
             put("edit", editTime)
             put("type", type)
-            put("message", message)
+            put("message", messageData)
             put("read", !incoming)
         }
         return this.writableDatabase.insert("messages", null, values).also {
@@ -541,12 +593,28 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     fun getContactList(): List<Contact> {
         val list = mutableListOf<Contact>()
         val db = this.readableDatabase
-        val cursor = db.query("contacts", arrayOf("id", "pubkey", "name"), "", emptyArray(), null, null, "name", "")
+        val cursor = db.query("contacts", arrayOf("id", "pubkey", "name", "voice_messages_enabled"), "", emptyArray(), null, null, "name", "")
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
             val pubkey = cursor.getBlob(1)
             val name = cursor.getString(2)
-            list.add(Contact(id, pubkey, name, null, 0))
+            val voiceMessagesEnabled = cursor.getInt(3) != 0
+            val contact = Contact(id, pubkey, name, null, 0, voiceMessagesEnabled)
+            // Синхронизируем настройки голосовых сообщений с информацией о контакте
+            val info = getContactInfo(pubkey)
+            if (info != null) {
+                try {
+                    val json = JSONObject(info.info)
+                    if (json.has("voice_messages_enabled")) {
+                        contact.voiceMessagesEnabled = json.getBoolean("voice_messages_enabled")
+                        // Обновляем локальное значение в базе данных
+                        updateContactVoiceMessagesEnabled(id, contact.voiceMessagesEnabled)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing contact info", e)
+                }
+            }
+            list.add(contact)
         }
         cursor.close()
         for (c in list) {
@@ -556,6 +624,14 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         list.sortByDescending { it.lastMessage?.time }
 
         return list
+    }
+
+    fun updateContactVoiceMessagesEnabled(id: Long, enabled: Boolean) {
+        val values = ContentValues().apply {
+            put("voice_messages_enabled", enabled)
+            put("updated", getUtcTime())
+        }
+        writableDatabase.update("contacts", values, "id = ?", arrayOf("$id"))
     }
 
     fun getContactPeers(pubkey: ByteArray): List<Peer> {
@@ -644,6 +720,21 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
         cursor.close()
         return updated
+    }
+
+    override fun getContactInfo(pubkey: ByteArray): InfoResponse? {
+        val contactId = getContactId(pubkey)
+        if (contactId <= 0) {
+            return null
+        }
+        val cursor = this.readableDatabase.query("contacts", arrayOf("info"), "id = ?", arrayOf("$contactId"), null, null, null)
+        val info = if (cursor.moveToNext()) {
+            cursor.getString(0)
+        } else {
+            null
+        }
+        cursor.close()
+        return info?.let { InfoResponse(it) }
     }
 
     fun removeContactAndChat(id: Long) {

@@ -158,8 +158,11 @@ fun writeChallengeAnswer(dos: DataOutputStream, challenge: ChallengeAnswer, stre
 
 /**
  * Reads message from socket
+ * @param dis DataInputStream to read from
+ * @param voiceMessagesEnabled Whether voice messages are enabled for recipient
+ * @return Message object or null if message cannot be read or voice messages are disabled
  */
-fun readMessage(dis: DataInputStream): Message? {
+fun readMessage(dis: DataInputStream, voiceMessagesEnabled: Boolean = true): Message? {
     var size = dis.readInt()
     var data = ByteArray(size)
     var count = 0
@@ -169,6 +172,32 @@ fun readMessage(dis: DataInputStream): Message? {
             return null
         }
         count += read
+    }
+
+    // Check if message is voice message and voice messages are disabled
+    try {
+        val json = JSONObject(String(data))
+        val type = json.optInt("type", 0)
+        if (type == 1 && !voiceMessagesEnabled) {
+            // Skip voice message if disabled
+            size = json.optInt("payloadSize", 0)
+            if (size > 0) {
+                // Skip payload data
+                data = ByteArray(size)
+                count = 0
+                while (count < size) {
+                    val read = dis.read(data, count, size - count)
+                    if (read < 0) {
+                        return null
+                    }
+                    count += read
+                }
+            }
+            return null
+        }
+    } catch (e: JSONException) {
+        Log.e(TAG, "Error parsing JSON: $e")
+        return null
     }
 
     try {
@@ -202,7 +231,12 @@ fun readMessage(dis: DataInputStream): Message? {
 /**
  * Writes message to socket
  */
-fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT): Boolean {
+fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stream: Int = 0, type: Int = MSG_TYPE_MESSAGE_TEXT, voiceMessagesEnabled: Boolean = true): Boolean {
+    // Check if the message is a voice message and voice messages are disabled for the recipient
+    if (message.type == 1 && !voiceMessagesEnabled) {
+        Log.i("Messages", "Voice messages are disabled for the recipient. Blocking message ${message.guid}.")
+        return false
+    }
     val size = 8 + 4 + 4 + message.data.size
     writeHeader(dos, stream, type, size)
 
@@ -275,7 +309,9 @@ fun writeInfoRequest(dos: DataOutputStream, time: Long, stream: Int = 0, type: I
 
 fun writeInfoResponse(dos: DataOutputStream, info: InfoResponse, stream: Int = 0, type: Int = MSG_TYPE_INFO_RESPONSE): Boolean {
     val nickBuf = info.nickname.toByteArray()
-    val infoBuf = info.info.toByteArray()
+    val infoJson = JSONObject(info.info)
+    infoJson.put("voiceMessagesEnabled", infoJson.optBoolean("voiceMessagesEnabled", true))
+    val infoBuf = infoJson.toString().toByteArray()
     val size = 16 + 4 + nickBuf.size + 4 + infoBuf.size + 4 + (info.avatar?.size ?: 0)
     writeHeader(dos, stream, type, size)
 
@@ -315,19 +351,21 @@ fun readInfoResponse(dis: DataInputStream): InfoResponse? {
 
     size = dis.readInt()
     val info = if (size > 0) {
-        val data = ByteArray(size)
-        var count = 0
-        while (count < size) {
-            val read = dis.read(data, count, size - count)
-            if (read < 0) {
-                return null
-            }
-            count += read
+    val data = ByteArray(size)
+    var count = 0
+    while (count < size) {
+        val read = dis.read(data, count, size - count)
+        if (read < 0) {
+            return null
         }
-        String(data)
-    } else {
-        ""
+        count += read
     }
+    val json = JSONObject(String(data))
+    json.put("voiceMessagesEnabled", json.optBoolean("voiceMessagesEnabled", true))
+    json.toString()
+} else {
+    ""
+}
 
     size = dis.readInt()
     val avatar = if (size > 0) {
