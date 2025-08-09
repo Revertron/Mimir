@@ -5,84 +5,58 @@ import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.sec.Sign
 import com.revertron.mimir.storage.Peer
 import com.revertron.mimir.storage.SqlStorage
+import com.revertron.mimir.yggmobile.Connection
+import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
+import org.bouncycastle.util.encoders.Hex
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
-import java.net.*
-import java.util.*
-import kotlin.collections.HashMap
+import java.lang.Thread.sleep
+import java.util.Random
 
-class Resolver(private val storage: SqlStorage, private val tracker: InetSocketAddress) {
+class Resolver(private val storage: SqlStorage, private val messenger: Messenger, private val tracker: ByteArray) {
 
     companion object {
         private const val TAG = "Resolver"
         private const val VERSION = 1
         private const val CMD_ANNOUNCE = 0
-        private const val CMD_GET_IPS = 1
+        private const val CMD_GET_ADDRS = 1
     }
 
     private val random = Random(System.currentTimeMillis())
     private val nonces = HashMap<Int, Pair<ByteArray, ResolverReceiver>>()
     private val timeouts = HashMap<Int, Thread>()
-    private val socket = DatagramSocket()
+    private var socket: Connection? = null
 
     init {
         // Receiving thread
         val t = Thread {
             val buf = ByteArray(1024)
-            val packet = DatagramPacket(buf, buf.size)
             while (!Thread.interrupted()) {
-                socket.receive(packet)
-                if (packet.length == 0) continue
-                val time = getUtcTime()
-                val bais = ByteArrayInputStream(packet.data, 0, packet.length)
-                val dis = DataInputStream(bais)
-                val nonce = dis.readInt()
-                val command = dis.readByte()
-                val pair = nonces.remove(nonce) ?: continue
-                synchronized(timeouts) {
-                    timeouts.remove(nonce)?.interrupt()
-                }
-                when (command.toInt()) {
-                    CMD_ANNOUNCE -> {
-                        val ttl = dis.readLong()
-                        pair.second.onAnnounceResponse(pair.first, ttl)
-                    }
-                    CMD_GET_IPS -> {
-                        val count = dis.readByte()
-                        Log.i(TAG, "Got $count ips")
-                        if (count <= 0) {
-                            pair.second.onError(pair.first)
-                            continue
-                        }
-                        val results = mutableListOf<Peer>()
-                        val ipBuf = ByteArray(16)
-                        val sigBuf = ByteArray(64)
-                        for (r in 1..count) {
-                            Log.i(TAG, "Reading address $r")
-                            dis.readFully(ipBuf)
-                            val ip = Inet6Address.getByAddress(ipBuf)
-                            dis.readFully(sigBuf)
-                            val port = dis.readShort()
-                            val priority = dis.readByte()
-                            val clientId = dis.readInt()
-                            val ttl = dis.readLong()
-                            Log.i(TAG, "Got ip $ip")
-                            val public = Ed25519PublicKeyParameters(pair.first)
-                            if (!Sign.verify(public, ipBuf, sigBuf)) {
-                                Log.w(TAG, "Wrong IP signature!")
-                                continue
+                sleep(1000)
+                if (socket != null) {
+                    try {
+                        Log.i(TAG, "Reading from socket")
+                        val length = socket!!.read(buf)
+                        Log.i(TAG, "Read $length bytes")
+                        process(buf.copyOfRange(0, length.toInt()))
+                    } catch (e: Exception) {
+                        when (e.message) {
+                            "EOF" -> {
+                                socket!!.close()
+                                socket = null
                             }
-                            val address = ip.toString().replace("/", "")
-                            Log.i(TAG, "Got TTL: $ttl")
-                            results.add(Peer(address, port, clientId, priority.toInt(), time + ttl))
+                            else  -> {
+                                Log.e(TAG, "Socket read error", e)
+                                socket!!.close()
+                                socket = null
+                            }
                         }
-                        Log.i(TAG, "Resolved $results")
-                        pair.second.onResolveResponse(pair.first, results)
+                        continue
                     }
                 }
             }
@@ -96,25 +70,28 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
 
     fun saveIps(pubkey: ByteArray, peers: List<Peer>) {
         for (addr in peers) {
-            storage.saveIp(pubkey, addr.address, addr.port, addr.clientId, addr.priority, addr.expiration)
+            storage.saveIp(pubkey, addr.address, 0, addr.clientId, addr.priority, addr.expiration)
         }
     }
 
-    fun resolveIps(pubkey: ByteArray, receiver: ResolverReceiver) {
+    fun resolveAddrs(pubkey: ByteArray, receiver: ResolverReceiver) {
+        Log.i(TAG, "Resolving...")
         val baos = ByteArrayOutputStream()
         val dos = DataOutputStream(baos)
         dos.writeByte(VERSION)
         val nonce = random.nextInt()
         dos.writeInt(nonce)
         nonces[nonce] = pubkey to receiver
-        dos.writeByte(CMD_GET_IPS)
+        dos.writeByte(CMD_GET_ADDRS)
         dos.write(pubkey)
         val request = baos.toByteArray()
-        val packet = DatagramPacket(request, request.size, tracker)
         try {
-            socket.send(packet)
+            if (socket == null) {
+                socket = messenger.connect(tracker)
+            }
+            socket?.write(request)
             startTimeoutThread(nonce, receiver)
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             Log.e(TAG, "Error sending packet: $e")
             val pair = nonces.remove(nonce)!!
             pair.second.onError(pubkey)
@@ -131,35 +108,87 @@ class Resolver(private val storage: SqlStorage, private val tracker: InetSocketA
         nonces[nonce] = pubkey to receiver
         dos.writeByte(CMD_ANNOUNCE)
         dos.write(pubkey)
-        dos.writeShort(peer.port.toInt())
         dos.writeByte(peer.priority)
         dos.writeInt(peer.clientId)
-        val ip = InetAddress.getByName(peer.address)
-        dos.write(ip.address)
+        val addr = Hex.decode(peer.address)
+        dos.write(addr)
         val priv = Ed25519PrivateKeyParameters(privkey)
-        val signature = Sign.sign(priv, ip.address)
+        val signature = Sign.sign(priv, addr)
+        val s = Hex.toHexString(signature)
         dos.write(signature)
         val request = baos.toByteArray()
-        val packet = DatagramPacket(request, request.size, tracker)
         try {
-            socket.send(packet)
+            if (socket == null) {
+                socket = messenger.connect(tracker)
+            }
+            socket?.write(request)
             startTimeoutThread(nonce, receiver)
             Log.i(TAG, "Announce packet sent")
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             Log.e(TAG, "Error sending packet: $e")
             val pair = nonces.remove(nonce)!!
             pair.second.onError(pubkey)
         }
     }
 
+    private fun process(message: ByteArray) {
+        val time = getUtcTime()
+        val bais = ByteArrayInputStream(message, 0, message.size)
+        val dis = DataInputStream(bais)
+        val nonce = dis.readInt()
+        val command = dis.readByte()
+        val pair = nonces.remove(nonce) ?: return
+        synchronized(timeouts) {
+            timeouts.remove(nonce)?.interrupt()
+        }
+        when (command.toInt()) {
+            CMD_ANNOUNCE -> {
+                val ttl = dis.readLong()
+                pair.second.onAnnounceResponse(pair.first, ttl)
+                socket?.close()
+                socket = null
+            }
+
+            CMD_GET_ADDRS -> {
+                val count = dis.readByte()
+                Log.i(TAG, "Got $count addresses")
+                if (count <= 0) {
+                    pair.second.onError(pair.first)
+                    return
+                }
+                val results = mutableListOf<Peer>()
+                val addrBuf = ByteArray(32)
+                val sigBuf = ByteArray(64)
+                for (r in 1..count) {
+                    Log.i(TAG, "Reading address $r")
+                    dis.readFully(addrBuf)
+                    dis.readFully(sigBuf)
+                    val priority = dis.readByte()
+                    val clientId = dis.readInt()
+                    val ttl = dis.readLong()
+                    val addr = Hex.toHexString(addrBuf)
+                    Log.i(TAG, "Got ip $addr with TTL $ttl")
+                    val public = Ed25519PublicKeyParameters(pair.first)
+                    if (!Sign.verify(public, addrBuf, sigBuf)) {
+                        Log.w(TAG, "Wrong addr signature!")
+                        continue
+                    }
+                    results.add(Peer(addr, clientId, priority.toInt(), time + ttl))
+                }
+                Log.i(TAG, "Resolved $results for $nonce")
+                pair.second.onResolveResponse(pair.first, results)
+            }
+        }
+    }
+
     private fun startTimeoutThread(nonce: Int, receiver: ResolverReceiver): Thread {
         val t = Thread {
-            //Log.d(TAG, "Timeout thread for $nonce started")
+            Log.d(TAG, "Timeout thread for $nonce started")
             try {
-                Thread.sleep(10000)
+                sleep(10000)
                 synchronized(nonces) {
                     if (nonces.containsKey(nonce)) {
-                        //Log.d(TAG, "Timeout thread for $nonce got timeout")
+                        Log.d(TAG, "Timeout thread for $nonce got timeout")
                         val pair = nonces.remove(nonce)!!
                         receiver.onError(pair.first)
                     }

@@ -21,7 +21,7 @@ const val MSG_TYPE_MESSAGE_TEXT = 1000
 const val MSG_TYPE_OK = 32767
 
 data class Header(val stream: Int, val type: Int, val size: Long)
-data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: ByteArray, val clientId: Int, val address: InetAddress? = null)
+data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: ByteArray, val clientId: Int, val address: ByteArray? = null)
 data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
 data class InfoResponse(val time: Long, val nickname: String, val info: String, val avatar: ByteArray?)
@@ -75,12 +75,12 @@ fun readClientHello(dis: DataInputStream, read_address: Boolean): ClientHello? {
     val clientId = dis.readInt()
     val address = if (read_address) {
         val size = dis.readInt()
-        if (size != 16) {
+        if (size != 32) {
             return null
         }
         val buf = ByteArray(size)
         dis.read(buf)
-        InetAddress.getByAddress(buf)
+        buf
     } else {
         null
     }
@@ -90,7 +90,7 @@ fun readClientHello(dis: DataInputStream, read_address: Boolean): ClientHello? {
 fun writeClientHello(dos: DataOutputStream, hello: ClientHello, stream: Int = 0, type: Int = MSG_TYPE_HELLO): Boolean {
     var size = 4 + 4 + hello.pubkey.size + 4 + hello.receiver.size + 4
     if (hello.address != null) {
-        size += hello.address.address.size + 4
+        size += hello.address.size + 4
     }
     writeHeader(dos, stream, type, size)
 
@@ -101,8 +101,8 @@ fun writeClientHello(dos: DataOutputStream, hello: ClientHello, stream: Int = 0,
     dos.write(hello.receiver)
     dos.writeInt(hello.clientId)
     if (hello.address != null) {
-        dos.writeInt(hello.address.address.size)
-        dos.write(hello.address.address)
+        dos.writeInt(hello.address.size)
+        dos.write(hello.address)
     }
     dos.flush()
     return true
@@ -170,9 +170,11 @@ fun readMessage(dis: DataInputStream): Message? {
         }
         count += read
     }
+    //Log.d(TAG, "Read $count bytes of message")
 
     try {
         val json = JSONObject(String(data))
+        //Log.d(TAG, "Message JSON: $json")
         val guid = json.getLong("guid")
         val replyTo = json.optLong("replyTo", 0)
         val sendTime = json.optLong("sendTime", 0)
@@ -180,10 +182,12 @@ fun readMessage(dis: DataInputStream): Message? {
         val type = json.optInt("type", 0)
         size = json.optInt("payloadSize", 0)
         if (size > 0) {
+            Log.d(TAG, "Reading $size bytes of payload")
             data = ByteArray(size)
             count = 0
             while (count < size) {
                 val read = dis.read(data, count, size - count)
+                Log.d(TAG, "Read $read bytes of payload")
                 if (read < 0) {
                     return null
                 }

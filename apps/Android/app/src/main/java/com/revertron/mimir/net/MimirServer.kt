@@ -2,9 +2,10 @@ package com.revertron.mimir.net
 
 import android.util.Log
 import com.revertron.mimir.getUtcTime
-import com.revertron.mimir.getYggdrasilAddress
 import com.revertron.mimir.storage.Peer
 import com.revertron.mimir.storage.SqlStorage
+import com.revertron.mimir.yggmobile.Messenger
+import com.revertron.mimir.yggmobile.Yggmobile
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
@@ -20,7 +21,8 @@ private const val CONNECTION_TRIES = 5
 private const val CONNECTION_TIMEOUT = 3000
 private const val CONNECTION_PERIOD = 1000L
 //TODO move to gradle config maybe?
-private const val RESOLVER_ADDR = "[208:62:45:62:59b8:f1a2:62ca:f87c]"
+//private const val RESOLVER_ADDR = "[208:62:45:62:59b8:f1a2:62ca:f87c]"
+private const val TRACKER_ADDR = "801bc33a735cded0588284af0bf1b8bdb4138f122a9c17ecee089e9ff151c3f6"
 
 class MimirServer(
     val storage: SqlStorage,
@@ -38,8 +40,8 @@ class MimirServer(
     private val working = AtomicBoolean(true)
     private val connections = HashMap<String, ConnectionHandler>(5)
     private val connectContacts = HashSet<String>(5)
+    private lateinit var messenger: Messenger
     private var hasNewMessages = false
-    private var serverSocket: ServerSocket? = null
     private lateinit var resolver: Resolver
     private val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
     private val privkey = (keyPair.private as Ed25519PrivateKeyParameters).encoded
@@ -47,70 +49,46 @@ class MimirServer(
     private var announceTtl = 0L
 
     override fun run() {
-        var online = false
-        resolver = Resolver(storage, InetSocketAddress(RESOLVER_ADDR, CONNECTION_PORT.toInt()))
+        val bootstrapPeers = arrayOf(
+            "tls://109.176.250.101:65534",
+            "tls://37.205.14.171:993",
+            "tcp://62.210.85.80:39565",
+            "tcp://51.15.204.214:12345",
+            "tls://45.95.202.21:443",
+            "tcp://y.zbin.eu:7743"
+        )
+
+        val addr = bootstrapPeers.random()
+        Log.i(TAG, "Selected random peer: $addr")
+
+        messenger = Yggmobile.newMessenger(addr)
+        val myPub = messenger.publicKey()
+        val hexPub = Hex.toHexString(myPub)
+        val tracker = Hex.decode(TRACKER_ADDR)
+        Log.i(TAG, "My network ADDR: $hexPub")
+        resolver = Resolver(storage, messenger, tracker)
         startResendThread()
+        val peer = Peer(hexPub, clientId, 3, 0)
+        startAnnounceThread(pubkey, privkey, peer, this)
         while (working.get()) {
-            var socket: Socket? = null
             try {
-                Log.d(TAG, "Getting Yggdrasil address...")
-                val localAddress = getYggdrasilAddress()
-                if (localAddress == null) {
-                    Log.e(TAG, "Could not start server, no Yggdrasil IP found")
-                    online = false
-                    sleep(10000)
-                    continue
+                sleep(1000)
+                Log.i(TAG, "Accepting connections...")
+                val newConnection = messenger.accept()
+                val pub = Hex.toHexString(newConnection.publicKey())
+                Log.i(TAG, "New client from: ${pub}")
+                // Use threads for each client to communicate with them simultaneously
+                val connection = ConnectionHandler(clientId, keyPair, newConnection, this, infoProvider)
+                connection.peerStatus = Status.ConnectedIn
+                synchronized(connections) {
+                    connections[pub] = connection
                 }
-                Log.i(TAG, "Starting on $localAddress")
-                serverSocket = ServerSocket(port, 50, localAddress)
-                serverSocket?.soTimeout = 60000
-                Log.d(TAG, "Socket on $localAddress created")
-                val peer = Peer(localAddress.toString().replace("/", ""), port.toShort(), clientId, 3, 0)
-                while (working.get()) {
-                    try {
-                        if (getUtcTime() >= lastAnnounceTime + announceTtl) {
-                            resolver.announce(pubkey, privkey, peer, this)
-                            listener.onTrackerPing(false)
-                        }
-                        if (!online) {
-                            online = true
-                            listener.onServerStateChanged(online)
-                            sendUnsent()
-                        }
-                        socket = serverSocket!!.accept()
-                        Log.i(TAG, "New client from: $socket")
-                        // Use threads for each client to communicate with them simultaneously
-                        val connection = ConnectionHandler(clientId, keyPair, socket, this, infoProvider)
-                        connection.peerStatus = Status.ConnectedIn
-                        synchronized(connections) {
-                            val address = socket.inetAddress.toString().substring(1)
-                            connections[address] = connection
-                        }
-                        connection.start()
-                    } catch (e: SocketTimeoutException) {
-                        if (getYggdrasilAddress() != localAddress) {
-                            Log.i(TAG, "Yggdrasil address changed, restarting")
-                            break
-                        }
-                    }
-                }
+                connection.start()
+
             } catch (e: IOException) {
                 e.printStackTrace()
                 Log.e(TAG, "Error creating server socket or accepting connection")
                 lastAnnounceTime = 0L
-                if (online && getYggdrasilAddress() == null) {
-                    online = false
-                    listener.onServerStateChanged(online)
-                }
-                connections.values.forEach {
-                    it.interrupt()
-                }
-                try {
-                    socket?.close()
-                } catch (ex: IOException) {
-                    ex.printStackTrace()
-                }
-                sleep(10000)
             } catch (e: SecurityException) {
                 e.printStackTrace()
                 Log.e(TAG, "Security manager doesn't allow binding socket")
@@ -121,7 +99,23 @@ class MimirServer(
 
     fun stopServer() {
         working.set(false)
-        serverSocket?.close()
+    }
+
+    private fun startAnnounceThread(pubkey: ByteArray, privkey: ByteArray, peer: Peer, receiver: ResolverReceiver) {
+        Thread {
+            while (working.get()) {
+                sleep(10000)
+                try {
+                    if (getUtcTime() >= lastAnnounceTime + announceTtl) {
+                        resolver.announce(pubkey, privkey, peer, receiver)
+                        listener.onTrackerPing(false)
+                    }
+                } catch (e: SocketTimeoutException) {
+                    Log.e(TAG, "Error announcing our address")
+                    lastAnnounceTime = 0L
+                }
+            }
+        }.start()
     }
 
     private fun startResendThread() {
@@ -161,6 +155,7 @@ class MimirServer(
 
     private fun connectContact(contact: ByteArray) {
         val contactString = Hex.toHexString(contact)
+        Log.i(TAG, "Connecting to $contactString")
         synchronized(connections) {
             if (connections.contains(contactString)) {
                 Log.i(TAG, "Found established connection, trying to send")
@@ -185,7 +180,7 @@ class MimirServer(
                     val newIps = ips.subtract(peers.toSet())
                     if (newIps.isNotEmpty()) {
                         newIps.forEach {
-                            storage.saveIp(pubkey, it.address, it.port, it.clientId, it.priority, it.expiration)
+                            storage.saveIp(pubkey, it.address, 0, it.clientId, it.priority, it.expiration)
                         }
                         // We don't want to make an endless loop, so we give it a null receiver
                         connectContact(contact, contactString, newIps.toList(), null)
@@ -224,6 +219,9 @@ class MimirServer(
                     synchronized(connections) {
                         connections[contactString] = connection
                     }
+                    synchronized(connectContacts) {
+                        connectContacts.remove(contactString)
+                    }
                     connected = true
                     break
                 } else {
@@ -234,13 +232,13 @@ class MimirServer(
                 }
             }
             if (!connected && receiver != null) {
-                Log.i(TAG, "Locally found IPs are dead, resolving")
-                resolver.resolveIps(contact, receiver)
+                Log.i(TAG, "Locally found IPs are dead, resolving more")
+                resolver.resolveAddrs(contact, receiver)
             }
         } else {
             if (receiver != null) {
                 Log.i(TAG, "No local ips found, resolving")
-                resolver.resolveIps(contact, receiver)
+                resolver.resolveAddrs(contact, receiver)
             }
         }
     }
@@ -268,17 +266,15 @@ class MimirServer(
         for (i in 1..CONNECTION_TRIES) {
             try {
                 Log.d(TAG, "Connection attempt $i for ${peer.address}")
-                val socket = Socket()
-                val socketAddress = InetSocketAddress(InetAddress.getByName(peer.address), peer.port.toInt())
-                socket.connect(socketAddress, CONNECTION_TIMEOUT)
-                if (socket.isConnected) {
-                    val connection = ConnectionHandler(clientId, keyPair, socket, this, infoProvider)
-                    connection.peerStatus = Status.ConnectedOut
-                    connection.setPeerPublicKey(recipient)
-                    connection.start()
-                    return connection
-                }
-            } catch (e: IOException) {
+                val addr = Hex.decode(peer.address)
+                val conn = messenger.connect(addr)
+                // If there is no exception we should be connected
+                val connection = ConnectionHandler(clientId, keyPair, conn, this, infoProvider)
+                connection.peerStatus = Status.ConnectedOut
+                connection.setPeerPublicKey(recipient)
+                connection.start()
+                return connection
+            } catch (e: Exception) {
                 //e.printStackTrace()
                 Log.e(TAG, "Error connecting to $peer")
             }
@@ -309,6 +305,8 @@ class MimirServer(
     }
 
     override fun onClientConnected(from: ByteArray, address: String, clientId: Int) {
+        val pubkey = Hex.toHexString(from)
+        Log.i(TAG, "onClientConnected from $pubkey")
         // When some client connects to us, we put `ConnectionHandler` in `connections` by the address
         // as we don't know the public key of newly connected client.
         // Now we can change it to correct key.

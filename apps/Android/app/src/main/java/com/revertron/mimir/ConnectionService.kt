@@ -8,13 +8,16 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
-import com.revertron.mimir.net.*
+import com.revertron.mimir.net.CONNECTION_PORT
+import com.revertron.mimir.net.EventListener
+import com.revertron.mimir.net.InfoProvider
+import com.revertron.mimir.net.InfoResponse
+import com.revertron.mimir.net.MimirServer
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
-import java.io.File
 
 class ConnectionService : Service(), EventListener, InfoProvider {
 

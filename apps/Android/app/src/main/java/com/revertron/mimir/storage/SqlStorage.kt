@@ -568,12 +568,13 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
                 arrayOf(id.toString()), null, null, null, null)
             while (cursor.moveToNext()) {
                 val address = cursor.getString(0)
+                // TODO remove port from everywhere
                 val port = cursor.getShort(1)
                 val client = cursor.getInt(2)
                 val priority = cursor.getInt(3)
                 val expiration = cursor.getLong(4)
                 if (curTime <= expiration) {
-                    list.add(Peer(address, port, client, priority, expiration))
+                    list.add(Peer(address, client, priority, expiration))
                 }
             }
             Log.i(TAG, "Found ips: $list")
@@ -664,7 +665,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
 }
 
 data class AccountInfo(val name: String, val info: String, val avatar: String, val updated: Long, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)
-data class Peer(val address: String, val port: Short, val clientId: Int, val priority: Int, val expiration: Long)
+data class Peer(val address: String, val clientId: Int, val priority: Int, val expiration: Long)
 
 interface StorageListener {
     fun onContactAdded(id: Long) {}

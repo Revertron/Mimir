@@ -1,23 +1,22 @@
 package com.revertron.mimir.net
 
 import android.util.Log
-import com.revertron.mimir.isAddressFromSubnet
-import com.revertron.mimir.isSubnetYggdrasilAddress
 import com.revertron.mimir.randomBytes
 import com.revertron.mimir.sec.Sign
+import com.revertron.mimir.yggmobile.Connection
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
-import java.net.InetAddress
-import java.net.Socket
 
 class ConnectionHandler(
     private val clientId: Int,
     private val keyPair: AsymmetricCipherKeyPair,
-    private val socket: Socket,
+    private val connection: Connection,
     private val listener: EventListener,
     private val infoProvider: InfoProvider
 ): Thread(TAG) {
@@ -25,33 +24,35 @@ class ConnectionHandler(
     companion object {
         private const val TAG = "ConnectionHandler"
         private const val VERSION = 1
+        // We need at least a header to know the length
+        private const val HEADER_SIZE = 16
     }
 
     private var peer: ByteArray? = null
     var peerStatus: Status = Status.Created
-    var challengeBytes: ByteArray? = randomBytes(32)
+    private var challengeBytes: ByteArray? = randomBytes(32)
     private var infoRequested = false
     private val buffer = mutableListOf<Pair<Long, Message>>()
-    private var address = socket.inetAddress.toString().replace("/", "")
+    private var address = Hex.toHexString(connection.publicKey())
     private var peerClientId = 0
+    private var lastActiveTime = System.currentTimeMillis()
 
     override fun run() {
-        var lastActiveTime = System.currentTimeMillis()
-        val dis = DataInputStream(socket.getInputStream())
-        val dos = DataOutputStream(socket.getOutputStream())
 
         // TODO make buffered reader:
         // new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
+        val dis = DataInputStream(ConnectionInputStream(connection))
+        //var buf = ByteArray(65536)
         while (!this.isInterrupted) {
             when (peerStatus) {
                 Status.ConnectedOut -> {
                     // If our client is from NATed Yggdrasil network we send its address from 300::/8
-                    val hello = if (isSubnetYggdrasilAddress(socket.localAddress))
-                        getHello(clientId, socket.localAddress)
-                    else
-                        getHello(clientId)
+                    val hello = getHello(clientId, /*connection.publicKey()*/ null)
+                    val baos = ByteArrayOutputStream()
+                    val dos = DataOutputStream(baos)
                     writeClientHello(dos, hello)
+                    connection.write(baos.toByteArray())
                     peerStatus = Status.HelloSent
                 }
                 Status.Auth2Done -> {
@@ -64,10 +65,14 @@ class ConnectionHandler(
                     }
                     if (message != null) {
                         try {
+                            val baos = ByteArrayOutputStream()
+                            val dos = DataOutputStream(baos)
                             writeMessage(dos, message.second, infoProvider.getFilesDirectory())
+                            val bytes = baos.toByteArray()
+                            connection.write(bytes)
+                            Log.i(TAG, "Message ${message.second.guid} sent, ${bytes.size} bytes")
                         } catch (e: Exception) {
                             e.printStackTrace()
-                            socket.close()
                             //TODO propagate event that message was not sent
                             this.interrupt()
                             break
@@ -77,21 +82,26 @@ class ConnectionHandler(
                 else -> {}
             }
 
+            //Log.i(TAG, "Peer status $peerStatus")
+
             try {
-                if (dis.available() > 0) {
+                if (dis.available() >= HEADER_SIZE) {
+                    val baos = ByteArrayOutputStream()
+                    val dos = DataOutputStream(baos)
                     if (processInput(dis, dos)) {
+                        val bytes = baos.toByteArray()
+                        connection.write(bytes)
                         lastActiveTime = System.currentTimeMillis()
-                    } else {
-                        socket.close()
-                        break
                     }
                 }
-            } catch (e: IOException) {
+            } catch (e: Exception) {
+                if (e.message?.contains("deadline exceeded") == true) {
+                    continue
+                }
+                Log.e(TAG, "Exception: $e")
                 // Connection severed somewhere, we just bail
-                try {
-                    socket.close()
-                } catch (e: IOException) { /**/ }
-                Log.i(TAG, "Connection with $peer and ${socket.inetAddress} broke")
+                val peer = Hex.toHexString(peer)
+                Log.i(TAG, "Connection with $peer and ${address} broke")
                 interrupt()
                 break
             }
@@ -102,24 +112,23 @@ class ConnectionHandler(
                 } catch (e: InterruptedException) {
                     peer?.apply {
                         val peer = Hex.toHexString(this)
-                        Log.i(TAG, "Connection thread with $peer and ${socket.inetAddress} interrupted")
+                        Log.i(TAG, "Connection thread with $peer and ${address} interrupted")
                     }
                     break
                 }
                 if (System.currentTimeMillis() > lastActiveTime + 120000) {
-                    Log.i(TAG, "Connection with ${socket.inetAddress} timed out")
-                    socket.close()
+                    Log.i(TAG, "Connection with ${address} timed out")
                     break
                 }
             }
         }
-        peer?.let { listener.onConnectionClosed(it, socket.inetAddress.toString()) }
+        peer?.let { listener.onConnectionClosed(it, address) }
     }
 
     private fun processInput(dis: DataInputStream, dos: DataOutputStream): Boolean {
         try {
             val header = readHeader(dis)
-            Log.i(TAG, "Got header $header, our state $peerStatus")
+            //Log.i(TAG, "Got header $header, our state $peerStatus, available data: ${dis.available()} bytes")
             when (header.type) {
                 MSG_TYPE_HELLO -> {
                     val hello = readClientHello(dis, header.size > 80) ?: return false
@@ -130,13 +139,13 @@ class ConnectionHandler(
                             return false
                         }
                         if (hello.address != null) {
-                            if (!isAddressFromSubnet(socket.inetAddress, hello.address)) {
+                            /*if (!isAddressFromSubnet(socket.inetAddress, hello.address)) {
                                 Log.e(TAG, "Spoofing Yggdrasil address!\n${socket.inetAddress} and ${hello.address}")
                                 return false
-                            }
-                            Log.i(TAG, "Client connected from NATed IPv6: ${hello.address}")
+                            }*/
                             val oldAddress = address
-                            address = hello.address.toString().replace("/", "")
+                            address = Hex.toHexString(hello.address)
+                            Log.i(TAG, "Client connected new address: ${address}")
                             listener.onClientIPChanged(oldAddress, address)
                         }
                         val challenge = getChallenge()
@@ -225,6 +234,9 @@ class ConnectionHandler(
                             //TODO Check that we really sent this ok.id to this user ;)
                             listener.onMessageDelivered(peer!!, ok.id, true)
                         }
+                        if (dis.available() > 0) {
+                            return processInput(dis, dos)
+                        }
                     }
                 }
                 MSG_TYPE_MESSAGE_TEXT -> {
@@ -260,7 +272,7 @@ class ConnectionHandler(
         }
     }
 
-    private fun getHello(clientId: Int, address: InetAddress? = null): ClientHello {
+    private fun getHello(clientId: Int, address: ByteArray? = null): ClientHello {
         val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
         return ClientHello(VERSION, pubkey, peer!!, clientId, address)
     }
