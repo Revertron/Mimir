@@ -41,7 +41,7 @@
         <item name="titleTextColor">@color/white</item>
         <item name="actionOverflowButtonStyle">@style/MimirToolbarOverflowStyle</item>
     </style>
-    
+
     <style name="MimirToolbarOverflowStyle" parent="Widget.AppCompat.ActionButton.Overflow">
         <item name="tint">@color/white</item>
     </style>

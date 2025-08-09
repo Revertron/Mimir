@@ -61,4 +61,6 @@
     <string name="three_days">3 days</string>
     <string name="fifteen_days">15 days</string>
     <string name="tracker_ping_time">Tracker ping was %d seconds ago</string>
+    <string name="share">Share</string>
+    <string name="activity_not_found">Activity not found.</string>
 </resources>
