@@ -1,7 +1,7 @@
 package com.revertron.mimir
 
 import android.os.Bundle
-import androidx.appcompat.widget.AppCompatImageView
+import com.github.chrisbanes.photoview.PhotoView
 
 class PictureActivity: BaseActivity() {
 
@@ -17,6 +17,6 @@ class PictureActivity: BaseActivity() {
         }
 
         val uri = intent.data
-        findViewById<AppCompatImageView>(R.id.picture).setImageURI(uri)
+        findViewById<PhotoView>(R.id.picture).setImageURI(uri)
     }
 }
