@@ -86,6 +86,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 }
             }
             "resend_all" -> {
+                mimirServer?.reconnectPeers()
                 Thread {
                     Log.i(TAG, "Resending unsent messages")
                     mimirServer?.sendMessages()
@@ -94,6 +95,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         }
 
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    override fun onDestroy() {
+        mimirServer?.stopServer()
+        super.onDestroy()
     }
 
     override fun onServerStateChanged(online: Boolean) {
@@ -107,10 +113,12 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     override fun onTrackerPing(online: Boolean) {
-        val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
-        preferences.edit {
-            putLong("trackerPingTime", getUtcTime())
-            apply()
+        if (online) {
+            val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
+            preferences.edit {
+                putLong("trackerPingTime", getUtcTime())
+                apply()
+            }
         }
     }
 

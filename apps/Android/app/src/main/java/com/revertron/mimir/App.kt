@@ -13,6 +13,7 @@ class App: Application() {
         lateinit var app: App
     }
 
+    var online: Boolean = false
     lateinit var storage: SqlStorage
 
     override fun onCreate() {

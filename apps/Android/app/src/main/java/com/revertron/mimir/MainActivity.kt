@@ -5,11 +5,26 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.graphics.PorterDuff
+import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import android.view.*
+import android.view.ContextThemeWrapper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.LinearLayout
 import android.widget.Toast
-import androidx.appcompat.widget.*
+import androidx.appcompat.widget.AppCompatEditText
+import androidx.appcompat.widget.PopupMenu
+import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
+import androidx.core.view.isGone
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -26,6 +41,17 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         const val TAG = "MainActivity"
     }
 
+    private val handler = Handler(Looper.getMainLooper())
+    private val refreshTask = object : Runnable {
+        override fun run() {
+            showOnlineState(App.app.online)   // update the dot colour
+            handler.postDelayed(this, 3_000)  // schedule again in 3 s
+        }
+    }
+
+    lateinit var topSheet: LinearLayout
+    lateinit var overlay: View
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -36,6 +62,33 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         if (intent?.hasExtra("no_service") != true) {
             startService()
         }
+
+        /*topSheet = findViewById(R.id.topSheet)
+        overlay = findViewById(R.id.overlay)
+
+        toolbar.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.action_settings) {
+                if (topSheet.isGone) openMenu() else closeMenu()
+                true
+            } else false
+        }
+
+        overlay.setOnClickListener {
+            closeMenu()
+        }
+        findViewById<View>(R.id.menu_item_settings).setOnClickListener { view ->
+            closeMenu()
+            val intent = Intent(this, SettingsActivity::class.java)
+            startActivity(intent)
+            overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+        }
+        findViewById<View>(R.id.menu_item_about).setOnClickListener { view ->
+            closeMenu()
+            val intent = Intent(this, AboutActivity::class.java)
+            startActivity(intent)
+            overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+        }*/
+
         getStorage().listeners.add(this)
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
@@ -52,6 +105,12 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         } else {
             refreshContacts()
         }
+        handler.post(refreshTask)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(refreshTask)
     }
 
     override fun onDestroy() {
@@ -80,6 +139,11 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             }
             R.id.action_settings -> {
                 val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
+                overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+            }
+            R.id.action_about -> {
+                val intent = Intent(this, AboutActivity::class.java)
                 startActivity(intent)
                 overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
             }
@@ -115,11 +179,63 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         return true
     }
 
+    /*override fun onBackPressed() {
+        if (topSheet.isVisible) {
+            closeMenu()
+            return
+        }
+        super.onBackPressed()
+    }*/
+
     override fun onMessageReceived(id: Long, contactId: Long): Boolean {
         runOnUiThread {
             refreshContacts()
         }
         return false
+    }
+
+    fun showOnlineState(isOnline: Boolean) {
+        val avatar = ContextCompat.getDrawable(this, R.drawable.contact_no_avatar_small)!!
+        val badge    = ContextCompat.getDrawable(this, R.drawable.status_badge)!!.mutate()
+
+        // tint the dot green or red
+//        val colorRes = if (isOnline) android.R.color.holo_green_light
+//        else          android.R.color.holo_red_light
+//        val color    = ContextCompat.getColor(this, colorRes)
+        // tint ONLY the badge (dot)
+        if (!isOnline) {
+            badge.setTint(0xFFCC0000.toInt())
+            badge.setTintMode(PorterDuff.Mode.SRC_IN)
+        }
+
+        // combine both drawables; dot on top, bottom-right aligned
+        val layers = arrayOf(avatar, badge)
+        val layered = LayerDrawable(layers)
+
+        val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
+        toolbar.navigationIcon = layered
+    }
+
+    fun openMenu() {
+        topSheet.visibility = View.VISIBLE
+        overlay.visibility = View.VISIBLE
+
+        topSheet.translationY = -topSheet.height.toFloat()
+        topSheet.animate()
+            .translationY(0f)
+            .setDuration(250)
+            .start()
+    }
+
+    fun closeMenu() {
+        topSheet.animate()
+            .translationY(-topSheet.height.toFloat())
+            .setDuration(250)
+            .withEndAction {
+                topSheet.visibility = View.GONE
+                overlay.visibility = View.GONE
+            }
+            .start()
     }
 
     @Suppress("NAME_SHADOWING")
@@ -205,10 +321,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         popup.setForceShowIcon(true)
         popup.setOnMenuItemClickListener {
             when (it.itemId) {
-                R.id.add_address -> {
+                /*R.id.add_address -> {
                     showAddAddressDialog(contact)
                     true
-                }
+                }*/
                 R.id.rename -> {
                     showRenameContactDialog(contact)
                     true

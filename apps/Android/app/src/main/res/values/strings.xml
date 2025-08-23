@@ -63,4 +63,17 @@
     <string name="tracker_ping_time">Tracker ping was %d seconds ago</string>
     <string name="share">Share</string>
     <string name="activity_not_found">Activity not found.</string>
+    <string name="action_about">About</string>
+    <string name="about_title">About Mimir</string>
+    <string name="app_version_label">Version: 1.0.0 (Build 1)</string>
+    <string name="links_label">Links</string>
+    <string name="libs_label">Used libraries</string>
+    <string name="libs_used">\n
+• Yggdrasil Network (LGPLv3)\n
+• AndroidX (Apache 2.0)\n
+• Material Components (Apache 2.0)\n
+• BouncyCastle (MIT)\n
+• And others…
+</string>
+
 </resources>

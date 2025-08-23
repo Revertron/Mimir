@@ -37,6 +37,7 @@
         <item name="android:colorControlNormal">@color/white</item>
         <item name="colorControlNormal">@color/white</item>
         <item name="colorButtonNormal">@color/white</item>
+        <item name="iconColor">@color/white</item>
         <item name="android:textColor">@color/white</item>
         <item name="titleTextColor">@color/white</item>
         <item name="actionOverflowButtonStyle">@style/MimirToolbarOverflowStyle</item>

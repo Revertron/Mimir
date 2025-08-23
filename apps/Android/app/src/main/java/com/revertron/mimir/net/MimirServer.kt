@@ -1,6 +1,7 @@
 package com.revertron.mimir.net
 
 import android.util.Log
+import com.revertron.mimir.App
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.storage.Peer
 import com.revertron.mimir.storage.SqlStorage
@@ -10,18 +11,18 @@ import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONArray
 import java.io.IOException
 import java.net.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.HashMap
 
-//TODO This port will be random, and clients will get it from trackers (or DNS)
+//TODO Remove it, we have no ports now
 const val CONNECTION_PORT: Short = 5050
 private const val CONNECTION_TRIES = 5
 private const val CONNECTION_TIMEOUT = 3000
 private const val CONNECTION_PERIOD = 1000L
-//TODO move to gradle config maybe?
-//private const val RESOLVER_ADDR = "[208:62:45:62:59b8:f1a2:62ca:f87c]"
+//TODO Get from DNS TXT record
 private const val TRACKER_ADDR = "801bc33a735cded0588284af0bf1b8bdb4138f122a9c17ecee089e9ff151c3f6"
 
 class MimirServer(
@@ -68,6 +69,7 @@ class MimirServer(
         Log.i(TAG, "My network ADDR: $hexPub")
         resolver = Resolver(storage, messenger, tracker)
         startResendThread()
+        startOnlineStateThread()
         val peer = Peer(hexPub, clientId, 3, 0)
         startAnnounceThread(pubkey, privkey, peer, this)
         while (working.get()) {
@@ -106,12 +108,12 @@ class MimirServer(
             while (working.get()) {
                 sleep(10000)
                 try {
-                    if (getUtcTime() >= lastAnnounceTime + announceTtl) {
+                    if (App.app.online && getUtcTime() >= lastAnnounceTime + announceTtl) {
                         resolver.announce(pubkey, privkey, peer, receiver)
                         listener.onTrackerPing(false)
                     }
                 } catch (e: SocketTimeoutException) {
-                    Log.e(TAG, "Error announcing our address")
+                    Log.e(TAG, "Error announcing our address: $e")
                     lastAnnounceTime = 0L
                 }
             }
@@ -139,11 +141,36 @@ class MimirServer(
         }.start()
     }
 
+    private fun startOnlineStateThread() {
+        Thread {
+            while (working.get()) {
+                sleep(3000)
+                val peersJSON = messenger.peersJSON
+                if (peersJSON != null && peersJSON != "null") {
+                    val peers = JSONArray(peersJSON)
+                    if (peers.length() > 0) {
+                        val peer = peers.getJSONObject(0)
+                        val up = peer.getBoolean("Up")
+                        App.app.online = up
+                    } else {
+                        App.app.online = false
+                    }
+                }
+            }
+        }.start()
+    }
+
     fun sendMessages() {
         hasNewMessages = true
     }
 
+    fun reconnectPeers() {
+        messenger.retryPeersNow()
+    }
+
     private fun sendUnsent() {
+        if (!App.app.online) return
+
         Log.i(TAG, "Sending unsent messages")
         hasNewMessages = false
         val contacts = storage.getContactsWithUnsentMessages()
