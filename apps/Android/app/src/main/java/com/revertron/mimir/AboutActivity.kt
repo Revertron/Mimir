@@ -20,13 +20,13 @@ class AboutActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setNavigationOnClickListener { finish() }
 
-        // Версия приложения
+        // App version
         val versionView = findViewById<AppCompatTextView>(R.id.app_version)
         val versionName = BuildConfig.VERSION_NAME
         val versionCode = BuildConfig.VERSION_CODE
         versionView.text = "Version: $versionName (Build $versionCode)"
 
-        // Кнопки ссылок
+        // Link buttons
         findViewById<AppCompatImageButton>(R.id.button_github).setOnClickListener {
             openLink("https://github.com/Revertron/Mimir")
         }

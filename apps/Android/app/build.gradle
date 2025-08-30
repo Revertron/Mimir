@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace 'com.revertron.mimir'
-    compileSdk 33
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.revertron.mimir"
         minSdk 21
         targetSdk 33
         versionCode 18
-        versionName "2.0.0a19"
+        versionName "2.0.0a20"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,14 +24,15 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
     buildFeatures {
         viewBinding true
+        buildConfig true
     }
 }
 
@@ -39,21 +40,20 @@ dependencies {
     // Don't forget to build Go library:
     // gomobile bind -target=android -androidapi 21 -javapkg=com.revertron.mimir -o yggquic.aar ./mobile
     implementation fileTree(include: ['*.aar'], dir: 'libs')
-    implementation 'androidx.core:core-ktx:1.9.0'
-    implementation 'androidx.appcompat:appcompat:1.5.1'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.5.1'
-    implementation 'androidx.preference:preference-ktx:1.2.0'
-    implementation 'com.google.android.material:material:1.7.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.media:media:1.6.0'
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.3'
+    implementation 'androidx.preference:preference-ktx:1.2.1'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
 
-    implementation 'org.bouncycastle:bcpkix-jdk18on:1.72'
-    implementation "io.getstream:avatarview-coil:1.0.4"
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.81'
+    implementation "io.getstream:avatarview-coil:1.0.7"
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'com.github.chrisbanes:PhotoView:2.3.0'
-    implementation 'junit:junit:4.12'
+    implementation 'junit:junit:4.13.2'
 
     testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.4'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
 }
