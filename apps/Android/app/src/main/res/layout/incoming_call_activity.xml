@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/avatar_container"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:gravity="center"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/name">
+
+        <io.getstream.avatarview.AvatarView
+            android:id="@+id/avatar"
+            android:layout_width="128dp"
+            android:layout_height="128dp"
+            app:avatarViewShape="rounded_rect"
+            app:avatarViewBorderRadius="4dp"
+            app:avatarViewInitialsTextSizeRatio="0.5"
+            app:avatarViewInitials="Mi"
+            app:avatarViewBorderWidth="0dp"
+            app:avatarViewBorderColor="@color/gray_DD"
+            app:avatarViewInitialsTextColor="@color/black"
+            app:avatarViewInitialsBackgroundColor="@color/gray_80" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toTopOf="@id/buttons_frame"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        android:layout_marginBottom="96dp"
+        android:padding="8dp"
+        android:gravity="center"
+        android:text="Thor Odinson"
+        android:textSize="18sp" />
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/buttons_frame"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginBottom="96dp"
+        android:gravity="center"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/buttons_container"
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/phone_answer"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:layout_margin="32dp"
+                android:src="@drawable/ic_phone_outline"
+                android:background="@drawable/button_rounded_green" />
+
+            <View
+                android:id="@+id/spacer"
+                android:layout_width="wrap_content"
+                android:layout_height="96dp"
+                android:layout_weight="1"/>
+
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/phone_reject"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:layout_margin="32dp"
+                android:src="@drawable/ic_phone_cancel_outline"
+                android:background="@drawable/button_rounded_red" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/in_call_buttons_container"
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/mute_button"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:layout_margin="32dp"
+                android:src="@drawable/ic_microphone_off"
+                android:background="@drawable/ic_launcher_background" />
+
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/speakerphone_button"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:layout_marginTop="0dp"
+                android:src="@drawable/ic_volume_high"
+                android:background="@drawable/ic_launcher_background" />
+
+            <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/phone_hangup"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:layout_margin="32dp"
+                android:visibility="visible"
+                android:src="@drawable/ic_phone_hangup_outline"
+                android:background="@drawable/button_rounded_red" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

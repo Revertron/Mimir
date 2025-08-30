@@ -23,12 +23,9 @@ import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
-import androidx.core.view.isGone
-import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.net.CONNECTION_PORT
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
@@ -164,7 +161,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     override fun onClick(view: View) {
         if (view.tag != null) {
             val contact = view.tag as Contact
-            Log.i(TAG, "Clicked on ${view.tag}")
+            val addr = Hex.toHexString(contact.pubkey)
+            Log.i(TAG, "Clicked on $addr")
             val intent = Intent(this, ChatActivity::class.java)
             intent.putExtra("pubkey", contact.pubkey)
             intent.putExtra("name", contact.name)
@@ -198,11 +196,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val avatar = ContextCompat.getDrawable(this, R.drawable.contact_no_avatar_small)!!
         val badge    = ContextCompat.getDrawable(this, R.drawable.status_badge)!!.mutate()
 
-        // tint the dot green or red
-//        val colorRes = if (isOnline) android.R.color.holo_green_light
-//        else          android.R.color.holo_red_light
-//        val color    = ContextCompat.getColor(this, colorRes)
-        // tint ONLY the badge (dot)
         if (!isOnline) {
             badge.setTint(0xFFCC0000.toInt())
             badge.setTintMode(PorterDuff.Mode.SRC_IN)
@@ -270,30 +263,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.show()
     }
 
-    @Suppress("NAME_SHADOWING")
-    private fun showAddAddressDialog(contact: Contact) {
-        val view = LayoutInflater.from(this).inflate(R.layout.add_contact_ip_dialog, null)
-        val pubkey = view.findViewById<AppCompatEditText>(R.id.contact_pubkey)
-        pubkey.setText(Hex.toHexString(contact.pubkey))
-        val address = view.findViewById<AppCompatEditText>(R.id.contact_address)
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
-        builder.setTitle(getString(R.string.add_contact_address))
-        builder.setView(view)
-        builder.setIcon(R.drawable.ic_add_address)
-        builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
-            val address = address.text.toString()
-            // We add this kind of IPs for 10 days
-            val expiration = getUtcTime() + 86400 * 10
-            (application as App).storage.saveIp(contact.pubkey, address, CONNECTION_PORT, 0, 0, expiration)
-        }
-        builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
-            dialog.cancel()
-        }
-        builder.show()
-    }
-
-    @Suppress("NAME_SHADOWING")
     private fun showRenameContactDialog(contact: Contact) {
         val view = LayoutInflater.from(this).inflate(R.layout.rename_contact_dialog, null)
         val name = view.findViewById<AppCompatEditText>(R.id.contact_name)

@@ -6,8 +6,10 @@
     <string name="channel_description_messages">Messages channel</string>
     <string name="channel_name_messages_with_contact">Contact %d</string>
     <string name="channel_description_messages_with_contact">Messages with contact %d</string>
-    <string name="state_disabled">Disabled</string>
-    <string name="state_enabled">Enabled</string>
+    <string name="channel_name_calls">Calls</string>
+    <string name="channel_description_calls">Calls notification channel</string>
+    <string name="state_offline">Offline</string>
+    <string name="state_online">Online</string>
     <string name="action_settings">Settings</string>
     <string name="action_add_contact">Add contact</string>
     <string name="contact_name">Contact name:</string>
@@ -48,6 +50,7 @@
     <string name="too_big_picture">Picture file must be less or equal to 5 Mb</string>
     <string name="contact_added">New contact added</string>
     <string name="contact_already_added">Contact with that key already added</string>
+    <string name="you_cant_add_yourself">You can\'t add your own account</string>
     <string name="contact_addition_error_wrong_key">Wrong public key, error adding contact</string>
     <string name="contact_addition_error_parsing_error">URL parsing error, cannot add contact</string>
     <string name="empty_uri">Empty URI</string>
@@ -75,5 +78,9 @@
 • BouncyCastle (MIT)\n
 • And others…
 </string>
+    <string name="make_call">Call</string>
+    <string name="mimir_call">Mimir call</string>
+    <string name="call_answer">Answer</string>
+    <string name="call_decline">Decline</string>
 
 </resources>

@@ -7,8 +7,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
 
     <application
         android:allowBackup="true"
@@ -47,6 +51,15 @@
         <activity android:name=".ContactActivity" android:exported="false" />
         <activity android:name=".PictureActivity" android:exported="false" />
 
+        <activity
+            android:name=".IncomingCallActivity"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize"
+            android:launchMode="singleTop" />
+
         <activity android:name=".UriHandlerActivity" android:exported="true" android:parentActivityName=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -68,11 +81,17 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".ConnectionService" android:enabled="true" android:exported="false" />
+        <service android:name=".ConnectionService" android:enabled="true" android:exported="false" android:foregroundServiceType="phoneCall" />
 
         <receiver android:name=".BootUpReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver android:name=".calls.MediaButtonsReceiver" android:exported="false">
+            <intent-filter android:priority="999999">
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
 

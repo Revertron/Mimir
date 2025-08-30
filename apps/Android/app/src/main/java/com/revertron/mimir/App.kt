@@ -28,6 +28,8 @@ class App: Application() {
             )
         }
 
+        NotificationManager.createCallsNotificationChannel(this)
+
         storage = SqlStorage(this)
         storage.cleanUp()
         app = this

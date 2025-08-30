@@ -1,16 +1,20 @@
 package com.revertron.mimir
 
+import android.Manifest
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.*
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.*
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.storage.StorageListener
@@ -18,6 +22,7 @@ import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
 import io.getstream.avatarview.AvatarView
 import org.json.JSONObject
+import java.lang.Thread.sleep
 
 
 class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
@@ -105,6 +110,11 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         getStorage().listeners.add(this)
+
+        Thread {
+            sleep(1000)
+            connect(contact.pubkey)
+        }.start()
     }
 
     private fun onClickOnReply() = fun(it: View) {
@@ -138,6 +148,9 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
                 return true
             }
+            R.id.contact_call -> {
+                checkAndRequestAudioPermission()
+            }
             R.id.contact_info -> {
                 val intent = Intent(this, ContactActivity::class.java)
                 intent.putExtra("pubkey", contact.pubkey)
@@ -151,6 +164,22 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         }
 
         return super.onOptionsItemSelected(item)
+    }
+
+    private fun makeCall() {
+        val intent = Intent(this, ConnectionService::class.java)
+        intent.putExtra("command", "call")
+        intent.putExtra("pubkey", contact.pubkey)
+        startService(intent)
+
+        val storage = (application as App).storage
+        val contactId = storage.getContactId(contact.pubkey)
+        val name = storage.getContactName(contactId)
+        val intent2 = Intent(this, IncomingCallActivity::class.java)
+        intent2.putExtra("pubkey", contact.pubkey)
+        intent2.putExtra("name", name)
+        intent2.putExtra("outgoing", true)
+        startActivity(intent2)
     }
 
     override fun onDestroy() {
@@ -190,6 +219,13 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 attachmentJson = message
             }
         }
+    }
+
+    private fun connect(pubkey: ByteArray) {
+        val intent = Intent(this, ConnectionService::class.java)
+        intent.putExtra("command", "connect")
+        intent.putExtra("pubkey", pubkey)
+        startService(intent)
     }
 
     private fun sendMessage(pubkey: ByteArray, text: String, replyTo: Long) {
@@ -307,4 +343,32 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         }
         builder.show()
     }
+
+    private fun checkAndRequestAudioPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> {
+                // Already have that permission
+                makeCall()
+            }
+
+            /*shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
+                // If the user already declined such requests we need to show some text in dialog, rationale
+            }*/
+
+            else -> {
+                // Ask for microphone permission
+                requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                makeCall()
+            } else {
+                // User declined permission :(
+            }
+        }
 }

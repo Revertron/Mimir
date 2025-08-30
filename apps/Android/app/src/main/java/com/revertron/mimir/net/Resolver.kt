@@ -40,9 +40,9 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
                 sleep(1000)
                 if (socket != null) {
                     try {
-                        Log.i(TAG, "Reading from socket")
+                        //Log.i(TAG, "Reading from socket")
                         val length = socket!!.read(buf)
-                        Log.i(TAG, "Read $length bytes")
+                        //Log.i(TAG, "Read $length bytes")
                         process(buf.copyOfRange(0, length.toInt()))
                     } catch (e: Exception) {
                         when (e.message) {
@@ -75,7 +75,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
     }
 
     fun resolveAddrs(pubkey: ByteArray, receiver: ResolverReceiver) {
-        Log.i(TAG, "Resolving...")
+        //Log.i(TAG, "Resolving...")
         val baos = ByteArrayOutputStream()
         val dos = DataOutputStream(baos)
         dos.writeByte(VERSION)
@@ -89,6 +89,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
             if (socket == null) {
                 socket = messenger.connect(tracker)
             }
+            Log.i(TAG, "Socket: $socket")
             socket?.write(request)
             startTimeoutThread(nonce, receiver)
         } catch (e: Exception) {
@@ -123,11 +124,18 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
             }
             socket?.write(request)
             startTimeoutThread(nonce, receiver)
-            Log.i(TAG, "Announce packet sent")
+            //Log.i(TAG, "Announce packet sent")
         } catch (e: Exception) {
             Log.e(TAG, "Error sending packet: $e")
             val pair = nonces.remove(nonce)!!
             pair.second.onError(pubkey)
+        }
+    }
+
+    fun closeSocket() {
+        if (socket != null) {
+            socket?.close()
+            socket = null
         }
     }
 
@@ -151,7 +159,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
 
             CMD_GET_ADDRS -> {
                 val count = dis.readByte()
-                Log.i(TAG, "Got $count addresses")
+                //Log.i(TAG, "Got $count addresses")
                 if (count <= 0) {
                     pair.second.onError(pair.first)
                     return
@@ -160,7 +168,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
                 val addrBuf = ByteArray(32)
                 val sigBuf = ByteArray(64)
                 for (r in 1..count) {
-                    Log.i(TAG, "Reading address $r")
+                    //Log.i(TAG, "Reading address $r")
                     dis.readFully(addrBuf)
                     dis.readFully(sigBuf)
                     val priority = dis.readByte()
@@ -175,7 +183,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
                     }
                     results.add(Peer(addr, clientId, priority.toInt(), time + ttl))
                 }
-                Log.i(TAG, "Resolved $results for $nonce")
+                //Log.i(TAG, "Resolved $results for $nonce")
                 pair.second.onResolveResponse(pair.first, results)
             }
         }
@@ -183,9 +191,9 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
 
     private fun startTimeoutThread(nonce: Int, receiver: ResolverReceiver): Thread {
         val t = Thread {
-            Log.d(TAG, "Timeout thread for $nonce started")
+            //Log.d(TAG, "Timeout thread for $nonce started")
             try {
-                sleep(10000)
+                sleep(5000)
                 synchronized(nonces) {
                     if (nonces.containsKey(nonce)) {
                         Log.d(TAG, "Timeout thread for $nonce got timeout")

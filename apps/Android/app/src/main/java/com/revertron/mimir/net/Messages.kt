@@ -1,5 +1,6 @@
 package com.revertron.mimir.net
 
+import android.R
 import android.util.Log
 import com.revertron.mimir.getFileContents
 import org.json.JSONException
@@ -8,7 +9,6 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
-import java.net.InetAddress
 
 const val MSG_TYPE_HELLO = 1
 const val MSG_TYPE_CHALLENGE = 2
@@ -18,6 +18,10 @@ const val MSG_TYPE_CHALLENGE_ANSWER2 = 5
 const val MSG_TYPE_INFO_REQUEST = 6
 const val MSG_TYPE_INFO_RESPONSE = 7
 const val MSG_TYPE_MESSAGE_TEXT = 1000
+const val MSG_TYPE_CALL_OFFER = 2000
+const val MSG_TYPE_CALL_ANSWER = 2001
+const val MSG_TYPE_CALL_HANG = 2002
+const val MSG_TYPE_CALL_PACKET = 2003
 const val MSG_TYPE_OK = 32767
 
 data class Header(val stream: Int, val type: Int, val size: Long)
@@ -26,6 +30,9 @@ data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
 data class InfoResponse(val time: Long, val nickname: String, val info: String, val avatar: ByteArray?)
 data class Message(val guid: Long, val replyTo: Long, val sendTime: Long, val editTime: Long, val type: Int, val data: ByteArray)
+data class CallOffer(val mimeType: String, val sampleRate: Int, val channelCount: Int = 1)
+data class CallAnswer(val ok: Boolean, val error: String = "")
+data class CallPacket(val data: ByteArray)
 data class Ok(val id: Long)
 
 private const val TAG = "Messages"
@@ -350,4 +357,87 @@ fun readInfoResponse(dis: DataInputStream): InfoResponse? {
     }
 
     return InfoResponse(time, nickname, info, avatar)
+}
+
+fun writeCallOffer(dos: DataOutputStream, offer: CallOffer, stream: Int = 0, type: Int = MSG_TYPE_CALL_OFFER): Boolean {
+    val mimeBuf = offer.mimeType.toByteArray()
+    val size = 4 + mimeBuf.size + 4 + 4
+    writeHeader(dos, stream, type, size)
+
+    dos.writeInt(mimeBuf.size)
+    dos.write(mimeBuf)
+    dos.writeInt(offer.sampleRate)
+    dos.writeInt(offer.channelCount)
+    dos.flush()
+    return true
+}
+
+fun readCallOffer(dis: DataInputStream): CallOffer? {
+    val mimeSize = dis.readInt()
+    val mimeBuf = ByteArray(mimeSize)
+    var count = 0
+    while (count < mimeSize) {
+        val read = dis.read(mimeBuf, count, mimeSize - count)
+        if (read < 0) return null
+        count += read
+    }
+    val sampleRate = dis.readInt()
+    val channelCount = dis.readInt()
+    return CallOffer(String(mimeBuf), sampleRate, channelCount)
+}
+
+fun writeCallAnswer(dos: DataOutputStream, answer: CallAnswer, stream: Int = 0, type: Int = MSG_TYPE_CALL_ANSWER): Boolean {
+    val errBuf = answer.error.toByteArray()
+    val size = 1 + 4 + errBuf.size
+    writeHeader(dos, stream, type, size)
+
+    dos.writeBoolean(answer.ok)
+    dos.writeInt(errBuf.size)
+    dos.write(errBuf)
+    dos.flush()
+    return true
+}
+
+fun readCallAnswer(dis: DataInputStream): CallAnswer? {
+    val ok = dis.readBoolean()
+    val errSize = dis.readInt()
+    val errBuf = if (errSize > 0) {
+        val buf = ByteArray(errSize)
+        var count = 0
+        while (count < errSize) {
+            val read = dis.read(buf, count, errSize - count)
+            if (read < 0) return null
+            count += read
+        }
+        buf
+    } else null
+    return CallAnswer(ok, if (errBuf != null) String(errBuf) else "")
+}
+
+fun writeCallHangup(dos: DataOutputStream, stream: Int = 0, type: Int = MSG_TYPE_CALL_HANG): Boolean {
+    writeHeader(dos, stream, type, 0)
+    dos.flush()
+    return true
+}
+
+fun writeCallPacket(dos: DataOutputStream, packet: CallPacket, stream: Int = 0, type: Int = MSG_TYPE_CALL_PACKET): Boolean {
+    val size = 4 + packet.data.size
+    writeHeader(dos, stream, type, size)
+
+    dos.writeInt(packet.data.size)
+    dos.write(packet.data)
+    dos.flush()
+    return true
+}
+
+fun readCallPacket(dis: DataInputStream): CallPacket? {
+    val size = dis.readInt()
+    val data = ByteArray(size)
+    var count = 0
+    while (count < size) {
+        val read = dis.read(data, count, size - count)
+        if (read < 0) return null
+        count += read
+    }
+    return CallPacket(data)
 }

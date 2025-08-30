@@ -19,8 +19,7 @@ import kotlin.collections.HashMap
 
 //TODO Remove it, we have no ports now
 const val CONNECTION_PORT: Short = 5050
-private const val CONNECTION_TRIES = 5
-private const val CONNECTION_TIMEOUT = 3000
+private const val CONNECTION_TRIES = 3
 private const val CONNECTION_PERIOD = 1000L
 //TODO Get from DNS TXT record
 private const val TRACKER_ADDR = "801bc33a735cded0588284af0bf1b8bdb4138f122a9c17ecee089e9ff151c3f6"
@@ -43,11 +42,14 @@ class MimirServer(
     private val connectContacts = HashSet<String>(5)
     private lateinit var messenger: Messenger
     private var hasNewMessages = false
+    private var callStatus: CallStatus = CallStatus.Idle
+    private var callContact: ByteArray? = null
     private lateinit var resolver: Resolver
     private val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
     private val privkey = (keyPair.private as Ed25519PrivateKeyParameters).encoded
     private var lastAnnounceTime = 0L
     private var announceTtl = 0L
+    private var forceAnnounce = false
 
     override fun run() {
         val bootstrapPeers = arrayOf(
@@ -108,9 +110,11 @@ class MimirServer(
             while (working.get()) {
                 sleep(10000)
                 try {
-                    if (App.app.online && getUtcTime() >= lastAnnounceTime + announceTtl) {
+                    val expiredTtl = getUtcTime() >= lastAnnounceTime + announceTtl
+                    if (App.app.online && (expiredTtl || forceAnnounce)) {
                         resolver.announce(pubkey, privkey, peer, receiver)
                         listener.onTrackerPing(false)
+                        forceAnnounce = false
                     }
                 } catch (e: SocketTimeoutException) {
                     Log.e(TAG, "Error announcing our address: $e")
@@ -145,15 +149,35 @@ class MimirServer(
         Thread {
             while (working.get()) {
                 sleep(3000)
+                val old = App.app.online
                 val peersJSON = messenger.peersJSON
                 if (peersJSON != null && peersJSON != "null") {
                     val peers = JSONArray(peersJSON)
                     if (peers.length() > 0) {
                         val peer = peers.getJSONObject(0)
+                        //Log.i(TAG, "Peer: $peer")
                         val up = peer.getBoolean("Up")
                         App.app.online = up
+                        if (old != up)
+                        {
+                            onServerStateChanged(up)
+                            if (up)
+                                forceAnnounce = true
+                            else
+                                resolver.closeSocket()
+                        }
                     } else {
                         App.app.online = false
+                        if (old) {
+                            onServerStateChanged(false)
+                            resolver.closeSocket()
+                        }
+                    }
+                } else {
+                    App.app.online = false
+                    if (old) {
+                        onServerStateChanged(false)
+                        resolver.closeSocket()
                     }
                 }
             }
@@ -171,23 +195,41 @@ class MimirServer(
     private fun sendUnsent() {
         if (!App.app.online) return
 
-        Log.i(TAG, "Sending unsent messages")
-        hasNewMessages = false
+        //Log.i(TAG, "Sending unsent messages")
         val contacts = storage.getContactsWithUnsentMessages()
-        Log.i(TAG, "Contacts with unsent messages: ${contacts.size}")
+        if (contacts.isNotEmpty()) {
+            Log.i(TAG, "Contacts with unsent messages: ${contacts.size}")
+        }
+        hasNewMessages = false
         for (contact in contacts) {
             connectContact(contact)
         }
     }
 
-    private fun connectContact(contact: ByteArray) {
+    fun call(contact: ByteArray) {
+        Log.i(TAG, "CallStatus before call = $callStatus")
+        if (callStatus == CallStatus.Idle) {
+            callStatus = CallStatus.Calling
+            callContact = contact
+            connectContact(contact)
+        }
+    }
+
+    fun connectContact(contact: ByteArray) {
         val contactString = Hex.toHexString(contact)
         Log.i(TAG, "Connecting to $contactString")
         synchronized(connections) {
             if (connections.contains(contactString)) {
                 Log.i(TAG, "Found established connection, trying to send")
                 sendUnsentMessages(contact)
-                return
+                if (callContact == null || !callContact.contentEquals(contact)) {
+                    return
+                } else if (callStatus == CallStatus.Calling) {
+                    Log.i(TAG, "Calling over established connection")
+                    val connection = connections.get(contactString)
+                    connection?.startCall()
+                    return
+                }
             }
         }
         synchronized(connectContacts) {
@@ -221,7 +263,7 @@ class MimirServer(
 
                 override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
                 override fun onError(pubkey: ByteArray) {
-                    Log.e(TAG, "Error resolving IPs")
+                    Log.w(TAG, "Error resolving IPs")
                     synchronized(connectContacts) {
                         connectContacts.remove(contactString)
                     }
@@ -252,7 +294,7 @@ class MimirServer(
                     connected = true
                     break
                 } else {
-                    Log.e(TAG, "Can not connect to $contactString")
+                    Log.w(TAG, "Can not connect to $contactString")
                     synchronized(connectContacts) {
                         connectContacts.remove(contactString)
                     }
@@ -333,7 +375,7 @@ class MimirServer(
 
     override fun onClientConnected(from: ByteArray, address: String, clientId: Int) {
         val pubkey = Hex.toHexString(from)
-        Log.i(TAG, "onClientConnected from $pubkey")
+        Log.i(TAG, "onClientConnected from/to $pubkey")
         // When some client connects to us, we put `ConnectionHandler` in `connections` by the address
         // as we don't know the public key of newly connected client.
         // Now we can change it to correct key.
@@ -350,6 +392,12 @@ class MimirServer(
         }
         listener.onClientConnected(from, address, clientId)
         sendUnsentMessages(from)
+        if (callStatus == CallStatus.Calling && callContact != null) {
+            if (from.contentEquals(callContact)) {
+                val connectionHandler = connections.get(pubkey)
+                connectionHandler?.startCall()
+            }
+        }
     }
 
     override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
@@ -358,6 +406,22 @@ class MimirServer(
 
     override fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean) {
         listener.onMessageDelivered(to, guid, delivered)
+    }
+
+    override fun onIncomingCall(from: ByteArray): Boolean {
+        if (callStatus != CallStatus.Idle) {
+            return false
+        }
+        callContact = from
+        return listener.onIncomingCall(from)
+    }
+
+    override fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {
+        callStatus = status
+        listener.onCallStatusChanged(status, from)
+        if (status == CallStatus.Hangup) {
+            callStatus = CallStatus.Idle
+        }
     }
 
     override fun onConnectionClosed(from: ByteArray, address: String) {
@@ -382,6 +446,53 @@ class MimirServer(
     override fun onError(pubkey: ByteArray) {
         Log.d(TAG, "Got timeout")
     }
+
+    fun getCallingContact(): ByteArray? {
+        return callContact
+    }
+
+    fun callAnswer() {
+        synchronized(connections) {
+            val connection = connections.get(Hex.toHexString(callContact))
+            connection?.answerCall(true)
+        }
+    }
+
+    fun callDecline() {
+        synchronized(connections) {
+            val connection = connections.get(Hex.toHexString(callContact))
+            connection?.answerCall(false)
+            callStatus = CallStatus.Idle
+            callContact = null
+        }
+    }
+
+    fun callHangup() {
+        synchronized(connections) {
+            val connection = connections.get(Hex.toHexString(callContact))
+            connection?.hangupCall()
+            callStatus = CallStatus.Idle
+            callContact = null
+        }
+    }
+
+    fun callMute(mute: Boolean) {
+        synchronized(connections) {
+            val connection = connections.get(Hex.toHexString(callContact))
+            connection?.muteCall(mute)
+        }
+    }
+}
+
+enum class CallStatus {
+    Idle,
+    Call,
+    Calling,
+    Receiving,
+    Answer,
+    Reject,
+    Hangup,
+    InCall,
 }
 
 interface EventListener {
@@ -391,6 +502,8 @@ interface EventListener {
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
     fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray)
     fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean)
+    fun onIncomingCall(from: ByteArray): Boolean { return false }
+    fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {}
     fun onConnectionClosed(from: ByteArray, address: String) {}
 }
 

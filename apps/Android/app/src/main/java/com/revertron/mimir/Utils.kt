@@ -62,8 +62,8 @@ fun createServiceNotification(context: Context, state: State): Notification {
     val pendingIntent: PendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
     val text = when (state) {
-        State.Disabled -> context.getText(R.string.state_disabled)
-        State.Enabled -> context.getText(R.string.state_enabled)
+        State.Offline -> context.getText(R.string.state_offline)
+        State.Online -> context.getText(R.string.state_online)
     }
 
     return NotificationCompat.Builder(context, channelId)
@@ -390,7 +390,7 @@ fun getInitials(contact: Contact): String {
 }
 
 enum class State {
-    Disabled, Enabled;
+    Offline, Online;
 }
 
 fun Uri.length(context: Context): Long {

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.net.URLDecoder
 
@@ -62,6 +63,13 @@ class UriHandlerActivity : BaseActivity() {
                 Toast.makeText(this, R.string.contact_already_added, Toast.LENGTH_LONG).show()
                 return false
             }
+            val accountInfo = storage.getAccountInfo(1, 0L)!!
+            val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded).uppercase()
+            if (public.contentEquals(pubkey.uppercase())) {
+                Toast.makeText(this, R.string.you_cant_add_yourself, Toast.LENGTH_LONG).show()
+                return false
+            }
+
             storage.addContact(publicKey, name)
             Toast.makeText(this, R.string.contact_added, Toast.LENGTH_LONG).show()
             return true

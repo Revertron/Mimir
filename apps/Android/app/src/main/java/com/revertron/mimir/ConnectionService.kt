@@ -2,13 +2,22 @@ package com.revertron.mimir
 
 import android.app.NotificationManager
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
-import com.revertron.mimir.net.CONNECTION_PORT
+import com.revertron.mimir.NotificationManager.Companion.INCOMING_CALL_NOTIFICATION_ID
+import com.revertron.mimir.NotificationManager.Companion.ONGOING_CALL_NOTIFICATION_ID
+import com.revertron.mimir.NotificationManager.Companion.showCallNotification
+import com.revertron.mimir.net.CallStatus
 import com.revertron.mimir.net.EventListener
 import com.revertron.mimir.net.InfoProvider
 import com.revertron.mimir.net.InfoResponse
@@ -52,13 +61,59 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         val pubkey = (accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded
                         val pubkeyHex = Hex.toHexString(pubkey)
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey $pubkeyHex")
-                        mimirServer = MimirServer(storage, accountInfo.clientId, accountInfo.keyPair, this, this, CONNECTION_PORT.toInt()) //TODO make changing port
+                        mimirServer = MimirServer(storage, accountInfo.clientId, accountInfo.keyPair, this, this, 0)
                         mimirServer!!.start()
-                        val n = createServiceNotification(this, State.Enabled)
+                        val n = createServiceNotification(this, State.Offline)
                         startForeground(1, n)
                     }
                     return START_STICKY
                 }
+            }
+            "connect" -> {
+                val pubkey = intent.getByteArrayExtra("pubkey")
+                pubkey?.let { mimirServer?.connectContact(it) }
+            }
+            "call" -> {
+                val pubkey = intent.getByteArrayExtra("pubkey")
+                pubkey?.let {
+                    mimirServer?.call(it)
+                    mimirServer?.connectContact(it)
+                }
+            }
+            "call_answer" -> {
+                Log.i(TAG, "Answering call")
+                val pubkey = intent.getByteArrayExtra("pubkey")
+
+                NotificationManagerCompat.from(this).cancel(INCOMING_CALL_NOTIFICATION_ID)
+                if (pubkey != null) {
+                    showCallNotification(this, applicationContext, true, pubkey)
+                } else {
+                    val contact = mimirServer?.getCallingContact()
+                    if (contact != null) {
+                        showCallNotification(this, applicationContext, true, contact)
+                    }
+                }
+                mimirServer?.callAnswer()
+            }
+            "call_decline" -> {
+                NotificationManagerCompat.from(this).cancel(INCOMING_CALL_NOTIFICATION_ID)
+                NotificationManagerCompat.from(this).cancel(ONGOING_CALL_NOTIFICATION_ID)
+                Log.i(TAG, "Declining call")
+                onCallStatusChanged(CallStatus.Hangup, null)
+                mimirServer?.callDecline()
+            }
+            "call_hangup" -> {
+                Log.i(TAG, "Hanging-up call")
+                NotificationManagerCompat.from(this).cancel(ONGOING_CALL_NOTIFICATION_ID)
+                mimirServer?.callHangup()
+            }
+            "incoming_call" -> {
+                val pubkey = intent.getByteArrayExtra("pubkey")
+                pubkey?.let { showCallNotification(this, applicationContext, false, it) }
+            }
+            "call_mute" -> {
+                val mute = intent.getBooleanExtra("mute", false)
+                mimirServer?.callMute(mute)
             }
             "send" -> {
                 val pubkey = intent.getByteArrayExtra("pubkey")
@@ -66,20 +121,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 val message = intent.getStringExtra("message")
                 val replyTo = intent.getLongExtra("replyTo", 0L)
                 val type = intent.getIntExtra("type", 0)
-                Log.i(TAG, "Replying to $replyTo")
                 if (pubkey != null && message != null) {
                     val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, type, message.toByteArray())
                     Log.i(TAG, "Message $id to $keyString")
-                    Thread{
-                        mimirServer?.sendMessages()
-                    }.start()
-                }
-            }
-            "resend" -> {
-                val id = intent.getLongExtra("id", 0)
-                val pubkey = intent.getByteArrayExtra("pubkey")
-                Log.i(TAG, "Resending message $id")
-                if (pubkey != null) {
                     Thread{
                         mimirServer?.sendMessages()
                     }.start()
@@ -104,8 +148,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onServerStateChanged(online: Boolean) {
         val state = when(online) {
-            true -> State.Enabled
-            false -> State.Disabled
+            true -> State.Online
+            false -> State.Offline
         }
         val n = createServiceNotification(this, state)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -127,7 +171,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val ttl = preferences.getInt(IP_CACHE_TTL, IP_CACHE_DEFAULT_TTL)
         val expiration = getUtcTime() + ttl
         val storage = (application as App).storage
-        storage.saveIp(from, address, CONNECTION_PORT, clientId, 0, expiration)
+        storage.saveIp(from, address, 0, clientId, 0, expiration)
     }
 
     override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
@@ -147,6 +191,24 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, meta)
         } else {
             storage.addMessage(from, guid, replyTo, true, true, sendTime, editTime, type, message)
+        }
+    }
+
+    override fun onIncomingCall(from: ByteArray): Boolean {
+        showCallNotification(this, applicationContext, false, from)
+        return true
+    }
+
+    override fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {
+        Log.i(TAG, "onCallStatusChanged: $status")
+        if (status == CallStatus.InCall) {
+            val intent = Intent("ACTION_IN_CALL_START")
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        }
+        if (status == CallStatus.Hangup) {
+            NotificationManagerCompat.from(this).cancel(INCOMING_CALL_NOTIFICATION_ID)
+            val intent = Intent("ACTION_FINISH_CALL")
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
         }
     }
 

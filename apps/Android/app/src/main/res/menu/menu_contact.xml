@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <item android:id="@+id/contact_info"
+    <item android:id="@+id/contact_call"
         android:orderInCategory="1"
+        android:title="@string/make_call"
+        android:icon="@drawable/ic_phone_outline"
+        app:showAsAction="always" />
+    <item android:id="@+id/contact_info"
+        android:orderInCategory="2"
         android:title="@string/contact_info"
         android:icon="@drawable/ic_contact_info"
         app:showAsAction="ifRoom" />

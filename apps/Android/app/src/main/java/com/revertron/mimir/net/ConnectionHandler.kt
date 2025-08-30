@@ -1,6 +1,9 @@
 package com.revertron.mimir.net
 
+import android.media.MediaFormat
 import android.util.Log
+import com.revertron.mimir.calls.AudioReceiver
+import com.revertron.mimir.calls.AudioSender
 import com.revertron.mimir.randomBytes
 import com.revertron.mimir.sec.Sign
 import com.revertron.mimir.yggmobile.Connection
@@ -31,96 +34,157 @@ class ConnectionHandler(
     private var challengeBytes: ByteArray? = randomBytes(32)
     private var infoRequested = false
     private val buffer = mutableListOf<Pair<Long, Message>>()
+    private val sentMessages = HashSet<Long>()
     private var address = Hex.toHexString(connection.publicKey())
     private var peerClientId = 0
     private var lastActiveTime = System.currentTimeMillis()
+    private var callStatus: CallStatus = CallStatus.Idle
+    private var audioSender: AudioSender? = null
+    private var audioReceiver: AudioReceiver? = null
 
     override fun run() {
 
         // TODO make buffered reader:
         // new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
+        Log.i(TAG, "Starting connection with $address")
         val dis = DataInputStream(ConnectionInputStream(connection))
-        //var buf = ByteArray(65536)
-        while (!this.isInterrupted) {
-            when (peerStatus) {
-                Status.ConnectedOut -> {
-                    // If our client is from NATed Yggdrasil network we send its address from 300::/8
-                    val hello = getHello(clientId, /*connection.publicKey()*/ null)
-                    val baos = ByteArrayOutputStream()
-                    val dos = DataOutputStream(baos)
-                    writeClientHello(dos, hello)
-                    connection.write(baos.toByteArray())
-                    peerStatus = Status.HelloSent
-                }
-                Status.Auth2Done -> {
-                    val message: Pair<Long, Message>? = synchronized(buffer) {
-                        if (buffer.isNotEmpty()) {
-                            buffer.removeAt(0)
-                        } else {
-                            null
-                        }
+        val startTime = System.currentTimeMillis()
+        try {
+            while (!this.isInterrupted) {
+                when (peerStatus) {
+                    Status.ConnectedOut -> {
+                        val hello = getHello(clientId, /*connection.publicKey()*/ null)
+                        val baos = ByteArrayOutputStream()
+                        val dos = DataOutputStream(baos)
+                        writeClientHello(dos, hello)
+                        connection.write(baos.toByteArray())
+                        peerStatus = Status.HelloSent
                     }
-                    if (message != null) {
-                        try {
+                    Status.Auth2Done -> {
+                        val message: Pair<Long, Message>? = synchronized(buffer) {
+                            if (buffer.isNotEmpty()) {
+                                buffer.removeAt(0)
+                            } else {
+                                null
+                            }
+                        }
+                        if (message != null) {
                             val baos = ByteArrayOutputStream()
                             val dos = DataOutputStream(baos)
                             writeMessage(dos, message.second, infoProvider.getFilesDirectory())
                             val bytes = baos.toByteArray()
                             connection.write(bytes)
                             Log.i(TAG, "Message ${message.second.guid} sent, ${bytes.size} bytes")
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            //TODO propagate event that message was not sent
-                            this.interrupt()
+                        }
+                        processCallStates()
+                    }
+                    Status.HelloSent -> {
+                        if (System.currentTimeMillis() - startTime >= 5000) {
+                            Log.i(TAG, "Connection with $address timed out")
                             break
                         }
                     }
+                    else -> {}
                 }
-                else -> {}
-            }
 
-            //Log.i(TAG, "Peer status $peerStatus")
+                //Log.i(TAG, "Peer status $peerStatus")
 
-            try {
-                if (dis.available() >= HEADER_SIZE) {
-                    val baos = ByteArrayOutputStream()
-                    val dos = DataOutputStream(baos)
-                    if (processInput(dis, dos)) {
-                        val bytes = baos.toByteArray()
-                        connection.write(bytes)
-                        lastActiveTime = System.currentTimeMillis()
-                    }
-                }
-            } catch (e: Exception) {
-                if (e.message?.contains("deadline exceeded") == true) {
-                    continue
-                }
-                Log.e(TAG, "Exception: $e")
-                // Connection severed somewhere, we just bail
-                val peer = Hex.toHexString(peer)
-                Log.i(TAG, "Connection with $peer and ${address} broke")
-                interrupt()
-                break
-            }
-
-            if (System.currentTimeMillis() > lastActiveTime + 1000) {
                 try {
-                    sleep(100)
-                } catch (e: InterruptedException) {
-                    peer?.apply {
-                        val peer = Hex.toHexString(this)
-                        Log.i(TAG, "Connection thread with $peer and ${address} interrupted")
+                    if (dis.available() >= HEADER_SIZE) {
+                        val baos = ByteArrayOutputStream()
+                        val dos = DataOutputStream(baos)
+                        if (processInput(dis, dos)) {
+                            val bytes = baos.toByteArray()
+                            connection.write(bytes)
+                            lastActiveTime = System.currentTimeMillis()
+                        }
                     }
+                } catch (e: Exception) {
+                    if (e.message?.contains("deadline exceeded") == true) {
+                        continue
+                    }
+                    Log.e(TAG, "Exception: $e")
+                    // Connection severed somewhere, we just bail
+                    val peer = Hex.toHexString(peer)
+                    Log.i(TAG, "Connection with $peer and $address broke")
+                    interrupt()
                     break
                 }
-                if (System.currentTimeMillis() > lastActiveTime + 120000) {
-                    Log.i(TAG, "Connection with ${address} timed out")
-                    break
+
+                if (System.currentTimeMillis() > lastActiveTime + 1000) {
+                    try {
+                        sleep(100)
+                    } catch (_: InterruptedException) {
+                        peer?.apply {
+                            val peer = Hex.toHexString(this)
+                            Log.i(TAG, "Connection thread with $peer and $address interrupted")
+                        }
+                        break
+                    }
+                    if (System.currentTimeMillis() > lastActiveTime + 180000) {
+                        Log.i(TAG, "Connection with $address timed out")
+                        break
+                    }
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            //TODO propagate event that message was not sent
         }
+        connection.close()
+        stopAudio()
         peer?.let { listener.onConnectionClosed(it, address) }
+    }
+
+    private fun processCallStates() {
+        when (callStatus) {
+            CallStatus.Call -> {
+                val baos = ByteArrayOutputStream()
+                val dos = DataOutputStream(baos)
+                writeCallOffer(dos, CallOffer(MediaFormat.MIMETYPE_AUDIO_AAC, 44100, 1))
+                val bytes = baos.toByteArray()
+                connection.write(bytes)
+                Log.i(TAG, "Call offer sent")
+                callStatus = CallStatus.Calling
+                listener.onCallStatusChanged(callStatus, peer)
+            }
+
+            CallStatus.Answer -> {
+                val baos = ByteArrayOutputStream()
+                val dos = DataOutputStream(baos)
+                writeCallAnswer(dos, CallAnswer(ok = true))
+                val bytes = baos.toByteArray()
+                connection.write(bytes)
+                Log.i(TAG, "Call answer sent")
+                callStatus = CallStatus.InCall
+                listener.onCallStatusChanged(callStatus, peer)
+                startAudio()
+            }
+
+            CallStatus.Reject -> {
+                val baos = ByteArrayOutputStream()
+                val dos = DataOutputStream(baos)
+                writeCallAnswer(dos, CallAnswer(ok = false))
+                val bytes = baos.toByteArray()
+                connection.write(bytes)
+                Log.i(TAG, "Call decline sent")
+                callStatus = CallStatus.Idle
+                listener.onCallStatusChanged(callStatus, peer)
+            }
+
+            CallStatus.Hangup -> {
+                val baos = ByteArrayOutputStream()
+                val dos = DataOutputStream(baos)
+                writeCallHangup(dos)
+                val bytes = baos.toByteArray()
+                connection.write(bytes)
+                Log.i(TAG, "Call hangup sent")
+                callStatus = CallStatus.Idle
+                listener.onCallStatusChanged(callStatus, peer)
+            }
+
+            else -> {}
+        }
     }
 
     private fun processInput(dis: DataInputStream, dos: DataOutputStream): Boolean {
@@ -245,6 +309,39 @@ class ConnectionHandler(
                         peer?.let { listener.onMessageReceived(it, message.guid, message.replyTo, message.sendTime, message.editTime, message.type, message.data) }
                     }
                 }
+                MSG_TYPE_CALL_OFFER -> {
+                    val offer = readCallOffer(dis) ?: return false
+                    Log.i(TAG, "Got call offer: $offer")
+                    if (callStatus == CallStatus.Idle) {
+                        callStatus = CallStatus.Receiving
+                        listener.onIncomingCall(peer!!)
+                    }
+                }
+                MSG_TYPE_CALL_ANSWER -> {
+                    val callAnswer = readCallAnswer(dis) ?: return false
+                    Log.i(TAG, "Got call answer: $callAnswer")
+                    //TODO Start call on call screen through listener
+                    if (callStatus == CallStatus.Calling && callAnswer.ok) {
+                        callStatus = CallStatus.InCall
+                        listener.onCallStatusChanged(callStatus, peer)
+                        startAudio()
+                    } else {
+                        listener.onCallStatusChanged(CallStatus.Hangup, peer)
+                        callStatus = CallStatus.Idle
+                    }
+                }
+                MSG_TYPE_CALL_PACKET -> {
+                    //Log.i(TAG, "Call packet received")
+                    val packet = readCallPacket(dis) ?: return false
+                    //Log.i(TAG, "Call packet size: ${packet.data.size}")
+                    audioReceiver?.pushPacket(packet.data)
+                }
+                MSG_TYPE_CALL_HANG -> {
+                    Log.i(TAG, "Stopping the call")
+                    callStatus = CallStatus.Idle
+                    listener.onCallStatusChanged(CallStatus.Hangup, peer)
+                    stopAudio()
+                }
             }
             return true
         } catch (e: Exception) {
@@ -255,7 +352,7 @@ class ConnectionHandler(
 
     private fun isMessageForMe(hello: ClientHello): Boolean {
         val publicKey = (keyPair.public as Ed25519PublicKeyParameters).encoded
-        Log.d(TAG, "My ${Hex.toHexString(publicKey)} and his ${Hex.toHexString(hello.receiver)}")
+        //Log.d(TAG, "My ${Hex.toHexString(publicKey)} and his ${Hex.toHexString(hello.receiver)}")
         return publicKey.contentEquals(hello.receiver)
     }
 
@@ -265,9 +362,64 @@ class ConnectionHandler(
 
     fun sendMessage(guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, data: ByteArray) {
         synchronized(buffer) {
-            val message = Message(guid, replyTo, sendTime, editTime, type, data)
-            buffer.add(id to message)
+            if (!sentMessages.contains(guid)) {
+                val message = Message(guid, replyTo, sendTime, editTime, type, data)
+                buffer.add(id to message)
+                sentMessages.add(guid)
+            }
         }
+    }
+
+    fun sendData(bytes: ByteArray) {
+        try {
+            connection.write(bytes)
+            lastActiveTime = System.currentTimeMillis()
+        } catch (e: Exception) {
+            stopAudio()
+            interrupt()
+        }
+    }
+
+    fun loopData(bytes: ByteArray) {
+        audioReceiver?.pushPacket(bytes)
+    }
+
+    fun startCall() {
+        // Signal that we need to call
+        callStatus = CallStatus.Call
+    }
+
+    fun answerCall(answer: Boolean) {
+        if (answer)
+            callStatus = CallStatus.Answer
+        else
+            callStatus = CallStatus.Reject
+    }
+
+    fun hangupCall() {
+        callStatus = CallStatus.Hangup
+        stopAudio()
+    }
+
+    fun muteCall(mute: Boolean) {
+        audioSender?.muteCall(mute)
+    }
+
+    private fun startAudio() {
+        Log.i(TAG, "Starting call audio")
+        if (audioSender == null && audioReceiver == null) {
+            audioSender = AudioSender(this).also { it.start() }
+            audioReceiver = AudioReceiver(44100).also { it.start() }
+            Log.i(TAG, "Audio sender/receiver started")
+        }
+    }
+
+    fun stopAudio() {
+        audioSender?.stopSender()
+        audioSender = null
+        audioReceiver?.stopReceiver()
+        audioReceiver = null
+        Log.i(TAG, "Audio stopped")
     }
 
     private fun getHello(clientId: Int, address: ByteArray? = null): ClientHello {
