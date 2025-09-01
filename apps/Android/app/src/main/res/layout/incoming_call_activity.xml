@@ -5,6 +5,19 @@
     android:layout_height="match_parent"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/timerTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toBottomOf="@id/name"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp"
+        android:textSize="24sp"
+        android:textColor="@color/white"
+        android:visibility="gone"
+        android:text="00:00"/>
+
     <androidx.appcompat.widget.LinearLayoutCompat
         android:id="@+id/avatar_container"
         android:orientation="vertical"

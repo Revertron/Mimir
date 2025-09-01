@@ -32,6 +32,10 @@ class IncomingCallActivity: BaseActivity() {
     private lateinit var powerManager: PowerManager
     private var wakeLock: PowerManager.WakeLock? = null
     private var mediaPlayer: MediaPlayer? = null
+    private lateinit var timerTextView: AppCompatTextView
+    private var callTimer: Timer? = null
+    private var callSeconds: Int = 0
+    private val timerHandler = Handler(Looper.getMainLooper())
 
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
@@ -76,6 +80,8 @@ class IncomingCallActivity: BaseActivity() {
         var outgoing = intent.getBooleanExtra("outgoing", false)
         active = intent.getBooleanExtra("active", false)
         val action = intent.action
+
+        val timerTextView = findViewById(R.id.timerTextView) // Инициализация TextView таймера
 
         if (action == "decline") {
             callReact(false)
@@ -170,6 +176,7 @@ class IncomingCallActivity: BaseActivity() {
             }
         }
 
+        
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
 
@@ -235,7 +242,34 @@ class IncomingCallActivity: BaseActivity() {
         super.onPause()
     }
 
+    private fun startCallTimer() {
+        timerTextView.visibility = View.VISIBLE
+        callSeconds = 0
+        updateTimerText()
+        
+        callTimer = Timer()
+        callTimer?.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                callSeconds++
+                timerHandler.post { updateTimerText() }
+            }
+        }, 1000, 1000)
+    }
+
+    private fun stopCallTimer() {
+        callTimer?.cancel()
+        callTimer = null
+        timerTextView.visibility = View.GONE
+    }
+
+    private fun updateTimerText() {
+        val minutes = callSeconds / 60
+        val seconds = callSeconds % 60
+        timerTextView.text = String.format("%02d:%02d", minutes, seconds)
+    }
+
     override fun onDestroy() {
+        stopCallTimer() // Останавливаем таймер при уничтожении активности
         LocalBroadcastManager.getInstance(this).unregisterReceiver(closeReceiver)
         audioManager.mode = AudioManager.MODE_NORMAL
         requestedOrientation = originalOrientation
@@ -276,6 +310,7 @@ class IncomingCallActivity: BaseActivity() {
         findViewById<View>(R.id.in_call_buttons_container).visibility = View.VISIBLE
         findViewById<View>(R.id.buttons_container).visibility = View.GONE
         stopRingbackSound()
+        startCallTimer() // Запускаем таймер при начале разговора
     }
 
     private fun callReact(answer: Boolean) {
