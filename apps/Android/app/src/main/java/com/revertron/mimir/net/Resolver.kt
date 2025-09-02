@@ -47,13 +47,11 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
                     } catch (e: Exception) {
                         when (e.message) {
                             "EOF" -> {
-                                socket!!.close()
-                                socket = null
+                                closeSocket()
                             }
                             else  -> {
                                 Log.e(TAG, "Socket read error", e)
-                                socket!!.close()
-                                socket = null
+                                closeSocket()
                             }
                         }
                         continue
@@ -89,10 +87,10 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
             if (socket == null) {
                 socket = messenger.connect(tracker)
             }
-            Log.i(TAG, "Socket: $socket")
             socket?.write(request)
             startTimeoutThread(nonce, receiver)
         } catch (e: Exception) {
+            closeSocket()
             Log.e(TAG, "Error sending packet: $e")
             val pair = nonces.remove(nonce)!!
             pair.second.onError(pubkey)
@@ -126,6 +124,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
             startTimeoutThread(nonce, receiver)
             //Log.i(TAG, "Announce packet sent")
         } catch (e: Exception) {
+            closeSocket()
             Log.e(TAG, "Error sending packet: $e")
             val pair = nonces.remove(nonce)!!
             pair.second.onError(pubkey)
@@ -134,7 +133,9 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
 
     fun closeSocket() {
         if (socket != null) {
-            socket?.close()
+            try {
+                socket?.close()
+            } catch (_: Exception) {}
             socket = null
         }
     }
@@ -193,7 +194,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
         val t = Thread {
             //Log.d(TAG, "Timeout thread for $nonce started")
             try {
-                sleep(5000)
+                sleep(7000)
                 synchronized(nonces) {
                     if (nonces.containsKey(nonce)) {
                         Log.d(TAG, "Timeout thread for $nonce got timeout")
@@ -201,7 +202,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
                         receiver.onError(pair.first)
                     }
                 }
-            } catch (e: InterruptedException) {
+            } catch (_: InterruptedException) {
                 //Log.d(TAG, "Timeout thread for $nonce interrupted")
             }
             synchronized(timeouts) {

@@ -13,6 +13,7 @@ import org.bouncycastle.util.encoders.Hex
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import kotlin.random.Random
 
 class ConnectionHandler(
     private val clientId: Int,
@@ -38,6 +39,8 @@ class ConnectionHandler(
     private var address = Hex.toHexString(connection.publicKey())
     private var peerClientId = 0
     private var lastActiveTime = System.currentTimeMillis()
+    private var lastPingTime = System.currentTimeMillis()
+    private var lastPongTime = System.currentTimeMillis()
     private var callStatus: CallStatus = CallStatus.Idle
     private var audioSender: AudioSender? = null
     private var audioReceiver: AudioReceiver? = null
@@ -95,7 +98,9 @@ class ConnectionHandler(
                         val dos = DataOutputStream(baos)
                         if (processInput(dis, dos)) {
                             val bytes = baos.toByteArray()
-                            connection.write(bytes)
+                            if (bytes.size > 0) {
+                                connection.write(bytes)
+                            }
                             lastActiveTime = System.currentTimeMillis()
                         }
                     }
@@ -121,7 +126,22 @@ class ConnectionHandler(
                         }
                         break
                     }
-                    if (System.currentTimeMillis() > lastActiveTime + 180000) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastPingTime > 10000 && lastPongTime < lastPingTime) {
+                        Log.w(TAG, "Connection probably severed")
+                        break
+                    }
+                    val pingTime = 120000
+                    val needPing = now > lastActiveTime + pingTime + (Random.Default.nextInt() % 10000)
+                    if (now - lastPingTime > 10000 && needPing) {
+                        Log.d(TAG, "Sending ping to $address")
+                        val baos = ByteArrayOutputStream()
+                        val dos = DataOutputStream(baos)
+                        writePing(dos)
+                        connection.write(baos.toByteArray())
+                        lastPingTime = now
+                    }
+                    if (now > lastActiveTime + 180000) {
                         Log.i(TAG, "Connection with $address timed out")
                         break
                     }
@@ -314,7 +334,7 @@ class ConnectionHandler(
                     Log.i(TAG, "Got call offer: $offer")
                     if (callStatus == CallStatus.Idle) {
                         callStatus = CallStatus.Receiving
-                        listener.onIncomingCall(peer!!)
+                        listener.onIncomingCall(peer!!, false)
                     }
                 }
                 MSG_TYPE_CALL_ANSWER -> {
@@ -341,6 +361,22 @@ class ConnectionHandler(
                     callStatus = CallStatus.Idle
                     listener.onCallStatusChanged(CallStatus.Hangup, peer)
                     stopAudio()
+                }
+                MSG_TYPE_PING -> {
+                    Log.i(TAG, "Got ping")
+                    lastPingTime = System.currentTimeMillis()
+                    writePong(dos)
+                }
+                MSG_TYPE_PONG -> {
+                    Log.i(TAG, "Got pong")
+                    lastPongTime = System.currentTimeMillis()
+                }
+                else -> {
+                    Log.i(TAG, "Unknown message type: ${header.type}")
+                    if (header.size > 0) {
+                        Log.i(TAG, "Dismissing ${header.size} bytes")
+                        readAndDismiss(dis, header.size)
+                    }
                 }
             }
             return true

@@ -4,6 +4,7 @@ import android.util.Log
 import com.revertron.mimir.App
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.storage.Peer
+import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.yggmobile.Messenger
 import com.revertron.mimir.yggmobile.Yggmobile
@@ -17,8 +18,6 @@ import java.net.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.HashMap
 
-//TODO Remove it, we have no ports now
-const val CONNECTION_PORT: Short = 5050
 private const val CONNECTION_TRIES = 3
 private const val CONNECTION_PERIOD = 1000L
 //TODO Get from DNS TXT record
@@ -26,11 +25,11 @@ private const val TRACKER_ADDR = "801bc33a735cded0588284af0bf1b8bdb4138f122a9c17
 
 class MimirServer(
     val storage: SqlStorage,
+    val peerProvider: PeerProvider,
     private val clientId: Int,
     private val keyPair: AsymmetricCipherKeyPair,
     private val listener: EventListener,
-    private val infoProvider: InfoProvider,
-    private val port: Int
+    private val infoProvider: InfoProvider
 ): Thread(TAG), EventListener, ResolverReceiver {
 
     companion object {
@@ -50,21 +49,15 @@ class MimirServer(
     private var lastAnnounceTime = 0L
     private var announceTtl = 0L
     private var forceAnnounce = false
+    private lateinit var oldPeer: String
 
     override fun run() {
-        val bootstrapPeers = arrayOf(
-            "tls://109.176.250.101:65534",
-            "tls://37.205.14.171:993",
-            "tcp://62.210.85.80:39565",
-            "tcp://51.15.204.214:12345",
-            "tls://45.95.202.21:443",
-            "tcp://y.zbin.eu:7743"
-        )
+        val peers = peerProvider.getPeers()
 
-        val addr = bootstrapPeers.random()
-        Log.i(TAG, "Selected random peer: $addr")
+        oldPeer = peers.random()
+        Log.i(TAG, "Selected random peer: $oldPeer")
 
-        messenger = Yggmobile.newMessenger(addr)
+        messenger = Yggmobile.newMessenger(oldPeer)
         val myPub = messenger.publicKey()
         val hexPub = Hex.toHexString(myPub)
         val tracker = Hex.decode(TRACKER_ADDR)
@@ -103,6 +96,22 @@ class MimirServer(
 
     fun stopServer() {
         working.set(false)
+    }
+
+    fun refreshPeer() {
+        val peers = peerProvider.getPeers()
+        if (peers.isEmpty()) {
+            Log.w(TAG, "No useful peers")
+            return
+        }
+        val newPeer = peers.random()
+        Log.i(TAG, "Selected random peer: $newPeer")
+        if (!newPeer.contentEquals(oldPeer)) {
+            messenger.addPeer(newPeer)
+            messenger.removePeer(oldPeer)
+            oldPeer = newPeer
+            forceAnnounce = true
+        }
     }
 
     private fun startAnnounceThread(pubkey: ByteArray, privkey: ByteArray, peer: Peer, receiver: ResolverReceiver) {
@@ -219,8 +228,9 @@ class MimirServer(
         val contactString = Hex.toHexString(contact)
         Log.i(TAG, "Connecting to $contactString")
         synchronized(connections) {
+            Log.i(TAG, "Current connections: ${connections.keys}")
             if (connections.contains(contactString)) {
-                Log.i(TAG, "Found established connection, trying to send")
+                Log.i(TAG, "Found established connection, reusing")
                 sendUnsentMessages(contact)
                 if (callContact == null || !callContact.contentEquals(contact)) {
                     return
@@ -230,6 +240,7 @@ class MimirServer(
                     connection?.startCall()
                     return
                 }
+                return
             }
         }
         synchronized(connectContacts) {
@@ -286,6 +297,11 @@ class MimirServer(
                 if (connection != null) {
                     Log.i(TAG, "Created new connection to $contactString")
                     synchronized(connections) {
+                        if (connections.contains(contactString)) {
+                            val oldConnection = connections.remove(contactString)
+                            oldConnection?.interrupt()
+                        }
+
                         connections[contactString] = connection
                     }
                     synchronized(connectContacts) {
@@ -408,12 +424,12 @@ class MimirServer(
         listener.onMessageDelivered(to, guid, delivered)
     }
 
-    override fun onIncomingCall(from: ByteArray): Boolean {
+    override fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean {
         if (callStatus != CallStatus.Idle) {
             return false
         }
         callContact = from
-        return listener.onIncomingCall(from)
+        return listener.onIncomingCall(from, inCall)
     }
 
     override fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {
@@ -469,10 +485,12 @@ class MimirServer(
 
     fun callHangup() {
         synchronized(connections) {
-            val connection = connections.get(Hex.toHexString(callContact))
-            connection?.hangupCall()
-            callStatus = CallStatus.Idle
-            callContact = null
+            if (callContact != null) {
+                val connection = connections.get(Hex.toHexString(callContact))
+                connection?.hangupCall()
+                callStatus = CallStatus.Idle
+                callContact = null
+            }
         }
     }
 
@@ -502,7 +520,7 @@ interface EventListener {
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
     fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray)
     fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean)
-    fun onIncomingCall(from: ByteArray): Boolean { return false }
+    fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean { return false }
     fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {}
     fun onConnectionClosed(from: ByteArray, address: String) {}
 }

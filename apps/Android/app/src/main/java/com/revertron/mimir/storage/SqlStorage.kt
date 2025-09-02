@@ -203,7 +203,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     fun cleanUp() {
-        writableDatabase.execSQL("DELETE FROM ips")
+        //writableDatabase.execSQL("DELETE FROM ips")
         writableDatabase.execSQL("VACUUM")
 
         val columns = arrayOf("id", "name", "privkey", "pubkey", "client", "info", "avatar", "updated")
@@ -211,14 +211,14 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
             val name = cursor.getString(1)
-            val privkey = cursor.getBlob(2)
+            val _privkey = cursor.getBlob(2)
             val pubkey = cursor.getBlob(3)
             val client = cursor.getInt(4)
             val info = cursor.getString(5)
             val avatar = cursor.getString(6)
             val updated = cursor.getLong(7)
 
-            Log.i(TAG, "$id $name, ${Hex.toHexString(privkey)}, ${Hex.toHexString(pubkey)}, $client, $info, $avatar, $updated")
+            Log.i(TAG, "$id $name, ${Hex.toHexString(pubkey)}, $client, $info, $avatar, $updated")
         }
         cursor.close()
     }
@@ -577,7 +577,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
                     list.add(Peer(address, client, priority, expiration))
                 }
             }
-            Log.i(TAG, "Found ips: $list")
+            Log.i(TAG, "Local ips: $list")
             cursor.close()
             return list
         }

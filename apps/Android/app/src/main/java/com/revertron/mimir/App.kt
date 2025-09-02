@@ -15,6 +15,7 @@ class App: Application() {
 
     var online: Boolean = false
     lateinit var storage: SqlStorage
+    lateinit var callback: NetworkStateCallback
 
     override fun onCreate() {
         super.onCreate()
@@ -22,7 +23,7 @@ class App: Application() {
         if (BuildConfig.DEBUG) {
             StrictMode.setVmPolicy(
                 VmPolicy.Builder()
-                    .detectLeakedClosableObjects()
+                    .detectAll()
                     .penaltyLog()
                     .build()
             )
@@ -33,10 +34,15 @@ class App: Application() {
         storage = SqlStorage(this)
         storage.cleanUp()
         app = this
+        callback = NetworkStateCallback(this)
         val handler = Handler(mainLooper)
         handler.postDelayed({
-            val callback = NetworkStateCallback(this)
             callback.register()
         }, 15000)
+    }
+
+    override fun onTerminate() {
+        callback.unregister()
+        super.onTerminate()
     }
 }

@@ -13,33 +13,26 @@ import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
-class ContactsAdapter(private var dataSet: List<Contact>, private val onclick: View.OnClickListener, private val onlongclick: View.OnLongClickListener): RecyclerView.Adapter<ContactsAdapter.ViewHolder>() {
+class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: View.OnClickListener, private val onLongClick: View.OnLongClickListener?): RecyclerView.Adapter<ContactsAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
 
     class ViewHolder(view: View): RecyclerView.ViewHolder(view) {
-        val contactName: AppCompatTextView
-        val lastMessage: AppCompatTextView
-        val lastMessageTime: AppCompatTextView
-        val unreadCount: AppCompatTextView
-        val deliveredIcon: AppCompatImageView
-        val avatar: AvatarView
-
-        init {
-            contactName = view.findViewById(R.id.contact_name)
-            lastMessage = view.findViewById(R.id.last_message)
-            lastMessageTime = view.findViewById(R.id.last_message_time)
-            unreadCount = view.findViewById(R.id.unread_count)
-            deliveredIcon = view.findViewById(R.id.delivered_icon)
-            avatar = view.findViewById(R.id.avatar)
-        }
+        val contactName: AppCompatTextView = view.findViewById(R.id.contact_name)
+        val lastMessage: AppCompatTextView = view.findViewById(R.id.last_message)
+        val lastMessageTime: AppCompatTextView = view.findViewById(R.id.last_message_time)
+        val unreadCount: AppCompatTextView = view.findViewById(R.id.unread_count)
+        val deliveredIcon: AppCompatImageView = view.findViewById(R.id.delivered_icon)
+        val avatar: AvatarView = view.findViewById(R.id.avatar)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.contact_item, parent, false)
-        view.setOnClickListener(onclick)
-        view.setOnLongClickListener(onlongclick)
+        view.setOnClickListener(onClick)
+        onLongClick?.let {
+            view.setOnLongClickListener(it)
+        }
         return ViewHolder(view)
     }
 

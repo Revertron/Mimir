@@ -2,12 +2,8 @@ package com.revertron.mimir
 
 import android.app.NotificationManager
 import android.app.Service
-import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.media.AudioManager
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
@@ -22,6 +18,7 @@ import com.revertron.mimir.net.EventListener
 import com.revertron.mimir.net.InfoProvider
 import com.revertron.mimir.net.InfoResponse
 import com.revertron.mimir.net.MimirServer
+import com.revertron.mimir.storage.PeerProvider
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
@@ -61,13 +58,17 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         val pubkey = (accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded
                         val pubkeyHex = Hex.toHexString(pubkey)
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey $pubkeyHex")
-                        mimirServer = MimirServer(storage, accountInfo.clientId, accountInfo.keyPair, this, this, 0)
+                        val peerProvider = PeerProvider(this)
+                        mimirServer = MimirServer(storage, peerProvider, accountInfo.clientId, accountInfo.keyPair, this, this)
                         mimirServer!!.start()
                         val n = createServiceNotification(this, State.Offline)
                         startForeground(1, n)
                     }
                     return START_STICKY
                 }
+            }
+            "refresh_peer" -> {
+                mimirServer?.refreshPeer()
             }
             "connect" -> {
                 val pubkey = intent.getByteArrayExtra("pubkey")
@@ -194,8 +195,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         }
     }
 
-    override fun onIncomingCall(from: ByteArray): Boolean {
-        showCallNotification(this, applicationContext, false, from)
+    override fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean {
+        showCallNotification(this, applicationContext, inCall, from)
         return true
     }
 
@@ -204,9 +205,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         if (status == CallStatus.InCall) {
             val intent = Intent("ACTION_IN_CALL_START")
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+            showCallNotification(this, applicationContext, true, from!!)
         }
         if (status == CallStatus.Hangup) {
             NotificationManagerCompat.from(this).cancel(INCOMING_CALL_NOTIFICATION_ID)
+            NotificationManagerCompat.from(this).cancel(ONGOING_CALL_NOTIFICATION_ID)
             val intent = Intent("ACTION_FINISH_CALL")
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
         }

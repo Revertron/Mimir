@@ -1,6 +1,5 @@
 package com.revertron.mimir.net
 
-import android.R
 import android.util.Log
 import com.revertron.mimir.getFileContents
 import org.json.JSONException
@@ -17,6 +16,8 @@ const val MSG_TYPE_CHALLENGE2 = 4
 const val MSG_TYPE_CHALLENGE_ANSWER2 = 5
 const val MSG_TYPE_INFO_REQUEST = 6
 const val MSG_TYPE_INFO_RESPONSE = 7
+const val MSG_TYPE_PING = 8
+const val MSG_TYPE_PONG = 9
 const val MSG_TYPE_MESSAGE_TEXT = 1000
 const val MSG_TYPE_CALL_OFFER = 2000
 const val MSG_TYPE_CALL_ANSWER = 2001
@@ -54,7 +55,15 @@ private fun writeHeader(dos: DataOutputStream, stream: Int, type: Int, size: Int
     dos.write(baos.toByteArray())
 }
 
-fun readClientHello(dis: DataInputStream, read_address: Boolean): ClientHello? {
+fun writePing(dos: DataOutputStream, stream: Int = 0, type: Int = MSG_TYPE_PING, size: Int = 0) {
+    writeHeader(dos, stream, type, size)
+}
+
+fun writePong(dos: DataOutputStream, stream: Int = 0, type: Int = MSG_TYPE_PONG, size: Int = 0) {
+    writeHeader(dos, stream, type, size)
+}
+
+fun readClientHello(dis: DataInputStream, readAddress: Boolean): ClientHello? {
     val version = dis.readInt()
     var size = dis.readInt()
     val pubkey = ByteArray(size)
@@ -80,7 +89,7 @@ fun readClientHello(dis: DataInputStream, read_address: Boolean): ClientHello? {
         count += read
     }
     val clientId = dis.readInt()
-    val address = if (read_address) {
+    val address = if (readAddress) {
         val size = dis.readInt()
         if (size != 32) {
             return null
@@ -440,4 +449,14 @@ fun readCallPacket(dis: DataInputStream): CallPacket? {
         count += read
     }
     return CallPacket(data)
+}
+
+fun readAndDismiss(dis: DataInputStream, size: Long) {
+    var size = size
+    val data = ByteArray(1024)
+    while (size > 0) {
+        val read = dis.read(data, 0, if (size > data.size) data.size else (size as Int))
+        if (read < 0) return
+        size -= read
+    }
 }

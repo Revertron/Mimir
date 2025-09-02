@@ -49,4 +49,9 @@ class NetworkStateCallback(val context: Context) : ConnectivityManager.NetworkCa
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         manager.registerNetworkCallback(request, this)
     }
+
+    fun unregister() {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        manager.unregisterNetworkCallback(this)
+    }
 }

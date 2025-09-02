@@ -82,5 +82,14 @@
     <string name="mimir_call">Mimir call</string>
     <string name="call_answer">Answer</string>
     <string name="call_decline">Decline</string>
+    <string name="toast_no_permission">You must give that permission.</string>
+    <string name="peer_url">Peer URL:</string>
+    <string name="peer_url_hint">tcp://1.2.3.4:1234 or tls://example.com:443</string>
+    <string name="add_to_power_exceptions">Battery optimization is on. Add the app to power exceptions to allow background work.</string>
+    <string name="allow">Allow</string>
+    <string name="allow_notifications_snack">Notifications are disabled for this app. Please, allow them to get messages and calls.</string>
+    <string name="select_contact_to_share">Select contact</string>
+    <string name="add_custom_peer">Add custom peer</string>
+    <string name="add_button">Add</string>
 
 </resources>

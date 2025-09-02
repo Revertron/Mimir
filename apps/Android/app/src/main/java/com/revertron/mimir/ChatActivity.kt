@@ -105,6 +105,11 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             attachmentJson = null
         }
 
+        val image = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        if (image != null) {
+            getImageFromUri(image)
+        }
+
         val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this, onClickOnReply(), onClickOnPicture())
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
@@ -205,19 +210,23 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 return
             }
             val selectedPictureUri = data.data!!
-            if (selectedPictureUri.length(this) > PICTURE_MAX_SIZE) {
-                Toast.makeText(this, getString(R.string.too_big_picture), Toast.LENGTH_SHORT).show()
-                return
-            }
-            val message = prepareFileForMessage(this, selectedPictureUri)
-            Log.i(TAG, "File message for $selectedPictureUri is $message")
-            if (message != null) {
-                val fileName = message.getString("name")
-                val preview = getImagePreview(this, fileName, 512, 80)
-                attachmentPreview.setImageBitmap(preview)
-                attachmentPanel.visibility = View.VISIBLE
-                attachmentJson = message
-            }
+            getImageFromUri(selectedPictureUri)
+        }
+    }
+
+    private fun getImageFromUri(uri: Uri) {
+        if (uri.length(this) > PICTURE_MAX_SIZE) {
+            Toast.makeText(this, getString(R.string.too_big_picture), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val message = prepareFileForMessage(this, uri)
+        Log.i(TAG, "File message for $uri is $message")
+        if (message != null) {
+            val fileName = message.getString("name")
+            val preview = getImagePreview(this, fileName, 512, 80)
+            attachmentPreview.setImageBitmap(preview)
+            attachmentPanel.visibility = View.VISIBLE
+            attachmentJson = message
         }
     }
 

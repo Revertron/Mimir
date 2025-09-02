@@ -38,24 +38,32 @@ class AudioSender(
             AudioFormat.ENCODING_PCM_16BIT
         )
 
-        audioRecord = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-                .setAudioFormat(AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                    .build())
-                .setBufferSizeInBytes(minBufSize)
-                .build()
-        } else {
-            AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                minBufSize
-            )
+        try {
+            audioRecord = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                AudioRecord.Builder()
+                    .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(minBufSize)
+                    .build()
+            } else {
+                AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                    sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    minBufSize
+                )
+            }
+        } catch (e: UnsupportedOperationException) {
+            e.printStackTrace()
+            Log.w(name, "Likely, user didn't give us permission to record audio")
+            return
         }
 
         Log.i(name, "AudioRecord state: ${audioRecord.state}")
@@ -107,7 +115,9 @@ class AudioSender(
                 }
                 outIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
             }
-            sleep(1)
+            try {
+                sleep(1)
+            } catch (_: InterruptedException) {}
         }
 
         Log.i(name, "Stopping")
@@ -120,6 +130,7 @@ class AudioSender(
     fun stopSender() {
         Log.i(name, "Stopping thread")
         running = false
+        interrupt()
     }
 
     fun muteCall(mute: Boolean) {

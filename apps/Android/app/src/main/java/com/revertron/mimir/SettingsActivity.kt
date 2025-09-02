@@ -12,7 +12,7 @@ import androidx.preference.PreferenceManager
 
 const val IP_CACHE_TTL = "ip_cache_ttl"
 const val IP_CACHE_PROGRESS = "ip_cache_progress"
-const val IP_CACHE_DEFAULT_TTL = 43200
+const val IP_CACHE_DEFAULT_TTL = 900
 
 class SettingsActivity : BaseActivity() {
 

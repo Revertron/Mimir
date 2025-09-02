@@ -2,14 +2,20 @@ package com.revertron.mimir
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.PorterDuff
 import android.graphics.drawable.LayerDrawable
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
@@ -22,10 +28,12 @@ import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.snackbar.Snackbar
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
@@ -102,6 +110,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         } else {
             refreshContacts()
         }
+        showSnackBars()
         handler.post(refreshTask)
     }
 
@@ -135,7 +144,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 overridePendingTransition(R.anim.slide_in_left, R.anim.hold_still)
             }
             R.id.action_settings -> {
-                val intent = Intent(this, SettingsActivity::class.java)
+                val intent = Intent(this, PeersActivity::class.java)
                 startActivity(intent)
                 overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
             }
@@ -207,6 +216,48 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
         val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
         toolbar.navigationIcon = layered
+    }
+
+    fun showSnackBars() {
+        // Check if notifications are allowed
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!areNotificationsEnabled(this)) {
+                val root = findViewById<View>(android.R.id.content)
+                Snackbar.make(root, getString(R.string.allow_notifications_snack), Snackbar.LENGTH_INDEFINITE)
+                    .setAction(getString(R.string.allow)) {
+                        try {
+                            val intent =
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                }
+                            startActivity(intent)
+                        } catch (e: ActivityNotFoundException) {
+                            e.printStackTrace()
+                        }
+                    }
+                    .setTextMaxLines(3)
+                    .show()
+            }
+        }
+
+        // Check if app is battery optimized
+        if (!isNotBatteryOptimised(this)) {
+            val root = findViewById<View>(android.R.id.content)
+            Snackbar.make(root, getString(R.string.add_to_power_exceptions), Snackbar.LENGTH_INDEFINITE)
+                .setAction(getString(R.string.allow)) {
+                    val action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                    try {
+                        val intent = Intent(action, Uri.parse("package:$packageName"))
+                        startActivity(intent)
+                    } catch (e: ActivityNotFoundException) {
+                        e.printStackTrace()
+                        // Fallback: open the generic battery-settings screen
+                        startActivity(Intent(action))
+                    }
+                }
+                .setTextMaxLines(3)
+                .show()
+        }
     }
 
     fun openMenu() {
@@ -334,5 +385,14 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         val adapter = recycler.adapter as ContactsAdapter
         adapter.setContacts(contacts)
+    }
+
+    fun areNotificationsEnabled(ctx: Context): Boolean =
+        NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+
+    fun isNotBatteryOptimised(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(ctx.packageName)
     }
 }

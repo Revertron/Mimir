@@ -26,6 +26,7 @@ import org.bouncycastle.util.encoders.Hex
 class NotificationManager(val context: Context): StorageListener {
 
     companion object {
+        const val TAG = "NotificationManager"
         const val INCOMING_CALL_NOTIFICATION_ID = 8840
         const val ONGOING_CALL_NOTIFICATION_ID = 8850
         private const val CALLS = "Calls"
@@ -75,6 +76,7 @@ class NotificationManager(val context: Context): StorageListener {
 
         fun showCallNotification(connectionService: ConnectionService, context: Context, inCall: Boolean, contact: ByteArray) {
             createCallOngoingNotificationChannel(context)
+            Log.i(TAG, "showCallNotification inCall: $inCall")
 
             val storage = (connectionService.application as App).storage
             val contactId = storage.getContactId(contact)
@@ -100,6 +102,7 @@ class NotificationManager(val context: Context): StorageListener {
                 .setSmallIcon(R.drawable.ic_phone_outline_notification)
                 .setContentTitle(context.getString(R.string.mimir_call))
                 .setContentText(name)
+                .setGroup(channelId)
                 .apply {
                     if (!inCall) {
                         this.setPriority(NotificationCompat.PRIORITY_HIGH)

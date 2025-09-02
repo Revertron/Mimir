@@ -1,10 +1,12 @@
 package com.revertron.mimir
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -14,8 +16,11 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.revertron.mimir.ui.Contact
 import io.getstream.avatarview.AvatarView
@@ -76,6 +81,10 @@ class IncomingCallActivity: BaseActivity() {
         var outgoing = intent.getBooleanExtra("outgoing", false)
         active = intent.getBooleanExtra("active", false)
         val action = intent.action
+
+        if (!outgoing && !active) {
+            checkAndRequestAudioPermission()
+        }
 
         if (action == "decline") {
             callReact(false)
@@ -292,4 +301,29 @@ class IncomingCallActivity: BaseActivity() {
             .putExtra("mute", mute)
         startService(intent)
     }
+
+    private fun checkAndRequestAudioPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> {
+                // Already have that permission
+            }
+
+            /*shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
+                // If the user already declined such requests we need to show some text in dialog, rationale
+            }*/
+
+            else -> {
+                // Ask for microphone permission
+                requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (!isGranted) {
+                Toast.makeText(this, R.string.toast_no_permission, Toast.LENGTH_LONG).show()
+            }
+        }
 }
