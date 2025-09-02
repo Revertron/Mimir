@@ -24,6 +24,7 @@ import java.util.TimerTask
 import android.os.Handler
 import android.os.Looper
 
+
 class IncomingCallActivity: BaseActivity() {
 
     private lateinit var pubkey: ByteArray
@@ -72,7 +73,8 @@ class IncomingCallActivity: BaseActivity() {
         requestedOrientation = current
 
         setContentView(R.layout.incoming_call_activity)
-
+        timerTextView = findViewById(R.id.timerTextView) // Инициализация TextView таймера вместе с проверкой
+        //Как я это блять починил?
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
                     or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
@@ -85,7 +87,7 @@ class IncomingCallActivity: BaseActivity() {
         active = intent.getBooleanExtra("active", false)
         val action = intent.action
 
-        val timerTextView = findViewById<AppCompatTextView>(R.id.timerTextView) // Инициализация TextView таймера
+
 
         if (action == "decline") {
             callReact(false)

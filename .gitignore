@@ -3,3 +3,6 @@
 /apps/Android/build
 /apps/Android/gradle
 apps/Android/local.properties
+/apps/Android/.idea
+apps/Android/.idea/misc.xml
+apps/Android/.idea/runConfigurations.xml
