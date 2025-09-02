@@ -19,6 +19,10 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.revertron.mimir.ui.Contact
 import io.getstream.avatarview.AvatarView
+import java.util.Timer //Импортировал 4 нужные мне библеотеки, начиная с этой
+import java.util.TimerTask
+import android.os.Handler
+import android.os.Looper
 
 class IncomingCallActivity: BaseActivity() {
 
@@ -81,7 +85,7 @@ class IncomingCallActivity: BaseActivity() {
         active = intent.getBooleanExtra("active", false)
         val action = intent.action
 
-        val timerTextView = findViewById(R.id.timerTextView) // Инициализация TextView таймера
+        val timerTextView = findViewById<AppCompatTextView>(R.id.timerTextView) // Инициализация TextView таймера
 
         if (action == "decline") {
             callReact(false)
