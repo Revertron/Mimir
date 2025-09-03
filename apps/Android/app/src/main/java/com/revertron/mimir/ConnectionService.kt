@@ -47,10 +47,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val storage = (application as App).storage
         when (command) {
             "start" -> {
-                Log.i(TAG, "Starting server...")
+                Log.i(TAG, "Starting service...")
                 val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
                 if (preferences.getBoolean("enabled", true)) { //TODO change to false
                     if (mimirServer == null) {
+                        Log.i(TAG, "Starting MimirServer...")
                         var accountInfo = storage.getAccountInfo(1, 0L) // TODO use name
                         if (accountInfo == null) {
                             accountInfo = storage.generateNewAccount()

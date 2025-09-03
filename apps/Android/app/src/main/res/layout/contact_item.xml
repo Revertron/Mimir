@@ -50,6 +50,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="top"
+                android:alpha="0.7"
                 tools:text="12 Nov"
                 android:ellipsize="end"
                 android:lines="1" />
@@ -65,6 +66,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:alpha="0.7"
                 tools:text="Some long text that contact has sent to us"
                 android:textSize="16sp"
                 android:ellipsize="end"
@@ -85,6 +87,7 @@
                 android:layout_width="16dp"
                 android:layout_height="16dp"
                 android:layout_gravity="bottom"
+                android:alpha="0.7"
                 android:src="@drawable/ic_message_delivered" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>

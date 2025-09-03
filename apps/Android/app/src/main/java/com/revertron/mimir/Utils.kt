@@ -89,6 +89,20 @@ fun updateQrCode(name: String, pubKey: String, imageView: ImageView) {
     imageView.setImageBitmap(qrCode)
 }
 
+fun formatDuration(elapsed: Long): String {
+    val totalSeconds = elapsed / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    val text = if (hours > 0) {
+        "%02d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
+    return text
+}
+
 /**
  * Copies picture file to app directory, creates preview
  *

@@ -43,6 +43,8 @@ class MimirServer(
     private var hasNewMessages = false
     private var callStatus: CallStatus = CallStatus.Idle
     private var callContact: ByteArray? = null
+    private var callStartTime = 0L
+    private var callIncoming = false
     private lateinit var resolver: Resolver
     private val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
     private val privkey = (keyPair.private as Ed25519PrivateKeyParameters).encoded
@@ -99,6 +101,7 @@ class MimirServer(
     }
 
     fun refreshPeer() {
+        if (messenger == null) return
         val peers = peerProvider.getPeers()
         if (peers.isEmpty()) {
             Log.w(TAG, "No useful peers")
@@ -157,7 +160,7 @@ class MimirServer(
     private fun startOnlineStateThread() {
         Thread {
             while (working.get()) {
-                sleep(3000)
+                sleep(2000)
                 val old = App.app.online
                 val peersJSON = messenger.peersJSON
                 if (peersJSON != null && peersJSON != "null") {
@@ -202,7 +205,7 @@ class MimirServer(
     }
 
     private fun sendUnsent() {
-        if (!App.app.online) return
+        if (!App.app.online || callStatus != CallStatus.Idle) return
 
         //Log.i(TAG, "Sending unsent messages")
         val contacts = storage.getContactsWithUnsentMessages()
@@ -429,14 +432,22 @@ class MimirServer(
             return false
         }
         callContact = from
+        callIncoming = true
         return listener.onIncomingCall(from, inCall)
     }
 
     override fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {
+        if (callStatus == CallStatus.Calling && status == CallStatus.InCall) {
+            callStartTime = System.currentTimeMillis()
+            callIncoming = false
+        }
         callStatus = status
         listener.onCallStatusChanged(status, from)
         if (status == CallStatus.Hangup) {
+            val endTime = System.currentTimeMillis()
+            storage.addMessage(callContact!!, 0, 0, callIncoming, true, callStartTime, endTime, 2, ByteArray(0))
             callStatus = CallStatus.Idle
+            callIncoming = false
         }
     }
 
@@ -469,17 +480,21 @@ class MimirServer(
 
     fun callAnswer() {
         synchronized(connections) {
+            callStartTime = System.currentTimeMillis()
+            callIncoming = true
             val connection = connections.get(Hex.toHexString(callContact))
             connection?.answerCall(true)
         }
     }
 
     fun callDecline() {
+        if (callContact == null) return
         synchronized(connections) {
             val connection = connections.get(Hex.toHexString(callContact))
             connection?.answerCall(false)
             callStatus = CallStatus.Idle
             callContact = null
+            callIncoming = false
         }
     }
 
@@ -488,6 +503,8 @@ class MimirServer(
             if (callContact != null) {
                 val connection = connections.get(Hex.toHexString(callContact))
                 connection?.hangupCall()
+                val endTime = System.currentTimeMillis()
+                storage.addMessage(callContact!!, 0, 0, callIncoming, true, callStartTime, endTime, 2, ByteArray(0))
                 callStatus = CallStatus.Idle
                 callContact = null
             }

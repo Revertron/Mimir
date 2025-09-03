@@ -10,6 +10,8 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.database.getBlobOrNull
 import com.revertron.mimir.NotificationManager
+import com.revertron.mimir.R
+import com.revertron.mimir.formatDuration
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
@@ -48,12 +50,17 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         val type: Int,
         val data: ByteArray?
     ) {
-        fun getText(): String {
+        fun getText(context: Context): String {
             return if (data != null) {
                 when (type) {
                     1 -> {
                         val json = JSONObject(String(data))
                         json.getString("text")
+                    }
+                    2 -> {
+                        val callDuration = edit - time
+                        val text = formatDuration(callDuration)
+                        context.getString(R.string.audio_call_item, text)
                     }
                     else -> {
                         String(data)

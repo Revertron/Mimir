@@ -315,7 +315,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                     val id = (view.tag as Long)
                     val message = getStorage().getMessage(id)
                     replyName.text = contact.name
-                    replyText.text = message?.getText()
+                    replyText.text = message?.getText(this)
                     replyPanel.visibility = View.VISIBLE
                     replyTo = message?.guid ?: 0L
                     Log.i(TAG, "Replying to guid $replyTo")

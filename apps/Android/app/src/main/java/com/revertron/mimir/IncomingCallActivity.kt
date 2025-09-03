@@ -1,6 +1,7 @@
 package com.revertron.mimir
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -13,6 +14,8 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.view.View
 import android.view.WindowManager
@@ -37,6 +40,19 @@ class IncomingCallActivity: BaseActivity() {
     private lateinit var powerManager: PowerManager
     private var wakeLock: PowerManager.WakeLock? = null
     private var mediaPlayer: MediaPlayer? = null
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var startTime = 0L
+    private lateinit var timerView: AppCompatTextView
+
+    private val tick = object : Runnable {
+        @SuppressLint("SetTextI18n")
+        override fun run() {
+            val elapsed = System.currentTimeMillis() - startTime
+            timerView.text = formatDuration(elapsed)
+            handler.postDelayed(this, 1000)
+        }
+    }
 
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
@@ -100,6 +116,8 @@ class IncomingCallActivity: BaseActivity() {
 
         val nameView = findViewById<AppCompatTextView>(R.id.name)
         nameView.text = name
+        timerView = findViewById(R.id.timer)
+        timerView.visibility = View.GONE
 
         val avatar = findViewById<AvatarView>(R.id.avatar)
         val initials = getInitials(contact)
@@ -136,6 +154,7 @@ class IncomingCallActivity: BaseActivity() {
         } else {
             findViewById<View>(R.id.in_call_buttons_container).visibility = View.VISIBLE
             findViewById<View>(R.id.buttons_container).visibility = View.GONE
+            startTimer()
         }
 
         if (!active) {
@@ -145,6 +164,7 @@ class IncomingCallActivity: BaseActivity() {
                 //startCallAcceptedSound()
                 findViewById<View>(R.id.in_call_buttons_container).visibility = View.VISIBLE
                 findViewById<View>(R.id.buttons_container).visibility = View.GONE
+                startTimer()
                 //registerMediaButton(false)
             }
             reject.setOnClickListener {
@@ -226,6 +246,16 @@ class IncomingCallActivity: BaseActivity() {
         }
     }
 
+    fun startTimer() {
+        timerView.visibility = View.VISIBLE
+        startTime = System.currentTimeMillis()
+        handler.post(tick)
+    }
+
+    fun stopTimer() {
+        handler.removeCallbacks(tick)
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
     }
@@ -245,6 +275,7 @@ class IncomingCallActivity: BaseActivity() {
     }
 
     override fun onDestroy() {
+        stopTimer()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(closeReceiver)
         audioManager.mode = AudioManager.MODE_NORMAL
         requestedOrientation = originalOrientation
@@ -285,6 +316,7 @@ class IncomingCallActivity: BaseActivity() {
         findViewById<View>(R.id.in_call_buttons_container).visibility = View.VISIBLE
         findViewById<View>(R.id.buttons_container).visibility = View.GONE
         stopRingbackSound()
+        startTimer()
     }
 
     private fun callReact(answer: Boolean) {

@@ -91,5 +91,6 @@
     <string name="select_contact_to_share">Select contact</string>
     <string name="add_custom_peer">Add custom peer</string>
     <string name="add_button">Add</string>
+    <string name="audio_call_item">Audio call %s</string>
 
 </resources>
