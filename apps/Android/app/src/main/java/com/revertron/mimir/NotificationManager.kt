@@ -18,7 +18,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.TaskStackBuilder
-import com.revertron.mimir.NotificationManager.Companion.INCOMING_CALL_NOTIFICATION_ID
 import com.revertron.mimir.storage.StorageListener
 import org.bouncycastle.util.encoders.Hex
 
@@ -82,12 +81,11 @@ class NotificationManager(val context: Context): StorageListener {
             val contactId = storage.getContactId(contact)
             val name = storage.getContactName(contactId)
 
-            val intent = Intent(context, IncomingCallActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = Intent(context, CallActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             intent.putExtra("pubkey", contact)
             intent.putExtra("name", name)
-            if (inCall)
-                intent.putExtra("active", true)
+            if (inCall) intent.putExtra("active", true)
 
             val fullScreenPendingIntent = PendingIntent.getActivity(
                 context, if (inCall) 1 else 2,
@@ -107,12 +105,12 @@ class NotificationManager(val context: Context): StorageListener {
                     if (!inCall) {
                         this.setPriority(NotificationCompat.PRIORITY_HIGH)
                         this.setCategory(NotificationCompat.CATEGORY_CALL)
-                        val answerIntent = Intent(context, IncomingCallActivity::class.java)
+                        val answerIntent = Intent(context, CallActivity::class.java)
                             .setAction("answer")
                             .putExtra("command", "call_answer")
                             .putExtra("pubkey", contact)
                             .putExtra("name", name)
-                        val declineIntent = Intent(context, IncomingCallActivity::class.java)
+                        val declineIntent = Intent(context, CallActivity::class.java)
                             .setAction("decline")
                             .putExtra("command", "call_decline")
                             .putExtra("pubkey", contact)
@@ -183,7 +181,7 @@ class NotificationManager(val context: Context): StorageListener {
 
     override fun onMessageReceived(id: Long, contactId: Long): Boolean {
         val message = App.app.storage.getMessage(id)
-        if (message?.data == null || message.delivered || message.read) {
+        if (message?.data == null || message.type == 2) {
             return false
         }
         val mes = synchronized(messages) {

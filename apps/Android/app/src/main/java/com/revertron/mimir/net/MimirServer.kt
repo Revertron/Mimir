@@ -172,6 +172,7 @@ class MimirServer(
                         App.app.online = up
                         if (old != up)
                         {
+                            Log.i(TAG, "Online changed to $up")
                             onServerStateChanged(up)
                             if (up)
                                 forceAnnounce = true
@@ -230,10 +231,12 @@ class MimirServer(
     fun connectContact(contact: ByteArray) {
         val contactString = Hex.toHexString(contact)
         Log.i(TAG, "Connecting to $contactString")
+        listener.onPeerStatusChanged(contact, PeerStatus.Connecting)
         synchronized(connections) {
             Log.i(TAG, "Current connections: ${connections.keys}")
             if (connections.contains(contactString)) {
                 Log.i(TAG, "Found established connection, reusing")
+                listener.onPeerStatusChanged(contact, PeerStatus.Connected)
                 sendUnsentMessages(contact)
                 if (callContact == null || !callContact.contentEquals(contact)) {
                     return
@@ -278,6 +281,7 @@ class MimirServer(
                 override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
                 override fun onError(pubkey: ByteArray) {
                     Log.w(TAG, "Error resolving IPs")
+                    listener.onPeerStatusChanged(contact, PeerStatus.ErrorConnecting)
                     synchronized(connectContacts) {
                         connectContacts.remove(contactString)
                     }
@@ -314,6 +318,7 @@ class MimirServer(
                     break
                 } else {
                     Log.w(TAG, "Can not connect to $contactString")
+                    listener.onPeerStatusChanged(contact, PeerStatus.ErrorConnecting)
                     synchronized(connectContacts) {
                         connectContacts.remove(contactString)
                     }
@@ -410,6 +415,7 @@ class MimirServer(
             connectContacts.remove(publicKey)
         }
         listener.onClientConnected(from, address, clientId)
+        listener.onPeerStatusChanged(from, PeerStatus.Connected)
         sendUnsentMessages(from)
         if (callStatus == CallStatus.Calling && callContact != null) {
             if (from.contentEquals(callContact)) {
@@ -428,27 +434,36 @@ class MimirServer(
     }
 
     override fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean {
+        Log.i(TAG, "onIncomingCall status: $callStatus")
         if (callStatus != CallStatus.Idle) {
             return false
         }
         callContact = from
         callIncoming = true
+        callStatus = CallStatus.Receiving
         return listener.onIncomingCall(from, inCall)
     }
 
     override fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {
+        Log.i(TAG, "onCallStatusChanged prev: $callStatus, new: $status")
         if (callStatus == CallStatus.Calling && status == CallStatus.InCall) {
             callStartTime = System.currentTimeMillis()
             callIncoming = false
         }
-        callStatus = status
         listener.onCallStatusChanged(status, from)
-        if (status == CallStatus.Hangup) {
+        val inProcess = callStatus == CallStatus.InCall || callStatus == CallStatus.Calling || callStatus == CallStatus.Receiving
+        if (status == CallStatus.Hangup && inProcess) {
             val endTime = System.currentTimeMillis()
-            storage.addMessage(callContact!!, 0, 0, callIncoming, true, callStartTime, endTime, 2, ByteArray(0))
+            if (callStartTime == 0L) {
+                callStartTime = endTime
+            }
+            storage.addMessage(from!!, 0, 0, callIncoming, true, callStartTime, endTime, 2, ByteArray(0))
             callStatus = CallStatus.Idle
             callIncoming = false
+            callStartTime = 0L
+            return
         }
+        callStatus = status
     }
 
     override fun onConnectionClosed(from: ByteArray, address: String) {
@@ -457,6 +472,7 @@ class MimirServer(
             Log.i(TAG, "Removing connection from $pubKey and $address")
             connections.remove(Hex.toHexString(from))
         }
+        listener.onConnectionClosed(from, address)
     }
 
     override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
@@ -492,9 +508,15 @@ class MimirServer(
         synchronized(connections) {
             val connection = connections.get(Hex.toHexString(callContact))
             connection?.answerCall(false)
+            val endTime = System.currentTimeMillis()
+            if (callStartTime == 0L) {
+                callStartTime = endTime
+            }
+            storage.addMessage(callContact!!, 0, 0, callIncoming, true, callStartTime, endTime, 2, ByteArray(0))
             callStatus = CallStatus.Idle
             callContact = null
             callIncoming = false
+            callStartTime = 0L
         }
     }
 
@@ -504,9 +526,13 @@ class MimirServer(
                 val connection = connections.get(Hex.toHexString(callContact))
                 connection?.hangupCall()
                 val endTime = System.currentTimeMillis()
+                if (callStartTime == 0L) {
+                    callStartTime = endTime
+                }
                 storage.addMessage(callContact!!, 0, 0, callIncoming, true, callStartTime, endTime, 2, ByteArray(0))
                 callStatus = CallStatus.Idle
                 callContact = null
+                callStartTime = 0L
             }
         }
     }
@@ -530,6 +556,13 @@ enum class CallStatus {
     InCall,
 }
 
+enum class PeerStatus {
+    NotConnected,
+    Connecting,
+    Connected,
+    ErrorConnecting
+}
+
 interface EventListener {
     fun onServerStateChanged(online: Boolean)
     fun onTrackerPing(online: Boolean)
@@ -540,6 +573,7 @@ interface EventListener {
     fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean { return false }
     fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {}
     fun onConnectionClosed(from: ByteArray, address: String) {}
+    fun onPeerStatusChanged(from: ByteArray, status: PeerStatus) {}
 }
 
 interface InfoProvider {

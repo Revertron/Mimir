@@ -63,8 +63,7 @@ class SettingsActivity : BaseActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
-            finish()
-            overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+            onBackPressed()
             return true
         }
         return super.onOptionsItemSelected(item)
@@ -72,6 +71,7 @@ class SettingsActivity : BaseActivity() {
 
     override fun finish() {
         super.finish()
+        @Suppress("DEPRECATION")
         overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 

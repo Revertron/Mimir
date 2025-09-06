@@ -92,5 +92,6 @@
     <string name="add_custom_peer">Add custom peer</string>
     <string name="add_button">Add</string>
     <string name="audio_call_item">Audio call %s</string>
+    <string name="call_already_ongoing">Call already in progress!</string>
 
 </resources>

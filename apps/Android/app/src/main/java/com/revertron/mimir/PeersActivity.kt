@@ -7,7 +7,6 @@ import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.ImageButton
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.SwitchCompat
 import androidx.appcompat.widget.Toolbar
@@ -17,7 +16,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.ui.PeerAdapter
 
-class PeersActivity : AppCompatActivity() {
+class PeersActivity : BaseActivity() {
 
     companion object {
         const val PREF_PEERS = "peers"
@@ -34,6 +33,7 @@ class PeersActivity : AppCompatActivity() {
         val toolbar: Toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        toolbar.setNavigationOnClickListener { onBackPressed() }
 
         val useDefaultSwitch: SwitchCompat = findViewById(R.id.useDefaultSwitch)
         val customPeersContainer: View = findViewById(R.id.customPeersContainer)
@@ -75,6 +75,12 @@ class PeersActivity : AppCompatActivity() {
 
         // Add button
         btnAdd.setOnClickListener { showAddPeerDialog() }
+    }
+
+    override fun finish() {
+        super.finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 
     override fun onDestroy() {

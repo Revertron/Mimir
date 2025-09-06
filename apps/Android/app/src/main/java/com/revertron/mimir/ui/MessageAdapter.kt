@@ -11,13 +11,12 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
-import com.revertron.mimir.formatDuration
 import com.revertron.mimir.storage.SqlStorage
 import org.json.JSONObject
 import java.io.File
 import java.text.DateFormat
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
 
 class MessageAdapter(
     private val storage: SqlStorage,

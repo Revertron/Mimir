@@ -11,8 +11,6 @@ import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.Toolbar
-import com.google.zxing.BarcodeFormat
-import com.journeyapps.barcodescanner.BarcodeEncoder
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.net.URLEncoder
@@ -87,8 +85,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
-            finish()
-            overridePendingTransition(R.anim.hold_still, R.anim.slide_out_left)
+            onBackPressed()
             return true
         }
         return super.onOptionsItemSelected(item)
@@ -96,6 +93,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
     override fun finish() {
         super.finish()
+        @Suppress("DEPRECATION")
         overridePendingTransition(R.anim.hold_still, R.anim.slide_out_left)
     }
 

@@ -3,12 +3,13 @@ package com.revertron.mimir
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.Toolbar
 
-class AboutActivity : AppCompatActivity() {
+class AboutActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -18,7 +19,7 @@ class AboutActivity : AppCompatActivity() {
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setNavigationOnClickListener { finish() }
+        toolbar.setNavigationOnClickListener { onBackPressed() }
 
         // App version
         val versionView = findViewById<AppCompatTextView>(R.id.app_version)
@@ -38,6 +39,12 @@ class AboutActivity : AppCompatActivity() {
         findViewById<AppCompatImageButton>(R.id.button_website).setOnClickListener {
             openLink("https://yggdrasil.link")
         }
+    }
+
+    override fun finish() {
+        super.finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 
     private fun openLink(url: String) {

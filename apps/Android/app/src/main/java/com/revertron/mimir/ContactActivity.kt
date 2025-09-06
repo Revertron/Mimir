@@ -42,7 +42,7 @@ class ContactActivity: BaseActivity() {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("mimir public key", pubKeyEdit.text)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@ContactActivity,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
         }
 
         val buttonLink = findViewById<View>(R.id.button_link)
@@ -52,7 +52,7 @@ class ContactActivity: BaseActivity() {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("mimir link", link)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@ContactActivity,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
         }
 
         buttonLink.setOnLongClickListener {
@@ -61,7 +61,7 @@ class ContactActivity: BaseActivity() {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("mimir link", link)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@ContactActivity,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
             true
         }
     }
@@ -69,8 +69,7 @@ class ContactActivity: BaseActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             android.R.id.home -> {
-                finish()
-                overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+                onBackPressed()
                 return true
             }
             else -> {
@@ -83,6 +82,7 @@ class ContactActivity: BaseActivity() {
 
     override fun finish() {
         super.finish()
+        @Suppress("DEPRECATION")
         overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 }

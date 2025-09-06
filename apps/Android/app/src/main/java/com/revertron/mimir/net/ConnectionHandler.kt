@@ -127,19 +127,20 @@ class ConnectionHandler(
                         break
                     }
                     val now = System.currentTimeMillis()
-                    if (now - lastPingTime > 10000 && lastPongTime < lastPingTime) {
+                    if (now - lastPingTime > 10000 && lastActiveTime < lastPingTime) {
                         Log.w(TAG, "Connection probably severed")
                         break
                     }
                     val pingTime = 120000
-                    val needPing = now > lastActiveTime + pingTime + (Random.Default.nextInt() % 10000)
-                    if (now - lastPingTime > 10000 && needPing) {
+                    val needPing = now > lastActiveTime + pingTime + (Random.Default.nextInt() % 20000)
+                    if (needPing && now - lastPingTime > 60000) {
                         Log.d(TAG, "Sending ping to $address")
                         val baos = ByteArrayOutputStream()
                         val dos = DataOutputStream(baos)
                         writePing(dos)
                         connection.write(baos.toByteArray())
                         lastPingTime = now
+                        //lastPongTime = 0L
                     }
                     if (now > lastActiveTime + 180000) {
                         Log.i(TAG, "Connection with $address timed out")
@@ -451,11 +452,13 @@ class ConnectionHandler(
     }
 
     fun stopAudio() {
-        audioSender?.stopSender()
-        audioSender = null
-        audioReceiver?.stopReceiver()
-        audioReceiver = null
-        Log.i(TAG, "Audio stopped")
+        if (audioSender != null || audioReceiver != null) {
+            audioSender?.stopSender()
+            audioSender = null
+            audioReceiver?.stopReceiver()
+            audioReceiver = null
+            Log.i(TAG, "Audio stopped")
+        }
     }
 
     private fun getHello(clientId: Int, address: ByteArray? = null): ClientHello {

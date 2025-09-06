@@ -321,7 +321,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
             put("edit", editTime)
             put("type", type)
             put("message", message)
-            put("read", !incoming)
+            put("read", !incoming || type == 2)
         }
         return this.writableDatabase.insert("messages", null, values).also {
             var processed = false

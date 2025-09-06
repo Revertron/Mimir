@@ -18,6 +18,7 @@ import com.revertron.mimir.net.EventListener
 import com.revertron.mimir.net.InfoProvider
 import com.revertron.mimir.net.InfoResponse
 import com.revertron.mimir.net.MimirServer
+import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.storage.PeerProvider
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
@@ -32,6 +33,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     var mimirServer: MimirServer? = null
+    val peerStatuses = HashMap<String, PeerStatus>()
+    var broadcastPeerStatuses = false
 
     override fun onBind(intent: Intent): IBinder? {
         return null
@@ -138,6 +141,23 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     mimirServer?.sendMessages()
                 }.start()
             }
+            "peer_statuses" -> {
+                broadcastPeerStatuses = intent.getBooleanExtra("start", false)
+                if (broadcastPeerStatuses) {
+                    Log.i(TAG, "Have statuses of $peerStatuses")
+                    val from = intent.getByteArrayExtra("contact")
+                    val contact = Hex.toHexString(from)
+                    if (contact != null && peerStatuses.contains(contact)) {
+                        val status = peerStatuses.get(contact)
+                        Log.i(TAG, "Sending peer status: $status")
+                        val intent = Intent("ACTION_PEER_STATUS").apply {
+                            putExtra("contact", contact)
+                            putExtra("status", status)
+                        }
+                        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+                    }
+                }
+            }
         }
 
         return super.onStartCommand(intent, flags, startId)
@@ -220,6 +240,18 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         (application as App).storage.setMessageDelivered(to, guid, delivered)
     }
 
+    override fun onPeerStatusChanged(from: ByteArray, status: PeerStatus) {
+        val contact = Hex.toHexString(from)
+        peerStatuses.put(contact, status)
+        if (broadcastPeerStatuses) {
+            val intent = Intent("ACTION_PEER_STATUS").apply {
+                putExtra("contact", contact)
+                putExtra("status", status)
+            }
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        }
+    }
+
     override fun getMyInfo(ifUpdatedSince: Long): InfoResponse? {
         //TODO refactor for multi account
         val info = (application as App).storage.getAccountInfo(1, ifUpdatedSince) ?: return null
@@ -245,4 +277,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     override fun getFilesDirectory(): String {
         return filesDir.absolutePath + "/files"
     }
+}
+
+fun connect(context: Context, pubkey: ByteArray) {
+    val intent = Intent(context, ConnectionService::class.java)
+    intent.putExtra("command", "connect")
+    intent.putExtra("pubkey", pubkey)
+    context.startService(intent)
 }

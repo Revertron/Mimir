@@ -13,7 +13,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
 
     <application
         android:allowBackup="true"
@@ -70,13 +72,13 @@
         <activity android:name=".PictureActivity" android:exported="false" />
 
         <activity
-            android:name=".IncomingCallActivity"
+            android:name=".CallActivity"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
-            android:excludeFromRecents="true"
+            android:excludeFromRecents="false"
             android:taskAffinity=""
             android:configChanges="orientation|screenSize"
-            android:launchMode="singleTop" />
+            android:launchMode="singleTask" />
 
         <activity android:name=".UriHandlerActivity" android:exported="true" android:parentActivityName=".MainActivity">
             <intent-filter>

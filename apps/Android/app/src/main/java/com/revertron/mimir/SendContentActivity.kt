@@ -101,8 +101,7 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
         when (item.itemId) {
             android.R.id.home -> {
                 val intent = Intent(this, MainActivity::class.java)
-                startActivity(intent)
-                overridePendingTransition(R.anim.slide_in_left, R.anim.hold_still)
+                startActivity(intent, animFromLeft.toBundle())
             }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
@@ -121,8 +120,7 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
             intent.putExtra("pubkey", contact.pubkey)
             intent.putExtra("name", contact.name)
             intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
-            startActivity(intent)
-            overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+            startActivity(intent, animFromRight.toBundle())
             finish()
         }
     }

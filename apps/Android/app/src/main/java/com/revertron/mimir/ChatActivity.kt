@@ -6,6 +6,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -39,6 +41,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     private lateinit var attachmentPanel: ConstraintLayout
     private lateinit var attachmentPreview: AppCompatImageView
     private var attachmentJson: JSONObject? = null
+    private var isVisible: Boolean = false
     var replyTo = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -118,8 +121,18 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
         Thread {
             sleep(1000)
-            connect(contact.pubkey)
+            connect(this@ChatActivity, contact.pubkey)
         }.start()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        isVisible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isVisible = false
     }
 
     private fun onClickOnReply() = fun(it: View) {
@@ -149,8 +162,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             android.R.id.home -> {
-                finish()
-                overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+                onBackPressed()
                 return true
             }
             R.id.contact_call -> {
@@ -160,8 +172,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 val intent = Intent(this, ContactActivity::class.java)
                 intent.putExtra("pubkey", contact.pubkey)
                 intent.putExtra("name", contact.name)
-                startActivity(intent)
-                overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+                startActivity(intent, animFromRight.toBundle())
             }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
@@ -180,11 +191,16 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val storage = (application as App).storage
         val contactId = storage.getContactId(contact.pubkey)
         val name = storage.getContactName(contactId)
-        val intent2 = Intent(this, IncomingCallActivity::class.java)
-        intent2.putExtra("pubkey", contact.pubkey)
-        intent2.putExtra("name", name)
-        intent2.putExtra("outgoing", true)
-        startActivity(intent2)
+
+        val callIntent = Intent(this, CallActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("pubkey", contact.pubkey)
+            putExtra("name", name)
+            putExtra("outgoing", true)
+        }
+        startActivity(callIntent, animFromRight.toBundle())
     }
 
     override fun onDestroy() {
@@ -194,6 +210,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
     override fun finish() {
         super.finish()
+        @Suppress("DEPRECATION")
         overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 
@@ -228,13 +245,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             attachmentPanel.visibility = View.VISIBLE
             attachmentJson = message
         }
-    }
-
-    private fun connect(pubkey: ByteArray) {
-        val intent = Intent(this, ConnectionService::class.java)
-        intent.putExtra("command", "connect")
-        intent.putExtra("pubkey", pubkey)
-        startService(intent)
     }
 
     private fun sendMessage(pubkey: ByteArray, text: String, replyTo: Long) {
@@ -278,6 +288,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             val recycler = findViewById<RecyclerView>(R.id.messages_list)
             val adapter = recycler.adapter as MessageAdapter
             adapter.setMessageDelivered(id, delivered)
+            startDeliveredSound()
         }
     }
 
@@ -289,10 +300,12 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 val recycler = findViewById<RecyclerView>(R.id.messages_list)
                 val adapter = recycler.adapter as MessageAdapter
                 adapter.addMessageId(id)
-                //TODO scroll only if was already at the bottom
-                recycler.smoothScrollToPosition(adapter.itemCount)
+                if (isVisible) {
+                    //TODO scroll only if was already at the bottom
+                    recycler.smoothScrollToPosition(adapter.itemCount)
+                }
             }
-            return true
+            return isVisible
         }
         return false
     }
@@ -351,6 +364,20 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             dialog.cancel()
         }
         builder.show()
+    }
+
+    private fun startDeliveredSound() {
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        val mediaPlayer = MediaPlayer.create(this, R.raw.message_sent, attributes, 0).apply {
+            setOnCompletionListener { player ->
+                player?.release()
+            }
+            isLooping = false
+        }
+        mediaPlayer.start()
     }
 
     private fun checkAndRequestAudioPermission() {

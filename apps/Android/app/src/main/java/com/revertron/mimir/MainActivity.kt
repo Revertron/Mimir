@@ -1,6 +1,7 @@
 package com.revertron.mimir
 
 import android.annotation.SuppressLint
+import android.app.ActivityOptions
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -140,18 +141,15 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             }
             android.R.id.home -> {
                 val intent = Intent(this, AccountsActivity::class.java)
-                startActivity(intent)
-                overridePendingTransition(R.anim.slide_in_left, R.anim.hold_still)
+                startActivity(intent, animFromLeft.toBundle())
             }
             R.id.action_settings -> {
                 val intent = Intent(this, PeersActivity::class.java)
-                startActivity(intent)
-                overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+                startActivity(intent, animFromRight.toBundle())
             }
             R.id.action_about -> {
                 val intent = Intent(this, AboutActivity::class.java)
-                startActivity(intent)
-                overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+                startActivity(intent, animFromRight.toBundle())
             }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
@@ -172,11 +170,11 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             val contact = view.tag as Contact
             val addr = Hex.toHexString(contact.pubkey)
             Log.i(TAG, "Clicked on $addr")
+
             val intent = Intent(this, ChatActivity::class.java)
             intent.putExtra("pubkey", contact.pubkey)
             intent.putExtra("name", contact.name)
-            startActivity(intent)
-            overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
+            startActivity(intent, animFromRight.toBundle())
         }
     }
 
