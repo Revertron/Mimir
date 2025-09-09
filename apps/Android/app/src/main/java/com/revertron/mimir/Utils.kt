@@ -8,9 +8,11 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.res.AssetFileDescriptor
+import android.content.res.Resources
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.TrafficStats
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -18,6 +20,7 @@ import android.provider.OpenableColumns
 import android.util.Log
 import android.webkit.MimeTypeMap
 import android.widget.ImageView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
@@ -25,18 +28,135 @@ import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.DecoderException
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.InetAddress
-import java.net.NetworkInterface
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.*
 import kotlin.math.abs
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
+const val UPDATE_SERVER = "https://mimir-update.yggdrasil.link"
+
+/**
+ * Checks for available updates.
+ * Returns false if there was some network or server error, true otherwise.
+ */
+fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
+    val url = URL("$UPDATE_SERVER/versions")
+    val TAG = "checkUpdates"
+
+    try {
+        TrafficStats.setThreadStatsTag(12345)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.connectTimeout = 10_000
+        conn.readTimeout = 10_000
+        conn.setRequestProperty("Accept", "application/json")
+
+        if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+            Log.i(TAG, "Server returned ${conn.responseCode}")
+            return false
+        }
+
+        val body = conn.inputStream.bufferedReader().use { it.readText() }
+        conn.disconnect()
+
+        val root = JSONArray(body)
+        var newestVersion: String? = null
+        var newestDesc: String? = null
+        var newestApkPath: String? = null
+        var newestCode = Version(0, 0, 0)
+        val (lang, tag) = getSystemLocale()
+
+        for (i in 0 until root.length()) {
+            val obj = root.getJSONObject(i)
+            val ver = obj.getString("version")
+            val code = Version.parse(ver)
+            if (code > newestCode) {
+                newestCode = code
+                newestVersion = ver
+                var desc = obj.optString("description_$tag")
+                if (desc == null || desc.isEmpty())
+                    desc = obj.optString("description_$lang")
+                if (desc == null || desc.isEmpty())
+                    desc = obj.optString("description")
+                newestDesc = desc
+                newestApkPath = obj.getString("apk_path")
+            }
+        }
+
+        Log.i(TAG, "Newest version found: $newestVersion")
+
+        val current = Version.parse(BuildConfig.VERSION_NAME)
+        if (newestCode > current && newestVersion != null) {
+            Log.i(TAG, "Found new version: $newestVersion")
+            fireNotification(context, newestCode, newestDesc!!, newestApkPath!!)
+        } else if (forced) {
+            Toast.makeText(context, R.string.already_last_version, Toast.LENGTH_LONG).show()
+        }
+        return true
+    } catch (e: Exception) {
+        val message: String = e.localizedMessage ?: e.message!!
+        val text = context.getString(R.string.error_checking_updates, message)
+        Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+        e.printStackTrace()
+        return false
+    }
+}
+
+private fun fireNotification(context: Context, v: Version, newestDesc: String, newestApkPath: String) {
+    val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                PendingIntent.FLAG_IMMUTABLE else 0)
+
+    val intent = Intent(context, UpdateActivity::class.java).apply {
+        this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra("version", v.toString())
+        putExtra("desc", newestDesc)
+        putExtra("apk", "$UPDATE_SERVER${newestApkPath}")
+    }
+
+    val pending = PendingIntent.getActivity(context, 5, intent, flags)
+
+    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = NotificationChannel("updates", "App updates", NotificationManager.IMPORTANCE_HIGH)
+        nm.createNotificationChannel(channel)
+    }
+
+    val deleteIntent = Intent(context, ConnectionService::class.java).apply {
+        putExtra("command", "update_dismissed")
+    }
+    val deletePending = PendingIntent.getService(context, 6, deleteIntent, flags)
+
+    val note = NotificationCompat.Builder(context, "updates")
+        .setSmallIcon(android.R.drawable.stat_sys_download_done)
+        .setContentTitle(context.getString(R.string.new_version_available, v))
+        .setContentText(context.getString(R.string.tap_to_see_what_s_new))
+        .setGroup("new_update")
+        .setAutoCancel(true)
+        .setDeleteIntent(deletePending)
+        .setContentIntent(pending)
+        .build()
+
+    nm.notify(4477, note)
+}
+
+fun getSystemLocale(): Pair<String, String> {
+    val locale: Locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        Resources.getSystem().configuration.locales[0]
+    } else {
+        Resources.getSystem().configuration.locale   // deprecated but still works
+    }
+
+    return Pair(locale.language, locale.toLanguageTag())
+}
 
 fun createServiceNotification(context: Context, state: State): Notification {
     // Create the NotificationChannel, but only on API 26+ because
@@ -259,40 +379,6 @@ fun saveFileForMessage(context: Context, fileName: String, data: ByteArray) {
     val originalFile = File(imagesDir, fileName).absolutePath
     //TODO refactor this methods to make it more clear
     createImagePreview(originalFile, previewFile.absolutePath, 512, 80)
-}
-
-fun getYggdrasilAddress(): InetAddress? {
-    val interfaces: List<NetworkInterface> = try {
-        Collections.list(NetworkInterface.getNetworkInterfaces())
-    } catch (e: java.lang.Exception) {
-        return null
-    }
-
-    for (i in interfaces) {
-        if (!i.isUp || i.isLoopback) continue
-
-        for (addr in i.inetAddresses) {
-            val bytes = addr.address
-            if (bytes.size > 4 && (bytes[0] == 0x2.toByte() || bytes[0] == 0x3.toByte())) {
-                Log.d("Utils", "Found Ygg IP $addr")
-                return addr
-            }
-        }
-    }
-    return null
-}
-
-fun isSubnetYggdrasilAddress(address: InetAddress): Boolean {
-    return address.address[0] == 0x3.toByte()
-}
-
-fun isAddressFromSubnet(address: InetAddress, subnet: InetAddress): Boolean {
-    for (b in 1..7) {
-        if (address.address[b] != subnet.address[b]) {
-            return false
-        }
-    }
-    return true
 }
 
 fun randomString(length: Int): String {

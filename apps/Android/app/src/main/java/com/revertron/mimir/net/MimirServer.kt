@@ -172,7 +172,7 @@ class MimirServer(
                         App.app.online = up
                         if (old != up)
                         {
-                            Log.i(TAG, "Online changed to $up")
+                            Log.i(TAG, "Online changed to $up ($oldPeer)")
                             onServerStateChanged(up)
                             if (up)
                                 forceAnnounce = true
@@ -506,6 +506,7 @@ class MimirServer(
     fun callDecline() {
         if (callContact == null) return
         synchronized(connections) {
+            if (callContact == null) return
             val connection = connections.get(Hex.toHexString(callContact))
             connection?.answerCall(false)
             val endTime = System.currentTimeMillis()

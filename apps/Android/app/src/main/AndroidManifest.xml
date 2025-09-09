@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
@@ -101,6 +103,11 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".UpdateActivity"
+            android:exported="false"
+            android:taskAffinity="mimir.updates"
+            android:configChanges="orientation|screenSize" />
+
         <service android:name=".ConnectionService" android:enabled="true" android:exported="false" android:foregroundServiceType="phoneCall" />
 
         <receiver android:name=".BootUpReceiver" android:exported="true">
@@ -117,7 +124,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:authorities="${applicationId}.file_provider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

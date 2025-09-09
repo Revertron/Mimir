@@ -2,4 +2,6 @@
 <paths>
     <!-- Share any file in our internal files/ directory -->
     <files-path name="shared" path="." />
+    <!-- Share or downloads -->
+    <external-path name="downloads" path="Download/" />
 </paths>

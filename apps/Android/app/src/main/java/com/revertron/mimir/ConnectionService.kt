@@ -4,10 +4,13 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
+import androidx.core.os.postDelayed
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import com.revertron.mimir.NotificationManager.Companion.INCOMING_CALL_NOTIFICATION_ID
@@ -35,6 +38,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     var mimirServer: MimirServer? = null
     val peerStatuses = HashMap<String, PeerStatus>()
     var broadcastPeerStatuses = false
+    var updateAfter = 0L
+    lateinit var updaterThread: HandlerThread
+    lateinit var handler: Handler
 
     override fun onBind(intent: Intent): IBinder? {
         return null
@@ -64,10 +70,13 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey $pubkeyHex")
                         val peerProvider = PeerProvider(this)
                         mimirServer = MimirServer(storage, peerProvider, accountInfo.clientId, accountInfo.keyPair, this, this)
-                        mimirServer!!.start()
+                        mimirServer?.start()
                         val n = createServiceNotification(this, State.Offline)
                         startForeground(1, n)
                     }
+                    updaterThread = HandlerThread("UpdateThread").apply { start() }
+                    handler = Handler(updaterThread.looper)
+
                     return START_STICKY
                 }
             }
@@ -134,12 +143,15 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }.start()
                 }
             }
-            "resend_all" -> {
+            "online" -> {
                 mimirServer?.reconnectPeers()
-                Thread {
-                    Log.i(TAG, "Resending unsent messages")
-                    mimirServer?.sendMessages()
-                }.start()
+                Log.i(TAG, "Resending unsent messages")
+                mimirServer?.sendMessages()
+                if (updateAfter == 0L) {
+                    handler.postDelayed(1000) {
+                        updateTick()
+                    }
+                }
             }
             "peer_statuses" -> {
                 broadcastPeerStatuses = intent.getBooleanExtra("start", false)
@@ -158,6 +170,19 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }
                 }
             }
+            "update_dismissed" -> {
+                val delay = 3600 * 1000L
+                updateAfter = System.currentTimeMillis() + delay
+                handler.postDelayed(delay) {
+                    updateTick()
+                }
+            }
+            "check_updates" -> {
+                updateAfter = System.currentTimeMillis()
+                handler.postDelayed(100) {
+                    updateTick(true)
+                }
+            }
         }
 
         return super.onStartCommand(intent, flags, startId)
@@ -165,6 +190,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onDestroy() {
         mimirServer?.stopServer()
+        updaterThread.quitSafely()
         super.onDestroy()
     }
 
@@ -276,6 +302,20 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun getFilesDirectory(): String {
         return filesDir.absolutePath + "/files"
+    }
+
+    private fun updateTick(forced: Boolean = false) {
+        if (System.currentTimeMillis() > updateAfter) {
+            val delay = if (checkUpdates(this@ConnectionService, forced)) {
+                3600 * 1000L
+            } else {
+                600 * 1000L
+            }
+            updateAfter = System.currentTimeMillis() + delay
+            handler.postDelayed(delay) {
+                updateTick()
+            }
+        }
     }
 }
 

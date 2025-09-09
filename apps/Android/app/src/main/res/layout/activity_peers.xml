@@ -12,7 +12,7 @@
         android:minHeight="?attr/actionBarSize"
         android:theme="@style/MimirToolbar"
         android:elevation="4dp"
-        app:title="Configure Peers"
+        app:title="@string/configure_peers"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -23,8 +23,8 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
-        android:textAppearance="@style/TextAppearance.AppCompat.Title"
-        android:text="Use default peers"
+        android:textAppearance="@style/TextAppearance.AppCompat.Widget.Switch"
+        android:text="@string/use_default_peers"
         app:layout_constraintTop_toBottomOf="@id/toolbar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -54,8 +54,8 @@
                 android:id="@+id/title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Custom Peers"
-                android:textAppearance="@style/TextAppearance.AppCompat.Title"
+                android:text="@string/custom_peers"
+                android:textAppearance="@style/TextAppearance.AppCompat.Widget.Switch"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintStart_toStartOf="parent" />
 
@@ -65,7 +65,7 @@
                 android:layout_height="wrap_content"
                 android:src="@drawable/ic_plus"
                 android:background="@drawable/button_rounded"
-                android:contentDescription="Add peer"
+                android:contentDescription="@string/add_peer"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintEnd_toEndOf="parent" />
         </androidx.constraintlayout.widget.ConstraintLayout>

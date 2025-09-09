@@ -15,10 +15,10 @@
     <string name="contact_name">Contact name:</string>
     <string name="contact_pubkey">Public key:</string>
     <string name="contact_address">Contact address:</string>
-    <string name="contact_name_hint">Lady Sif</string>
-    <string name="contact_rename_hint">Loki</string>
-    <string name="contact_address_hint" tools:ignore="TypographyEllipsis">200:xxx...</string>
-    <string name="contact_pubkey_hint" tools:ignore="TypographyEllipsis">0123456789ABCDEF...</string>
+    <string name="contact_name_hint">Name or nickname</string>
+    <string name="contact_rename_hint">New name</string>
+    <string name="contact_address_hint" tools:ignore="TypographyEllipsis" translatable="false">200:xxx...</string>
+    <string name="contact_pubkey_hint" tools:ignore="TypographyEllipsis" translatable="false">0123456789ABCDEF...</string>
     <string name="add_contact">Add contact</string>
     <string name="add_contact_address">Add address</string>
     <string name="contact_add">Add</string>
@@ -31,7 +31,7 @@
     <string name="contact_info">Contact info</string>
     <string name="save_button">Save</string>
     <string name="account">Account</string>
-    <string name="my_name_hint">Thor Odinson</string>
+    <string name="my_name_hint">Name or nickname</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="saved">Saved</string>
     <string name="menu_reply">Reply</string>
@@ -68,10 +68,10 @@
     <string name="activity_not_found">Activity not found.</string>
     <string name="action_about">About</string>
     <string name="about_title">About Mimir</string>
-    <string name="app_version_label">Version: 1.0.0 (Build 1)</string>
+    <string name="app_version_label" translatable="false">Version: 1.0.0 (Build 1)</string>
     <string name="links_label">Links</string>
     <string name="libs_label">Used libraries</string>
-    <string name="libs_used">\n
+    <string name="libs_used" translatable="false">\n
 • Yggdrasil Network (LGPLv3)\n
 • AndroidX (Apache 2.0)\n
 • Material Components (Apache 2.0)\n
@@ -93,5 +93,27 @@
     <string name="add_button">Add</string>
     <string name="audio_call_item">Audio call %s</string>
     <string name="call_already_ongoing">Call already in progress!</string>
+    <string name="updates_title">Mimir update</string>
+    <string name="new_version_title">New version %s is available!</string>
+    <string name="old_version_title">Current %s</string>
+    <string name="changelogs">New in this version:</string>
+    <string name="button_download">Download</string>
+    <string name="downloading_update">Downloading update…</string>
+    <string name="new_version_available">New version %1$s available</string>
+    <string name="tap_to_see_what_s_new">Tap to see what’s new</string>
+    <string name="check_for_updates">Check for updates</string>
+    <string name="already_last_version">No new version available.</string>
+    <string name="error_checking_updates">Error checking for updates: %s</string>
+    <string name="configure_peers">Configure Peers</string>
+    <string name="use_default_peers">Use default peers</string>
+    <string name="custom_peers">Custom Peers</string>
+    <string name="add_peer">Add peer</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_ringing">Ringing…</string>
+    <string name="status_error_connecting">Error connecting :(</string>
+    <string name="github">Mimir on GitHub</string>
+    <string name="patreon">My Patreon</string>
+    <string name="yggdrasil_network">Yggdrasil Network</string>
+    <string name="version_and_build_title">Version: %1$s (Build %2$d)</string>
 
 </resources>

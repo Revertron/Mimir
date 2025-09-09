@@ -56,7 +56,6 @@ class CallActivity: BaseActivity() {
     private lateinit var timerView: AppCompatTextView
 
     private val tick = object : Runnable {
-        @SuppressLint("SetTextI18n")
         override fun run() {
             val elapsed = System.currentTimeMillis() - startTime
             timerView.text = formatDuration(elapsed)
@@ -84,10 +83,10 @@ class CallActivity: BaseActivity() {
                     val from = intent.getStringExtra("contact")
                     if (from != null && contact.pubkey.contentEquals(Hex.decode(from))) {
                         when (status) {
-                            PeerStatus.Connecting -> timerView.text = "Connecting..."
-                            PeerStatus.Connected -> timerView.text = "Ringing..."
+                            PeerStatus.Connecting -> timerView.text = getString(R.string.status_connecting)
+                            PeerStatus.Connected -> timerView.text = getString(R.string.status_ringing)
                             PeerStatus.ErrorConnecting -> {
-                                timerView.text = "Error connecting :("
+                                timerView.text = getString(R.string.status_error_connecting)
                                 connect(this@CallActivity, contact.pubkey)
                             }
                         }

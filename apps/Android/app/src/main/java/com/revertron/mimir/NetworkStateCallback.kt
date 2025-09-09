@@ -22,7 +22,7 @@ class NetworkStateCallback(val context: Context) : ConnectivityManager.NetworkCa
                 // The message often arrives before the connection is fully established
                 Thread.sleep(1000)
                 val intent = Intent(context, ConnectionService::class.java)
-                intent.putExtra("command", "resend_all")
+                intent.putExtra("command", "online")
                 try {
                     context.startService(intent)
                 } catch (e: IllegalStateException) {

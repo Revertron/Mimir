@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.Toolbar
@@ -25,7 +26,7 @@ class AboutActivity : BaseActivity() {
         val versionView = findViewById<AppCompatTextView>(R.id.app_version)
         val versionName = BuildConfig.VERSION_NAME
         val versionCode = BuildConfig.VERSION_CODE
-        versionView.text = "Version: $versionName (Build $versionCode)"
+        versionView.text = getString(R.string.version_and_build_title, versionName, versionCode)
 
         // Link buttons
         findViewById<AppCompatImageButton>(R.id.button_github).setOnClickListener {
@@ -38,6 +39,13 @@ class AboutActivity : BaseActivity() {
 
         findViewById<AppCompatImageButton>(R.id.button_website).setOnClickListener {
             openLink("https://yggdrasil.link")
+        }
+
+        findViewById<AppCompatButton>(R.id.update_button).setOnClickListener {
+            val intent = Intent(this@AboutActivity, ConnectionService::class.java).apply {
+                putExtra("command", "check_updates")
+            }
+            startService(intent)
         }
     }
 

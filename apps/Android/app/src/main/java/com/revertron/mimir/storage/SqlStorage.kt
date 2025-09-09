@@ -210,7 +210,7 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     fun cleanUp() {
-        //writableDatabase.execSQL("DELETE FROM ips")
+        writableDatabase.execSQL("DELETE FROM ips")
         writableDatabase.execSQL("VACUUM")
 
         val columns = arrayOf("id", "name", "privkey", "pubkey", "client", "info", "avatar", "updated")

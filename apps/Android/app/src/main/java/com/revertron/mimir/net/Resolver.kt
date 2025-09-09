@@ -38,23 +38,27 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
             val buf = ByteArray(1024)
             while (!Thread.interrupted()) {
                 sleep(1000)
-                if (socket != null) {
-                    try {
-                        //Log.i(TAG, "Reading from socket")
-                        val length = socket!!.read(buf)
-                        //Log.i(TAG, "Read $length bytes")
-                        process(buf.copyOfRange(0, length.toInt()))
-                    } catch (e: Exception) {
-                        when (e.message) {
-                            "EOF" -> {
-                                closeSocket()
+                synchronized(timeouts) {
+                    if (socket != null) {
+                        try {
+                            //Log.i(TAG, "Reading from socket")
+                            val length = socket!!.read(buf)
+                            //Log.i(TAG, "Read $length bytes")
+                            process(buf.copyOfRange(0, length.toInt()))
+                            closeSocket()
+                        } catch (e: Exception) {
+                            when (e.message) {
+                                "EOF" -> {
+                                    closeSocket()
+                                }
+
+                                else -> {
+                                    Log.e(TAG, "Socket read error", e)
+                                    closeSocket()
+                                }
                             }
-                            else  -> {
-                                Log.e(TAG, "Socket read error", e)
-                                closeSocket()
-                            }
+                            continue
                         }
-                        continue
                     }
                 }
             }
@@ -84,16 +88,21 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
         dos.write(pubkey)
         val request = baos.toByteArray()
         try {
-            if (socket == null) {
-                socket = messenger.connect(tracker)
-            }
+            val socket = messenger.connect(tracker)
+            Log.i(TAG, "Created socket")
             socket?.write(request)
-            startTimeoutThread(nonce, receiver)
+            Log.i(TAG, "Packet sent")
+            val buf = ByteArray(1024)
+            val length = socket!!.readWithTimeout(buf, 5000)
+            //Log.i(TAG, "Read $length bytes")
+            process(buf.copyOfRange(0, length.toInt()))
+            socket.close()
+            //startTimeoutThread(nonce, receiver)
         } catch (e: Exception) {
-            closeSocket()
+            e.printStackTrace()
             Log.e(TAG, "Error sending packet: $e")
-            val pair = nonces.remove(nonce)!!
-            pair.second.onError(pubkey)
+            val pair = nonces.remove(nonce)
+            pair?.second?.onError(pubkey)
         }
     }
 
@@ -117,17 +126,19 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
         dos.write(signature)
         val request = baos.toByteArray()
         try {
-            if (socket == null) {
-                socket = messenger.connect(tracker)
-            }
+            val socket = messenger.connect(tracker)
             socket?.write(request)
-            startTimeoutThread(nonce, receiver)
+            val buf = ByteArray(1024)
+            val length = socket!!.readWithTimeout(buf, 5000)
+            //Log.i(TAG, "Read $length bytes")
+            process(buf.copyOfRange(0, length.toInt()))
+            socket.close()
+            //startTimeoutThread(nonce, receiver)
             //Log.i(TAG, "Announce packet sent")
         } catch (e: Exception) {
-            closeSocket()
             Log.e(TAG, "Error sending packet: $e")
-            val pair = nonces.remove(nonce)!!
-            pair.second.onError(pubkey)
+            val pair = nonces.remove(nonce)
+            pair?.second?.onError(pubkey)
         }
     }
 
@@ -160,7 +171,7 @@ class Resolver(private val storage: SqlStorage, private val messenger: Messenger
 
             CMD_GET_ADDRS -> {
                 val count = dis.readByte()
-                //Log.i(TAG, "Got $count addresses")
+                Log.i(TAG, "Got $count addresses")
                 if (count <= 0) {
                     pair.second.onError(pair.first)
                     return
