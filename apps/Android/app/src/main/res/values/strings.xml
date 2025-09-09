@@ -115,5 +115,9 @@
     <string name="patreon">My Patreon</string>
     <string name="yggdrasil_network">Yggdrasil Network</string>
     <string name="version_and_build_title">Version: %1$s (Build %2$d)</string>
+    <string name="collect_logs">Collect logs</string>
+    <string name="logs">Logs</string>
+    <string name="share_logs">Share logs</string>
+    <string name="no_logs_to_share">No logs to share</string>
 
 </resources>

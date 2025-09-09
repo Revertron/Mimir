@@ -30,13 +30,16 @@ import org.bouncycastle.util.encoders.DecoderException
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 
@@ -48,8 +51,13 @@ const val UPDATE_SERVER = "https://mimir-update.yggdrasil.link"
  * Returns false if there was some network or server error, true otherwise.
  */
 fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
-    val url = URL("$UPDATE_SERVER/versions")
     val TAG = "checkUpdates"
+    if (BuildConfig.DEBUG) {
+        Log.i(TAG, "Skipping update check in debug build")
+        return true
+    }
+
+    val url = URL("$UPDATE_SERVER/versions")
 
     try {
         TrafficStats.setThreadStatsTag(12345)
@@ -193,6 +201,40 @@ fun createServiceNotification(context: Context, state: State): Notification {
         .setContentIntent(pendingIntent)
         .setPriority(NotificationCompat.PRIORITY_MIN)
         .build()
+}
+
+fun getLogcatLastMinutes(minutes: Long): List<String> {
+    val result = mutableListOf<String>()
+
+    // Важно: "-v time" добавляет timestamp в формате "MM-dd HH:mm:ss.SSS"
+    val process = Runtime.getRuntime().exec("logcat -d -v time")
+    val reader = BufferedReader(InputStreamReader(process.inputStream))
+
+    val sdf = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
+    val now = System.currentTimeMillis()
+    val tenMinutesAgo = now - minutes * 60 * 1000
+
+    var line: String?
+    while (reader.readLine().also { line = it } != null) {
+        if (line!!.length < 18) continue // защита от строк без даты
+        val tsString = line!!.substring(0, 18) // "MM-dd HH:mm:ss.SSS"
+        try {
+            val parsed = sdf.parse(tsString)
+            val calendar = Calendar.getInstance()
+            calendar.time = parsed!!
+            // Подставляем текущий год, иначе даты будут "1970"
+            calendar.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+            val timestamp = calendar.timeInMillis
+
+            if (timestamp >= tenMinutesAgo) {
+                result.add(line!!)
+            }
+        } catch (_: Exception) {
+            // строки без времени пропускаем
+        }
+    }
+    reader.close()
+    return result
 }
 
 /**

@@ -13,6 +13,7 @@
         android:minHeight="?attr/actionBarSize"
         android:theme="@style/MimirToolbar"
         android:elevation="4dp"
+        app:menu="@menu/menu_about"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent" />

@@ -106,4 +106,8 @@
     <string name="patreon">Мой Патреон</string>
     <string name="yggdrasil_network">Сеть Иггдрасиль</string>
     <string name="version_and_build_title">Версия: %1$s (сборка %2$d)</string>
+    <string name="collect_logs">Собрать логи</string>
+    <string name="logs">Журнал</string>
+    <string name="share_logs">Отправить журнал</string>
+    <string name="no_logs_to_share">Нечего отправлять</string>
 </resources>

@@ -109,6 +109,8 @@
             android:taskAffinity="mimir.updates"
             android:configChanges="orientation|screenSize" />
 
+        <activity android:name=".LogActivity" android:exported="false" />
+
         <service android:name=".ConnectionService"
             android:enabled="true"
             android:exported="false"
