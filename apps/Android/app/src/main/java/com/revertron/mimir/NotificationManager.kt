@@ -93,7 +93,7 @@ class NotificationManager(val context: Context): StorageListener {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            var channelId = context.getString(R.string.channel_name_calls)
+            var channelId = CALLS
             if (inCall)
                 channelId = ONGOING_CALLS
             val notification = NotificationCompat.Builder(context, channelId)

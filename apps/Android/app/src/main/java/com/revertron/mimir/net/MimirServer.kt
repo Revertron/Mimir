@@ -64,18 +64,19 @@ class MimirServer(
         val hexPub = Hex.toHexString(myPub)
         val tracker = Hex.decode(TRACKER_ADDR)
         Log.i(TAG, "My network ADDR: $hexPub")
-        resolver = Resolver(storage, messenger, tracker)
+        resolver = Resolver(messenger, tracker)
         startResendThread()
         startOnlineStateThread()
         val peer = Peer(hexPub, clientId, 3, 0)
         startAnnounceThread(pubkey, privkey, peer, this)
+        startRediscoverThread()
         while (working.get()) {
             try {
                 sleep(1000)
                 Log.i(TAG, "Accepting connections...")
                 val newConnection = messenger.accept()
                 val pub = Hex.toHexString(newConnection.publicKey())
-                Log.i(TAG, "New client from: ${pub}")
+                Log.i(TAG, "New client from: $pub")
                 // Use threads for each client to communicate with them simultaneously
                 val connection = ConnectionHandler(clientId, keyPair, newConnection, this, infoProvider)
                 connection.peerStatus = Status.ConnectedIn
@@ -157,6 +158,43 @@ class MimirServer(
         }.start()
     }
 
+    private fun startRediscoverThread() {
+        Thread {
+            val receiver = object : ResolverReceiver {
+                override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
+                    Log.i(TAG, "Resolved addrs: $ips")
+                    ips.forEach {
+                        storage.saveIp(pubkey, it.address, 0, it.clientId, it.priority, it.expiration)
+                    }
+                }
+
+                override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
+                override fun onError(pubkey: ByteArray) {
+                    //val hex = Hex.toHexString(pubkey)
+                    //Log.w(TAG, "Error resolving IPs for $hex")
+                }
+            }
+
+            sleep(8000)
+            while (working.get()) {
+                val missing = storage.getContactsWithoutValidAddresses()
+                Log.i(TAG, "Found ${missing.size} contacts without addresses, resolving")
+                for (contact in missing) {
+                    resolver.resolveAddrs(contact, receiver)
+                    sleep(1000)
+                }
+
+                val start = System.currentTimeMillis()
+                while (System.currentTimeMillis() - start < 180000) {
+                    sleep(1000)
+                    if (!working.get()) {
+                        break
+                    }
+                }
+            }
+        }.start()
+    }
+
     private fun startOnlineStateThread() {
         Thread {
             while (working.get()) {
@@ -176,21 +214,17 @@ class MimirServer(
                             onServerStateChanged(up)
                             if (up)
                                 forceAnnounce = true
-                            else
-                                resolver.closeSocket()
                         }
                     } else {
                         App.app.online = false
                         if (old) {
                             onServerStateChanged(false)
-                            resolver.closeSocket()
                         }
                     }
                 } else {
                     App.app.online = false
                     if (old) {
                         onServerStateChanged(false)
-                        resolver.closeSocket()
                     }
                 }
             }
@@ -262,7 +296,7 @@ class MimirServer(
             val peers = storage.getContactPeers(contact)
             val receiver = object : ResolverReceiver {
                 override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
-                    Log.i(TAG, "Resolved IPS: $ips")
+                    Log.i(TAG, "Resolved addrs: $ips")
                     val newIps = ips.subtract(peers.toSet())
                     if (newIps.isNotEmpty()) {
                         newIps.forEach {
@@ -271,7 +305,7 @@ class MimirServer(
                         // We don't want to make an endless loop, so we give it a null receiver
                         connectContact(contact, contactString, newIps.toList(), null)
                     } else {
-                        Log.i(TAG, "Didn't find alive IPs for $contactString, giving up")
+                        Log.i(TAG, "Didn't find alive addrs for $contactString, giving up")
                         synchronized(connectContacts) {
                             connectContacts.remove(contactString)
                         }
@@ -280,7 +314,7 @@ class MimirServer(
 
                 override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
                 override fun onError(pubkey: ByteArray) {
-                    Log.w(TAG, "Error resolving IPs")
+                    Log.w(TAG, "Error resolving addrs")
                     listener.onPeerStatusChanged(contact, PeerStatus.ErrorConnecting)
                     synchronized(connectContacts) {
                         connectContacts.remove(contactString)
@@ -325,12 +359,12 @@ class MimirServer(
                 }
             }
             if (!connected && receiver != null) {
-                Log.i(TAG, "Locally found IPs are dead, resolving more")
+                Log.i(TAG, "Locally found addrss are dead, resolving more")
                 resolver.resolveAddrs(contact, receiver)
             }
         } else {
             if (receiver != null) {
-                Log.i(TAG, "No local ips found, resolving")
+                Log.i(TAG, "No local addrs found, resolving")
                 resolver.resolveAddrs(contact, receiver)
             }
         }
