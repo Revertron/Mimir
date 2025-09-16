@@ -4,6 +4,7 @@ import android.util.Log
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.sec.Sign
 import com.revertron.mimir.storage.Peer
+import com.revertron.mimir.yggmobile.Connection
 import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
@@ -35,8 +36,9 @@ class Resolver(private val messenger: Messenger, private val tracker: ByteArray)
         dos.writeByte(CMD_GET_ADDRS)
         dos.write(pubkey)
         val request = baos.toByteArray()
+        var socket: Connection? = null
         try {
-            val socket = messenger.connect(tracker)
+            socket = messenger.connect(tracker)
             //Log.i(TAG, "Created socket")
             socket?.write(request)
             //Log.i(TAG, "Packet sent")
@@ -44,12 +46,13 @@ class Resolver(private val messenger: Messenger, private val tracker: ByteArray)
             val length = socket!!.readWithTimeout(buf, 5000)
             //Log.i(TAG, "Read $length bytes")
             process(buf.copyOfRange(0, length.toInt()), pubkey, receiver)
-            socket.close()
             //startTimeoutThread(nonce, receiver)
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e(TAG, "Error sending packet: $e")
             receiver.onError(pubkey)
+        } finally {
+            socket?.close()
         }
     }
 
@@ -71,19 +74,21 @@ class Resolver(private val messenger: Messenger, private val tracker: ByteArray)
         //val s = Hex.toHexString(signature)
         dos.write(signature)
         val request = baos.toByteArray()
+        var socket: Connection? = null
         try {
-            val socket = messenger.connect(tracker)
+            socket = messenger.connect(tracker)
             socket?.write(request)
             val buf = ByteArray(1024)
             val length = socket!!.readWithTimeout(buf, 5000)
             //Log.i(TAG, "Read $length bytes")
             process(buf.copyOfRange(0, length.toInt()), pubkey, receiver)
-            socket.close()
             //startTimeoutThread(nonce, receiver)
             //Log.i(TAG, "Announce packet sent")
         } catch (e: Exception) {
             Log.e(TAG, "Error sending packet: $e")
             receiver.onError(pubkey)
+        } finally {
+            socket?.close()
         }
     }
 

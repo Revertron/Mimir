@@ -4,10 +4,15 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.hardware.display.DisplayManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
+import android.view.Display
+import android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
 import androidx.core.os.postDelayed
@@ -37,13 +42,19 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     var mimirServer: MimirServer? = null
     val peerStatuses = HashMap<String, PeerStatus>()
-    var broadcastPeerStatuses = false
+    var broadcastPeerStatuses = true
     var updateAfter = 0L
     lateinit var updaterThread: HandlerThread
     lateinit var handler: Handler
 
     override fun onBind(intent: Intent): IBinder? {
         return null
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        updaterThread = HandlerThread("UpdateThread").apply { start() }
+        handler = Handler(updaterThread.looper)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,6 +72,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 if (preferences.getBoolean("enabled", true)) { //TODO change to false
                     if (mimirServer == null) {
                         Log.i(TAG, "Starting MimirServer...")
+                        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Mimir:server")
                         var accountInfo = storage.getAccountInfo(1, 0L) // TODO use name
                         if (accountInfo == null) {
                             accountInfo = storage.generateNewAccount()
@@ -69,19 +82,17 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         val pubkeyHex = Hex.toHexString(pubkey)
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey $pubkeyHex")
                         val peerProvider = PeerProvider(this)
-                        mimirServer = MimirServer(storage, peerProvider, accountInfo.clientId, accountInfo.keyPair, this, this)
+                        mimirServer = MimirServer(storage, peerProvider, accountInfo.clientId, accountInfo.keyPair, this, this, wakeLock)
                         mimirServer?.start()
                         val n = createServiceNotification(this, State.Offline)
                         startForeground(1, n)
                     }
-                    updaterThread = HandlerThread("UpdateThread").apply { start() }
-                    handler = Handler(updaterThread.looper)
 
                     return START_STICKY
                 }
             }
             "refresh_peer" -> {
-                mimirServer?.refreshPeer()
+                mimirServer?.jumpPeer()
             }
             "connect" -> {
                 val pubkey = intent.getByteArrayExtra("pubkey")
@@ -144,6 +155,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 }
             }
             "online" -> {
+                mimirServer?.setNetworkOnline(true)
                 mimirServer?.reconnectPeers()
                 Log.i(TAG, "Resending unsent messages")
                 mimirServer?.sendMessages()
@@ -153,21 +165,21 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }
                 }
             }
+            "offline" -> {
+                mimirServer?.setNetworkOnline(false)
+            }
             "peer_statuses" -> {
-                broadcastPeerStatuses = intent.getBooleanExtra("start", false)
-                if (broadcastPeerStatuses) {
-                    Log.i(TAG, "Have statuses of $peerStatuses")
-                    val from = intent.getByteArrayExtra("contact")
-                    val contact = Hex.toHexString(from)
-                    if (contact != null && peerStatuses.contains(contact)) {
-                        val status = peerStatuses.get(contact)
-                        Log.i(TAG, "Sending peer status: $status")
-                        val intent = Intent("ACTION_PEER_STATUS").apply {
-                            putExtra("contact", contact)
-                            putExtra("status", status)
-                        }
-                        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+                Log.i(TAG, "Have statuses of $peerStatuses")
+                val from = intent.getByteArrayExtra("contact")
+                val contact = Hex.toHexString(from)
+                if (contact != null && peerStatuses.contains(contact)) {
+                    val status = peerStatuses.get(contact)
+                    Log.i(TAG, "Sending peer status: $status")
+                    val intent = Intent("ACTION_PEER_STATUS").apply {
+                        putExtra("contact", contact)
+                        putExtra("status", status)
                     }
+                    LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
                 }
             }
             "update_dismissed" -> {
@@ -306,7 +318,16 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun updateTick(forced: Boolean = false) {
         if (System.currentTimeMillis() > updateAfter) {
-            val delay = if (checkUpdates(this@ConnectionService, forced)) {
+
+            val windowContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val dm = getSystemService(DISPLAY_SERVICE) as DisplayManager
+                val display = dm.getDisplay(Display.DEFAULT_DISPLAY)
+                createWindowContext(display, TYPE_APPLICATION_OVERLAY, null)
+            } else {
+                this@ConnectionService
+            }
+
+            val delay = if (checkUpdates(windowContext, forced)) {
                 3600 * 1000L
             } else {
                 600 * 1000L
@@ -323,5 +344,12 @@ fun connect(context: Context, pubkey: ByteArray) {
     val intent = Intent(context, ConnectionService::class.java)
     intent.putExtra("command", "connect")
     intent.putExtra("pubkey", pubkey)
+    context.startService(intent)
+}
+
+fun fetchStatus(context: Context, pubkey: ByteArray) {
+    val intent = Intent(context, ConnectionService::class.java)
+    intent.putExtra("command", "peer_statuses")
+    intent.putExtra("contact", pubkey)
     context.startService(intent)
 }

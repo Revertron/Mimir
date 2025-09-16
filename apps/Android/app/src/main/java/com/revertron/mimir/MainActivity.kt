@@ -1,7 +1,6 @@
 package com.revertron.mimir
 
 import android.annotation.SuppressLint
-import android.app.ActivityOptions
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -201,7 +200,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
     fun showOnlineState(isOnline: Boolean) {
         val avatar = ContextCompat.getDrawable(this, R.drawable.contact_no_avatar_small)!!
-        val badge    = ContextCompat.getDrawable(this, R.drawable.status_badge)!!.mutate()
+        val badge    = ContextCompat.getDrawable(this, R.drawable.status_badge_green)!!.mutate()
 
         if (!isOnline) {
             badge.setTint(0xFFCC0000.toInt())

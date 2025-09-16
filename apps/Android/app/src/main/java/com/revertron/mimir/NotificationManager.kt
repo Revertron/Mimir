@@ -246,6 +246,7 @@ class NotificationManager(val context: Context): StorageListener {
             .setDefaults(Notification.DEFAULT_LIGHTS or Notification.DEFAULT_VIBRATE)
             .setAutoCancel(true)
             .setSound(uri)
+            .setGroup(channelId)
             .build()
     }
 

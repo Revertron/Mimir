@@ -101,6 +101,7 @@
 
                 <data android:scheme="https" />
                 <data android:host="mm.yggdrasil.link" /><!-- Don't forget to change it in Utils.kt -->
+                <data android:host="mimir-app.net" /><!-- Don't forget to change it in Utils.kt -->
             </intent-filter>
         </activity>
 

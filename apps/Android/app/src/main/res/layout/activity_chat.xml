@@ -19,20 +19,32 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent">
 
-        <io.getstream.avatarview.AvatarView
-            android:id="@+id/avatar"
+        <FrameLayout
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:layout_marginEnd="8dp"
-            android:layout_gravity="start"
-            app:avatarViewShape="rounded_rect"
-            app:avatarViewBorderRadius="4dp"
-            app:avatarViewInitialsTextSizeRatio="0.5"
-            app:avatarViewInitials="Mi"
-            app:avatarViewBorderWidth="0dp"
-            app:avatarViewBorderColor="@color/gray_DD"
-            app:avatarViewInitialsTextColor="@color/black"
-            app:avatarViewInitialsBackgroundColor="@color/gray_80"/>
+            android:layout_marginEnd="8dp">
+            <io.getstream.avatarview.AvatarView
+                android:id="@+id/avatar"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="start"
+                app:avatarViewShape="rounded_rect"
+                app:avatarViewBorderRadius="4dp"
+                app:avatarViewInitialsTextSizeRatio="0.5"
+                app:avatarViewInitials="Mi"
+                app:avatarViewBorderWidth="0dp"
+                app:avatarViewBorderColor="@color/gray_DD"
+                app:avatarViewInitialsTextColor="@color/black"
+                app:avatarViewInitialsBackgroundColor="@color/gray_80"/>
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/status_image"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_gravity="bottom|right"
+                android:background="@color/transparent"
+                app:srcCompat="@drawable/status_badge_yellow" />
+        </FrameLayout>
 
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/title"
@@ -51,6 +63,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:background="?attr/chatBackgroundColor"
+        android:scrollbars="vertical"
         app:layout_constraintTop_toBottomOf="@id/toolbar"
         app:layout_constraintBottom_toTopOf="@id/tools"
         app:layout_constraintLeft_toLeftOf="parent"

@@ -37,6 +37,15 @@ class NetworkStateCallback(val context: Context) : ConnectivityManager.NetworkCa
     override fun onLost(network: Network) {
         super.onLost(network)
         Log.d(TAG, "onLost")
+        val intent = Intent(context, ConnectionService::class.java)
+        intent.putExtra("command", "offline")
+        try {
+            context.startService(intent)
+        } catch (e: IllegalStateException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            }
+        }
     }
 
     fun register() {

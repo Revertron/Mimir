@@ -2,9 +2,12 @@ package com.revertron.mimir
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -17,12 +20,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.*
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
 import io.getstream.avatarview.AvatarView
+import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 import java.lang.Thread.sleep
 
@@ -43,6 +49,18 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     private var attachmentJson: JSONObject? = null
     private var isVisible: Boolean = false
     var replyTo = 0L
+
+    private val peerStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            if (intent.action == "ACTION_PEER_STATUS") {
+                val status: PeerStatus = intent.getSerializableExtra("status") as PeerStatus
+                val from = intent.getStringExtra("contact")
+                if (from != null && contact.pubkey.contentEquals(Hex.decode(from))) {
+                    showOnlineState(status)
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,8 +137,12 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         getStorage().listeners.add(this)
 
+        showOnlineState(PeerStatus.Connecting)
+        LocalBroadcastManager.getInstance(this).registerReceiver(peerStatusReceiver, IntentFilter("ACTION_PEER_STATUS"))
+        fetchStatus(this, contact.pubkey)
+
         Thread {
-            sleep(1000)
+            sleep(500)
             connect(this@ChatActivity, contact.pubkey)
         }.start()
     }
@@ -205,6 +227,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
     override fun onDestroy() {
         getStorage().listeners.remove(this)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
         super.onDestroy()
     }
 
@@ -228,6 +251,16 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             }
             val selectedPictureUri = data.data!!
             getImageFromUri(selectedPictureUri)
+        }
+    }
+
+    fun showOnlineState(status: PeerStatus) {
+        val imageView = findViewById<AppCompatImageView>(R.id.status_image)
+        when (status) {
+            PeerStatus.NotConnected -> imageView.setImageResource(R.drawable.status_badge_red)
+            PeerStatus.Connecting -> imageView.setImageResource(R.drawable.status_badge_yellow)
+            PeerStatus.Connected -> imageView.setImageResource(R.drawable.status_badge_green)
+            PeerStatus.ErrorConnecting -> imageView.setImageResource(R.drawable.status_badge_red)
         }
     }
 

@@ -18,6 +18,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import androidx.core.net.toUri
 
 class UpdateActivity: BaseActivity() {
 
@@ -37,7 +38,7 @@ class UpdateActivity: BaseActivity() {
         val progressBar = findViewById<ProgressBar>(R.id.progress_bar)
         progressBar.visibility = View.GONE
 
-        val apkUrl = intent.getStringExtra("apk")
+        val apkUrl = intent.getStringExtra("apk")!!
         val downloadButton = findViewById<AppCompatButton>(R.id.download_button)
         downloadButton.setOnClickListener { button ->
             ApkInstaller.download(this, apkUrl!!, object : DownloadListener {
@@ -52,11 +53,24 @@ class UpdateActivity: BaseActivity() {
                 override fun onDownloadFinished(error: String?) {
                     runOnUiThread {
                         progressBar.visibility = View.GONE
-                        error?.let { Toast.makeText(this@UpdateActivity, it, Toast.LENGTH_LONG).show() }
+                        error?.let {
+                            Toast.makeText(this@UpdateActivity, it, Toast.LENGTH_LONG).show()
+                            openUrl(this@UpdateActivity, apkUrl)
+                        }
                     }
                 }
             })
         }
+        downloadButton.setOnLongClickListener {
+            openUrl(this@UpdateActivity, apkUrl)
+            true
+        }
+    }
+
+    private fun openUrl(ctx: Context, url: String) {
+        val i = Intent(Intent.ACTION_VIEW)
+        i.setData(url.toUri())
+        ctx.startActivity(i)
     }
 
     object ApkInstaller {

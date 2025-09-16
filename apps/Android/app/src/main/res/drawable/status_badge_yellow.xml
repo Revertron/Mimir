@@ -1,0 +1,34 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 16 dp transparent square -->
+    <item
+        android:width="16dp"
+        android:height="16dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent"/>
+        </shape>
+    </item>
+
+    <!-- 10 dp dot shadow -->
+    <item
+        android:width="11dp"
+        android:height="11dp"
+        android:gravity="bottom|end">
+        <shape android:shape="oval">
+            <solid android:color="#FF000000"/>
+        </shape>
+    </item>
+
+    <!-- 10 dp dot in the bottom-right corner -->
+    <item
+        android:width="10dp"
+        android:height="10dp"
+        android:right="0.5dp"
+        android:bottom="0.5dp"
+        android:gravity="bottom|end">
+        <shape android:shape="oval">
+            <solid android:color="#FFEEEE00"/>
+        </shape>
+    </item>
+
+</layer-list>

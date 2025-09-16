@@ -44,7 +44,7 @@ import java.util.*
 import kotlin.math.abs
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
-const val UPDATE_SERVER = "https://mimir-update.yggdrasil.link"
+const val UPDATE_SERVER = "https://update.mimir-app.net"
 
 /**
  * Checks for available updates.
@@ -241,7 +241,7 @@ fun getLogcatLastMinutes(minutes: Long): List<String> {
  * It is used in intent-filter in AndroidManifest, keep it in sync
  */
 fun getMimirUriHost(): String {
-    return "mm.yggdrasil.link"
+    return "mimir-app.net"
 }
 
 fun updateQrCode(name: String, pubKey: String, imageView: ImageView) {

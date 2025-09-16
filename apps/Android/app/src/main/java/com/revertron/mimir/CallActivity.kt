@@ -1,7 +1,6 @@
 package com.revertron.mimir
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.ComponentCaller
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -184,7 +183,7 @@ class CallActivity: BaseActivity() {
                 startRingbackSound()
                 LocalBroadcastManager.getInstance(this)
                     .registerReceiver(peerStatusReceiver, IntentFilter("ACTION_PEER_STATUS"))
-                startFetchingStatuses(true)
+                fetchStatus(this, contact.pubkey)
             }
         } else {
             findViewById<View>(R.id.in_call_buttons_container).visibility = View.VISIBLE
@@ -262,14 +261,6 @@ class CallActivity: BaseActivity() {
             // treat BACK like HOME for an ongoing call
             moveTaskToBack(true)
         }
-    }
-
-    private fun startFetchingStatuses(start: Boolean) {
-        val intent = Intent(this, ConnectionService::class.java)
-        intent.putExtra("command", "peer_statuses")
-        intent.putExtra("start", start)
-        intent.putExtra("contact", contact.pubkey)
-        startService(intent)
     }
 
     private fun startRingbackSound() {
@@ -354,7 +345,6 @@ class CallActivity: BaseActivity() {
         stopTimer()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(closeReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
-        startFetchingStatuses(false)
         audioManager.mode = AudioManager.MODE_NORMAL
         requestedOrientation = originalOrientation
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
