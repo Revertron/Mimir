@@ -35,6 +35,7 @@ class MimirServer(
 
     companion object {
         const val TAG: String = "MimirServer"
+        private const val RESEND_INTERVAL_MS = 120_000L
     }
 
     private val working = AtomicBoolean(true)
@@ -46,6 +47,7 @@ class MimirServer(
     private var callContact: ByteArray? = null
     private var callStartTime = 0L
     private var callIncoming = false
+    private val lock = Object()          // the monitor of new messages we wait/notify on
     private lateinit var resolver: Resolver
     private val pubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
     private val privkey = (keyPair.private as Ed25519PrivateKeyParameters).encoded
@@ -207,25 +209,23 @@ class MimirServer(
     private fun startResendThread() {
         Thread {
             while (working.get()) {
-                // We try to resend messages once in 2 minutes
-                val start = System.currentTimeMillis()
-                while (System.currentTimeMillis() - start < 120000) {
-                    sleep(1000)
-                    if (hasNewMessages) {
-                        hasNewMessages = false
-                        break
+                val deadline = System.currentTimeMillis() + RESEND_INTERVAL_MS
+
+                synchronized(lock) {
+                    while (!hasNewMessages && System.currentTimeMillis() < deadline) {
+                        val remaining = deadline - System.currentTimeMillis()
+                        if (remaining > 0L) lock.wait(remaining)   // wait until deadline or notify
                     }
+                    hasNewMessages = false        // consume the flag
                 }
-                if (working.get()) {
-                    if (!wakeLock.isHeld) {
-                        wakeLock.acquire(60000)
-                    }
-                    sendUnsent()
-                } else {
-                    break
-                }
+
+                if (!working.get()) break         // someone asked us to stop
+
+                // hold the wakelock for up to 60 s while we do the real work
+                if (!wakeLock.isHeld) wakeLock.acquire(60_000)
+                sendUnsent()
             }
-        }.start()
+        }.apply { name = "ResendThread" }.start()
     }
 
     private fun startRediscoverThread() {
@@ -371,6 +371,13 @@ class MimirServer(
 
     fun sendMessages() {
         hasNewMessages = true
+        synchronized(lock) {
+            try {
+                lock.notify()
+            } catch (_: IllegalMonitorStateException) {
+                // Nothing
+            }
+        }
     }
 
     fun reconnectPeers() {

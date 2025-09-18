@@ -49,7 +49,7 @@ class Resolver(private val messenger: Messenger, private val tracker: ByteArray)
             //startTimeoutThread(nonce, receiver)
         } catch (e: Exception) {
             e.printStackTrace()
-            Log.e(TAG, "Error sending packet: $e")
+            Log.e(TAG, "Error resolving: $e")
             receiver.onError(pubkey)
         } finally {
             socket?.close()
@@ -85,7 +85,8 @@ class Resolver(private val messenger: Messenger, private val tracker: ByteArray)
             //startTimeoutThread(nonce, receiver)
             //Log.i(TAG, "Announce packet sent")
         } catch (e: Exception) {
-            Log.e(TAG, "Error sending packet: $e")
+            e.printStackTrace()
+            Log.e(TAG, "Error announcing: $e")
             receiver.onError(pubkey)
         } finally {
             socket?.close()
