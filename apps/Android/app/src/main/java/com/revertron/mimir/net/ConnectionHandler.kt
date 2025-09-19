@@ -155,7 +155,12 @@ class ConnectionHandler(
         }
         connection.close()
         stopAudio()
-        peer?.let { listener.onConnectionClosed(it, address) }
+        peer?.let {
+            if (callStatus != CallStatus.Idle) {
+                listener.onCallStatusChanged(CallStatus.Hangup, it)
+            }
+            listener.onConnectionClosed(it, address)
+        }
     }
 
     private fun processCallStates() {

@@ -57,10 +57,6 @@ const val UPDATE_SERVER = "https://update.mimir-app.net"
  */
 fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
     val TAG = "checkUpdates"
-    if (BuildConfig.DEBUG) {
-        Log.i(TAG, "Skipping update check in debug build")
-        return true
-    }
 
     val url = URL("$UPDATE_SERVER/versions")
 

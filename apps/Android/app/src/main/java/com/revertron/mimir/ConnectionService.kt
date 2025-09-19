@@ -316,6 +316,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     private fun updateTick(forced: Boolean = false) {
+        if (BuildConfig.DEBUG) {
+            Log.i(TAG, "Skipping update check in debug build")
+            return
+        }
         if (System.currentTimeMillis() > updateAfter) {
 
             val windowContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
