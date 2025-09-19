@@ -49,8 +49,7 @@ class AudioReceiver(
             AudioFormat.ENCODING_PCM_16BIT
         )
 
-        audioTrack = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AudioTrack.Builder()
+        audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -64,16 +63,6 @@ class AudioReceiver(
                 .setBufferSizeInBytes(minBufSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
-        } else {
-            AudioTrack(
-                AudioManager.STREAM_VOICE_CALL,
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                minBufSize,
-                AudioTrack.MODE_STREAM
-            )
-        }
 
         audioTrack.play()
 

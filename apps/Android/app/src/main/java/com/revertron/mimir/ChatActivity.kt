@@ -88,6 +88,9 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         } else {
             avatar.avatarInitialsTextColor = 0xFF000000.toInt()
         }
+        avatar.setOnClickListener {
+            connect(this@ChatActivity, contact.pubkey)
+        }
 
         replyPanel = findViewById(R.id.reply_panel)
         replyPanel.visibility = View.GONE

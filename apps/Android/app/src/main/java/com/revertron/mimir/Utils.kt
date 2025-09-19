@@ -12,6 +12,8 @@ import android.content.res.Resources
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.TrafficStats
 import android.net.Uri
 import android.os.Build
@@ -34,13 +36,16 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Locale
+import java.util.Random
 import kotlin.math.abs
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
@@ -119,9 +124,7 @@ fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
 }
 
 private fun fireNotification(context: Context, v: Version, newestDesc: String, newestApkPath: String) {
-    val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-                PendingIntent.FLAG_IMMUTABLE else 0)
+    val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
     val intent = Intent(context, UpdateActivity::class.java).apply {
         this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -614,5 +617,31 @@ fun Uri.length(context: Context): Long {
         else -> {
             -1
         }
+    }
+}
+
+fun haveNetwork(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    // is there still a network that is alive
+    val activeNetwork = cm.activeNetwork
+    val caps = cm.getNetworkCapabilities(activeNetwork)
+    val aliveNetwork = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    return aliveNetwork
+}
+
+fun isGoogleOnline(): Boolean {
+    return try {
+        val url = URL("https://www.google.com/generate_204")   // 0-byte body
+        val conn = url.openConnection() as HttpURLConnection
+        conn.apply {
+            instanceFollowRedirects = false
+            connectTimeout = 3_000
+            readTimeout    = 3_000
+            requestMethod  = "HEAD"
+        }
+        conn.responseCode == 204          // Google returns 204 No-Content
+    } catch (ignored: IOException) {
+        false
     }
 }

@@ -52,6 +52,7 @@ class ConnectionHandler(
         Log.i(TAG, "Starting connection with $address")
         val dis = DataInputStream(ConnectionInputStream(connection))
         val startTime = System.currentTimeMillis()
+        val rand = Random.Default
         try {
             while (!this.isInterrupted) {
                 when (peerStatus) {
@@ -132,7 +133,7 @@ class ConnectionHandler(
                         break
                     }
                     val pingTime = 120000
-                    val needPing = now > lastActiveTime + pingTime + (Random.Default.nextInt() % 20000)
+                    val needPing = now > lastActiveTime + pingTime + (rand.nextInt() % 20000)
                     if (needPing && now - lastPingTime > 60000) {
                         Log.d(TAG, "Sending ping to $address")
                         val baos = ByteArrayOutputStream()

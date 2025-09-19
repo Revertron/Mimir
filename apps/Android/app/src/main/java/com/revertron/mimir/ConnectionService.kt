@@ -82,7 +82,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         val pubkeyHex = Hex.toHexString(pubkey)
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey $pubkeyHex")
                         val peerProvider = PeerProvider(this)
-                        mimirServer = MimirServer(storage, peerProvider, accountInfo.clientId, accountInfo.keyPair, this, this, wakeLock)
+                        mimirServer = MimirServer(applicationContext, storage, peerProvider, accountInfo.clientId, accountInfo.keyPair, this, this, wakeLock)
                         mimirServer?.start()
                         val n = createServiceNotification(this, State.Offline)
                         startForeground(1, n)
@@ -155,7 +155,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 }
             }
             "online" -> {
-                mimirServer?.setNetworkOnline(true)
                 mimirServer?.reconnectPeers()
                 Log.i(TAG, "Resending unsent messages")
                 mimirServer?.sendMessages()
@@ -166,7 +165,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 }
             }
             "offline" -> {
-                mimirServer?.setNetworkOnline(false)
+
             }
             "peer_statuses" -> {
                 Log.i(TAG, "Have statuses of $peerStatuses")

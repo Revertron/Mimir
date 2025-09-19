@@ -388,7 +388,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         NotificationManagerCompat.from(ctx).areNotificationsEnabled()
 
     fun isNotBatteryOptimised(ctx: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
         return pm.isIgnoringBatteryOptimizations(ctx.packageName)
     }

@@ -39,8 +39,7 @@ class AudioSender(
         )
 
         try {
-            audioRecord = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                AudioRecord.Builder()
+            audioRecord = AudioRecord.Builder()
                     .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
                     .setAudioFormat(
                         AudioFormat.Builder()
@@ -51,15 +50,6 @@ class AudioSender(
                     )
                     .setBufferSizeInBytes(minBufSize)
                     .build()
-            } else {
-                AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                    sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    minBufSize
-                )
-            }
         } catch (e: UnsupportedOperationException) {
             e.printStackTrace()
             Log.w(name, "Likely, user didn't give us permission to record audio")

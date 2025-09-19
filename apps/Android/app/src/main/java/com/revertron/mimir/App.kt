@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.StrictMode
 import android.os.StrictMode.VmPolicy
 import com.revertron.mimir.storage.SqlStorage
+import java.util.concurrent.atomic.AtomicLong
 
 
 class App: Application() {
@@ -14,6 +15,7 @@ class App: Application() {
     }
 
     var online: Boolean = false
+    private var networkChangedTime = AtomicLong(0L)
     lateinit var storage: SqlStorage
     lateinit var callback: NetworkStateCallback
 
@@ -44,5 +46,13 @@ class App: Application() {
     override fun onTerminate() {
         callback.unregister()
         super.onTerminate()
+    }
+
+    fun networkChanged() {
+        networkChangedTime.set(System.currentTimeMillis())
+    }
+
+    fun networkChangedRecently(): Boolean {
+        return System.currentTimeMillis() - networkChangedTime.get() < 15000
     }
 }
