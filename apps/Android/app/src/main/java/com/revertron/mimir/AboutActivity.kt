@@ -41,20 +41,13 @@ class AboutActivity : BaseActivity() {
         findViewById<AppCompatImageButton>(R.id.button_website).setOnClickListener {
             openLink("https://yggdrasil.link")
         }
-
-        findViewById<AppCompatButton>(R.id.update_button).setOnClickListener {
-            val intent = Intent(this@AboutActivity, ConnectionService::class.java).apply {
-                putExtra("command", "check_updates")
-            }
-            startService(intent)
-        }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+    /*override fun onCreateOptionsMenu(menu: Menu): Boolean {
         super.onCreateOptionsMenu(menu)
         menuInflater.inflate(R.menu.menu_about, menu)
         return true
-    }
+    }*/
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {

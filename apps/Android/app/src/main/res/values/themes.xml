@@ -6,8 +6,8 @@
         <item name="colorPrimaryVariant">@color/gray_40</item>
         <item name="colorOnPrimary">@color/white</item>
         <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_700</item>
+        <item name="colorSecondary">@color/mimir_dark</item>
+        <item name="colorSecondaryVariant">@color/mimir_light</item>
         <item name="colorOnSecondary">@color/black</item>
         <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
@@ -26,6 +26,8 @@
         <item name="unreadBadgeColor">@color/white</item>
         <item name="replySignColor">@color/message_outgoing_dark_normal</item>
 
+        <item name="switchStyle">@style/MimirSwitch</item>
+        <item name="android:switchStyle">@style/MimirSwitch</item>
         <item name="editTextStyle">@style/EditTextStyle</item>
         <item name="android:editTextStyle">@style/EditTextStyle</item>
         <item name="actionOverflowButtonStyle">@style/MimirToolbarOverflowStyle</item>
@@ -45,6 +47,11 @@
 
     <style name="MimirToolbarOverflowStyle" parent="Widget.AppCompat.ActionButton.Overflow">
         <item name="tint">@color/white</item>
+    </style>
+
+    <style name="MimirSwitch" parent="Widget.MaterialComponents.CompoundButton.Switch">
+        <item name="thumbTint">@color/switch_thumb_tint</item>
+        <item name="trackTint">@color/switch_track_tint</item>
     </style>
 
     <style name="EditTextStyle"  parent="android:Widget.EditText">

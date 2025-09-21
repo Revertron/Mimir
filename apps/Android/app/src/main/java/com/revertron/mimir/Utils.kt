@@ -50,6 +50,7 @@ import kotlin.math.abs
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
 const val UPDATE_SERVER = "https://update.mimir-app.net"
+const val IP_CACHE_DEFAULT_TTL = 900
 
 /**
  * Checks for available updates.
@@ -175,6 +176,7 @@ fun createServiceNotification(context: Context, state: State): Notification {
         val importance = NotificationManager.IMPORTANCE_MIN
         val channel = NotificationChannel(channelId, name, importance).apply {
             description = descriptionText
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             setShowBadge(false)
         }
         // Register the channel with the system
@@ -199,6 +201,7 @@ fun createServiceNotification(context: Context, state: State): Notification {
         .setSmallIcon(R.drawable.ic_mannaz_notification)
         .setContentIntent(pendingIntent)
         .setPriority(NotificationCompat.PRIORITY_MIN)
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .build()
 }
 

@@ -174,8 +174,12 @@ class MimirServer(
         Log.i(TAG, "Selected another peer: $newPeer with stats $stats")
         if (newPeer.contentEquals(oldPeer))
             return
-        messenger.addPeer(newPeer)
-        messenger.removePeer(oldPeer)
+        try {
+            messenger.addPeer(newPeer)
+            messenger.removePeer(oldPeer)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         oldPeer = newPeer
         oldPeerTime = System.currentTimeMillis()
         forceAnnounce = true

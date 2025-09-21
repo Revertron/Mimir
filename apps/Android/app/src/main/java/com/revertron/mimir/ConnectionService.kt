@@ -28,6 +28,7 @@ import com.revertron.mimir.net.InfoResponse
 import com.revertron.mimir.net.MimirServer
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.storage.PeerProvider
+import com.revertron.mimir.ui.SettingsData
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
@@ -196,7 +197,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }
         }
 
-        return super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -226,9 +227,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     override fun onClientConnected(from: ByteArray, address: String, clientId: Int) {
-        val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
-        val ttl = preferences.getInt(IP_CACHE_TTL, IP_CACHE_DEFAULT_TTL)
-        val expiration = getUtcTime() + ttl
+        val expiration = getUtcTime() + IP_CACHE_DEFAULT_TTL
         val storage = (application as App).storage
         storage.saveIp(from, address, 0, clientId, 0, expiration)
     }
@@ -316,11 +315,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     private fun updateTick(forced: Boolean = false) {
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.DEBUG && !forced) {
             Log.i(TAG, "Skipping update check in debug build")
             return
         }
-        if (System.currentTimeMillis() > updateAfter) {
+        if (System.currentTimeMillis() >= updateAfter) {
 
             val windowContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val dm = getSystemService(DISPLAY_SERVICE) as DisplayManager
@@ -330,7 +329,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 this@ConnectionService
             }
 
-            val delay = if (checkUpdates(windowContext, forced)) {
+            val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
+            val updatesEnabled = preferences.getBoolean(SettingsData.KEY_AUTO_UPDATES, true)
+
+            val delay = if (updatesEnabled && checkUpdates(windowContext, forced)) {
                 3600 * 1000L
             } else {
                 600 * 1000L

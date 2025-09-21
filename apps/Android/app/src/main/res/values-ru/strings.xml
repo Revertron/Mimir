@@ -110,4 +110,10 @@
     <string name="logs">Журнал</string>
     <string name="share_logs">Отправить журнал</string>
     <string name="no_logs_to_share">Нечего отправлять</string>
+    <string name="configure_peers_description">Настройка узлов для подключения к сети Yggdrasil.</string>
+    <string name="automatic_updates_checking">Автоматическая проверка обновлений</string>
+    <string name="automatic_updates_checking_desc">Проверять наличие обновлений каждый час.</string>
+    <string name="action_about_desc">Узнать о приложении и его версии.</string>
+    <string name="collect_logs_desc">Собрать логи из logcat для помощи в решении багов.</string>
+    <string name="check_for_updates_desc">Проверить обновления прямо сейчас.</string>
 </resources>

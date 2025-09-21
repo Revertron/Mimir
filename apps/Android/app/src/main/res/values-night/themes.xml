@@ -6,8 +6,8 @@
         <item name="colorPrimaryVariant">@color/gray_40</item>
         <item name="colorOnPrimary">@color/black</item>
         <!-- Secondary brand color. -->
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_200</item>
+        <item name="colorSecondary">@color/mimir_dark</item>
+        <item name="colorSecondaryVariant">@color/mimir_light</item>
         <item name="colorOnSecondary">@color/black</item>
         <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
@@ -26,6 +26,8 @@
         <item name="unreadBadgeColor">@color/white</item>
         <item name="replySignColor">@color/gray_AA</item>
 
+        <item name="switchStyle">@style/MimirSwitch</item>
+        <item name="android:switchStyle">@style/MimirSwitch</item>
         <item name="editTextStyle">@style/EditTextStyle</item>
         <!--<item name="toolbarStyle">@style/MimirToolbar</item>-->
         <item name="actionOverflowButtonStyle">@style/MimirToolbarOverflowStyle</item>

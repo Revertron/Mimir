@@ -104,7 +104,7 @@
     <string name="check_for_updates">Check for updates</string>
     <string name="already_last_version">No new version available.</string>
     <string name="error_checking_updates">Error checking for updates: %s</string>
-    <string name="configure_peers">Configure Peers</string>
+    <string name="configure_peers">Configure peers</string>
     <string name="use_default_peers">Use default peers</string>
     <string name="custom_peers">Custom Peers</string>
     <string name="add_peer">Add peer</string>
@@ -119,5 +119,11 @@
     <string name="logs">Logs</string>
     <string name="share_logs">Share logs</string>
     <string name="no_logs_to_share">No logs to share</string>
+    <string name="configure_peers_description">Configure peers for connection to the Yggdrasil Network.</string>
+    <string name="automatic_updates_checking">Automatic updates checking</string>
+    <string name="automatic_updates_checking_desc">Check for updates automatically every hour.</string>
+    <string name="action_about_desc"><![CDATA[Get info about app & it\'s version]]></string>
+    <string name="collect_logs_desc">Collect logcat logs to assist in fixing the bugs.</string>
+    <string name="check_for_updates_desc">Check for updates right now.</string>
 
 </resources>

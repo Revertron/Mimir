@@ -13,6 +13,8 @@
     <color name="middle_gray">#FF808080</color>
     <color name="semi_gray">#FF404040</color>
     <color name="dark_gray">#FF303030</color>
+    <color name="mimir_dark">#FF49c29c</color>
+    <color name="mimir_light">#FF63fac0</color>
 
     <color name="message_outgoing_light_normal">#FFA0C0FF</color>
     <color name="message_outgoing_light_pressed">#FF80A0FF</color>

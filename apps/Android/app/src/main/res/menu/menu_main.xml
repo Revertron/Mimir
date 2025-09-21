@@ -12,10 +12,10 @@
         android:title="@string/action_settings"
         android:icon="@drawable/ic_settings"
         app:showAsAction="ifRoom" />
-    <item
+    <!--<item
         android:id="@+id/action_about"
         android:orderInCategory="101"
         android:title="@string/action_about"
         android:icon="@drawable/ic_info_outline"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="ifRoom" />-->
 </menu>

@@ -117,6 +117,7 @@
         <service android:name=".ConnectionService"
             android:enabled="true"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="connectedDevice|phoneCall|dataSync|remoteMessaging|microphone" />
 
         <receiver android:name=".BootUpReceiver" android:exported="true">

@@ -38,6 +38,7 @@ import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
 import org.bouncycastle.util.encoders.Hex
+import androidx.core.net.toUri
 
 
 class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener, StorageListener {
@@ -143,11 +144,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 startActivity(intent, animFromLeft.toBundle())
             }
             R.id.action_settings -> {
-                val intent = Intent(this, PeersActivity::class.java)
-                startActivity(intent, animFromRight.toBundle())
-            }
-            R.id.action_about -> {
-                val intent = Intent(this, AboutActivity::class.java)
+                val intent = Intent(this, SettingsActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
             else -> {
@@ -244,7 +241,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 .setAction(getString(R.string.allow)) {
                     val action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
                     try {
-                        val intent = Intent(action, Uri.parse("package:$packageName"))
+                        val intent = Intent(action, "package:$packageName".toUri())
                         startActivity(intent)
                     } catch (e: ActivityNotFoundException) {
                         e.printStackTrace()
