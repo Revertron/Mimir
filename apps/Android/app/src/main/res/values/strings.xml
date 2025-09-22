@@ -125,5 +125,7 @@
     <string name="action_about_desc"><![CDATA[Get info about app & it\'s version]]></string>
     <string name="collect_logs_desc">Collect logcat logs to assist in fixing the bugs.</string>
     <string name="check_for_updates_desc">Check for updates right now.</string>
+    <string name="enable_domain_links">Please, enable Mimir to open links for it\'s own domain.</string>
+    <string name="enable">Enable</string>
 
 </resources>

@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PorterDuff
 import android.graphics.drawable.LayerDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -30,6 +29,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -38,7 +38,6 @@ import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
 import org.bouncycastle.util.encoders.Hex
-import androidx.core.net.toUri
 
 
 class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener, StorageListener {
@@ -251,6 +250,27 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 }
                 .setTextMaxLines(3)
                 .show()
+        }
+
+        // Check if our links are processed properly
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!isDefaultForDomain(this, getMimirUriHost())) {
+                val root = findViewById<View>(android.R.id.content)
+                Snackbar.make(root, getString(R.string.enable_domain_links), Snackbar.LENGTH_INDEFINITE)
+                    .setAction(getString(R.string.enable)) {
+                        val action = Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS
+                        try {
+                            val intent = Intent(action, "package:$packageName".toUri())
+                            startActivity(intent)
+                        } catch (e: ActivityNotFoundException) {
+                            e.printStackTrace()
+                            // Fallback: open the generic battery-settings screen
+                            startActivity(Intent(action))
+                        }
+                    }
+                    .setTextMaxLines(3)
+                    .show()
+            }
         }
     }
 

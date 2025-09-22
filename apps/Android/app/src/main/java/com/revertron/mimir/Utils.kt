@@ -24,6 +24,7 @@ import android.webkit.MimeTypeMap
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.net.toUri
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.revertron.mimir.ui.Contact
@@ -208,17 +209,24 @@ fun createServiceNotification(context: Context, state: State): Notification {
 fun getLogcatLastMinutes(minutes: Long): List<String> {
     val result = mutableListOf<String>()
 
+    val logIgnoredLines = listOf("/studio.deploy", "OpenGLRenderer", "D/libEGL", "D/EGL_emulation", "s_glBindAttribLocation", "HostComposition ext")
+
     // Важно: "-v time" добавляет timestamp в формате "MM-dd HH:mm:ss.SSS"
     val process = Runtime.getRuntime().exec("logcat -d -v time")
     val reader = BufferedReader(InputStreamReader(process.inputStream))
 
     val sdf = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
     val now = System.currentTimeMillis()
-    val tenMinutesAgo = now - minutes * 60 * 1000
+    val minutesAgo = now - minutes * 60 * 1000
 
     var line: String?
-    while (reader.readLine().also { line = it } != null) {
+    read@ while (reader.readLine().also { line = it } != null) {
         if (line!!.length < 18) continue // защита от строк без даты
+
+        for (ignored in logIgnoredLines) {
+            if (line.contains(ignored)) continue@read
+        }
+
         val tsString = line!!.substring(0, 18) // "MM-dd HH:mm:ss.SSS"
         try {
             val parsed = sdf.parse(tsString)
@@ -228,7 +236,7 @@ fun getLogcatLastMinutes(minutes: Long): List<String> {
             calendar.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
             val timestamp = calendar.timeInMillis
 
-            if (timestamp >= tenMinutesAgo) {
+            if (timestamp >= minutesAgo) {
                 result.add(line!!)
             }
         } catch (_: Exception) {
@@ -243,7 +251,18 @@ fun getLogcatLastMinutes(minutes: Long): List<String> {
  * It is used in intent-filter in AndroidManifest, keep it in sync
  */
 fun getMimirUriHost(): String {
-    return "mimir-app.net"
+    return "x.mimir-app.net"
+}
+
+fun isDefaultForDomain(context: Context, domain: String): Boolean {
+    val pm = context.packageManager
+    val pkg = context.packageName
+
+    // Find the Activity that handles https://domain.tld
+    val intent = Intent(Intent.ACTION_VIEW, "https://$domain".toUri())
+    val ris = pm.queryIntentActivities(intent, 0)
+    val myActivity = ris.firstOrNull { it.activityInfo.packageName == pkg } ?: return false
+    return myActivity.activityInfo.packageName == pkg
 }
 
 fun updateQrCode(name: String, pubKey: String, imageView: ImageView) {

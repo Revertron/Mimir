@@ -116,4 +116,6 @@
     <string name="action_about_desc">Узнать о приложении и его версии.</string>
     <string name="collect_logs_desc">Собрать логи из logcat для помощи в решении багов.</string>
     <string name="check_for_updates_desc">Проверить обновления прямо сейчас.</string>
+    <string name="enable_domain_links">Пожалуйста, разрешите Мимиру открывать ссылки на его домен.</string>
+    <string name="enable">Разрешить</string>
 </resources>
