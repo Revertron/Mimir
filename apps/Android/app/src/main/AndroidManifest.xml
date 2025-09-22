@@ -54,6 +54,10 @@
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
         </activity>
 
+        <activity android:name=".ImageSettingsActivity" android:exported="false" android:parentActivityName=".SettingsActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".SettingsActivity" />
+        </activity>
+
         <activity android:name=".PeersActivity" android:exported="false" android:parentActivityName=".MainActivity">
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
         </activity>
@@ -71,7 +75,9 @@
                 android:value=".MainActivity" />
         </activity>
 
-        <activity android:name=".AboutActivity" android:exported="false" />
+        <activity android:name=".AboutActivity" android:exported="false" android:parentActivityName=".SettingsActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".SettingsActivity" />
+        </activity>
 
         <activity android:name=".ContactActivity" android:exported="false" />
         <activity android:name=".PictureActivity" android:exported="false" />

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="image_sizes">
+        <item>Не уменьшать</item>
+        <item>4k (2160p)</item>
+        <item>FullHD (1080p)</item>
+        <item>Малый (720p)</item>
+    </string-array>
+</resources>

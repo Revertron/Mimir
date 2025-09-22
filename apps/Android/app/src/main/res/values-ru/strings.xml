@@ -47,6 +47,7 @@
     <string name="copy_contact_id">Скопировать ID контакта</string>
     <string name="not_yet_implemented">Ещё не реализованно</string>
     <string name="too_big_picture">Файл картинки не может быть больше 5 мегабайт</string>
+    <string name="too_big_picture_resizing">Картинка больше 5 мегабайт, ужимаем</string>
     <string name="contact_added">Добавлен новый контакт</string>
     <string name="contact_already_added">Контакт с этим ключом уже добавлен</string>
     <string name="you_cant_add_yourself">Вы не можете добавить сами себя</string>
@@ -118,4 +119,9 @@
     <string name="check_for_updates_desc">Проверить обновления прямо сейчас.</string>
     <string name="enable_domain_links">Пожалуйста, разрешите Мимиру открывать ссылки на его домен.</string>
     <string name="enable">Разрешить</string>
+    <string name="resize_big_pics">Сжимать большие картинки</string>
+    <string name="resize_big_pics_desc">Перед отправкой сжимать картинки, которые больше 5 мегабайт.</string>
+    <string name="image_settings">Настройки картинок</string>
+    <string name="select_resize_size">Уменьшать картинки до этого размера:</string>
+    <string name="select_resize_quality">Пересохранять с этим качеством:</string>
 </resources>

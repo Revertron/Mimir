@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        app:title="@string/image_settings"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
+        android:theme="@style/MimirToolbar"
+        android:elevation="4dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent" />
+
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/sizes_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        android:paddingHorizontal="16dp"
+        android:layout_marginTop="16dp"
+        android:textAppearance="@style/TextAppearance.AppCompat.Widget.Switch"
+        android:text="@string/select_resize_size"/>
+    <Spinner
+        android:id="@+id/image_sizes_spinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toBottomOf="@id/sizes_label"
+        android:layout_marginTop="8dp"
+        android:paddingHorizontal="16dp" />
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/labels_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:paddingHorizontal="16dp"
+        app:layout_constraintTop_toBottomOf="@id/image_sizes_spinner">
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:id="@+id/quality_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/image_sizes_spinner"
+            android:textAppearance="@style/TextAppearance.AppCompat.Widget.Switch"
+            android:text="@string/select_resize_quality" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:id="@+id/quality_percent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/image_sizes_spinner"
+            android:layout_marginLeft="8dp"
+            android:textAppearance="@style/TextAppearance.AppCompat.Widget.Switch"
+            tools:text="90%" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+    <SeekBar
+        android:id="@+id/quality_seekbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/labels_container" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

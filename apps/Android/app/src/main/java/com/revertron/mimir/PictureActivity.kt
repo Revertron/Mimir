@@ -70,7 +70,7 @@ class PictureActivity : BaseActivity() {
 
             val shareUri = FileProvider.getUriForFile(
                 this,
-                "${packageName}.fileprovider",
+                "${packageName}.file_provider",
                 file
             )
 

@@ -12,6 +12,8 @@ import android.content.res.Resources
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.TrafficStats
@@ -34,6 +36,8 @@ import org.bouncycastle.util.encoders.Hex
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -286,20 +290,122 @@ fun formatDuration(elapsed: Long): String {
     return text
 }
 
+enum class ImageSize(val maxEdge: Int) {
+    NoScale(20000),
+    HighDPI(3840),
+    FullHD(1920),
+    Small(1280);
+
+    companion object {
+        fun fromInt(index: Int): ImageSize =
+            entries.toTypedArray().getOrElse(index) { NoScale }
+    }
+}
+
+/**
+ * Resize the image behind this [Uri] so that its largest edge is <= [target].maxEdge
+ * and compress it to JPEG with the given quality (0..100).
+ * Returns the resulting byte array.
+ *
+ * @throws IllegalArgumentException if the Uri cannot be opened or is not an image.
+ */
+fun Uri.resizeAndCompress(context: Context, target: ImageSize, quality: Int = 90): ByteArray {
+
+    val contentResolver = context.contentResolver
+
+    // Read only bounds to calculate inSampleSize
+    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+
+    val inputStream = contentResolver.openInputStream(this)
+    inputStream?.use {
+        BitmapFactory.decodeStream(it, null, options)
+    }
+
+    val (origW, origH) = options.outWidth to options.outHeight
+    if (origW <= 0 || origH <= 0)
+        throw IllegalArgumentException("Not a valid image")
+
+    val maxEdge = target.maxEdge
+    val sample = calculateInSampleSize(origW, origH, maxEdge)
+
+    // Decode sampled bitmap
+    options.inSampleSize = sample
+    options.inJustDecodeBounds = false
+
+    val bitmap = contentResolver.openInputStream(this)?.use {
+        BitmapFactory.decodeStream(it, null, options)
+    } ?: throw IllegalArgumentException("Cannot decode $this")
+
+    // Rotate according to EXIF orientation
+    val rotated = rotateBitmapAccordingToExif(bitmap, this, contentResolver)
+
+    // Compress to JPEG
+    return ByteArrayOutputStream().use { out ->
+        rotated.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        out.toByteArray()
+    }
+}
+
+/* -------------------------------------------------------------- */
+/* Helper functions                                               */
+/* -------------------------------------------------------------- */
+
+private fun calculateInSampleSize(origW: Int, origH: Int, maxEdge: Int): Int {
+    var size = 1
+    val larger = maxOf(origW, origH)
+    if (larger > maxEdge) {
+        val half = larger / 2
+        while (half / size >= maxEdge) size *= 2
+    }
+    return size
+}
+
+private fun rotateBitmapAccordingToExif(bitmap: Bitmap, uri: Uri, contentResolver: ContentResolver): Bitmap {
+    val exif = try {
+        contentResolver.openInputStream(uri)?.use { ExifInterface(it) }
+    } catch (_: Throwable) {
+        return bitmap
+    }
+
+    val orientation = exif?.getAttributeInt(
+        ExifInterface.TAG_ORIENTATION,
+        ExifInterface.ORIENTATION_NORMAL
+    ) ?: ExifInterface.ORIENTATION_NORMAL
+
+    val matrix = Matrix()
+    val angle = when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+        ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+        ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+        else -> 0f
+    }
+
+    return if (angle == 0f) bitmap else {
+        matrix.postRotate(angle)
+        Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            .also { if (it != bitmap) bitmap.recycle() }
+    }
+}
+
 /**
  * Copies picture file to app directory, creates preview
  *
  * @return Hash of file, null if some error occurs
  */
-fun prepareFileForMessage(context: Context, uri: Uri): JSONObject? {
+fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, quality: Int): JSONObject? {
     val tag = "prepareFileForMessage"
-    val size = uri.length(context)
-    if (size > PICTURE_MAX_SIZE) {
-        Log.e(tag, "File is too big")
-        return null
+    var size = uri.length(context)
+
+    val inputStream = if (size <= PICTURE_MAX_SIZE) {
+        val contentResolver = context.contentResolver
+        contentResolver.openInputStream(uri)
+    } else {
+        Log.i(tag, "File is too big, will try to resize")
+        val resized = uri.resizeAndCompress(context, imageSize, quality)
+        Log.i(tag, "Resized from $size to ${resized.size}")
+        size = resized.size.toLong()
+        ByteArrayInputStream(resized)
     }
-    val contentResolver = context.contentResolver
-    val inputStream = contentResolver.openInputStream(uri)
     val imagesDir = File(context.filesDir, "files")
     if (!imagesDir.exists()) {
         imagesDir.mkdirs()

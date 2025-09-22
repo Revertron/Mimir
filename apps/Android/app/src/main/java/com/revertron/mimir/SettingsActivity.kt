@@ -64,6 +64,10 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 val intent = Intent(this, PeersActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
+            R.string.resize_big_pics -> {
+                val intent = Intent(this, ImageSettingsActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+            }
             R.string.check_for_updates -> {
                 val intent = Intent(this@SettingsActivity, ConnectionService::class.java).apply {
                     putExtra("command", "check_updates")

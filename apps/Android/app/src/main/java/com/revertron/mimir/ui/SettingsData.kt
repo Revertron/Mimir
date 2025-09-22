@@ -7,6 +7,8 @@ import com.revertron.mimir.R
 object SettingsData {
 
     const val KEY_AUTO_UPDATES = "auto-updates"
+    const val KEY_IMAGES_FORMAT = "images-format"
+    const val KEY_IMAGES_QUALITY = "images-quality"
 
     fun create(context: Context): List<SettingsAdapter.Item> {
         val sp = PreferenceManager.getDefaultSharedPreferences(context)
@@ -16,6 +18,14 @@ object SettingsData {
                 id = R.string.configure_peers,
                 titleRes = R.string.configure_peers,
                 descriptionRes = R.string.configure_peers_description,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.resize_big_pics,
+                titleRes = R.string.resize_big_pics,
+                descriptionRes = R.string.resize_big_pics_desc,
                 isSwitch = false,
                 checked = false
             ),

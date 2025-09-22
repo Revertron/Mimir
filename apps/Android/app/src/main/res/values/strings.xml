@@ -48,6 +48,7 @@
     <string name="copy_contact_id">Copy contact ID</string>
     <string name="not_yet_implemented">Not yet implemented</string>
     <string name="too_big_picture">Picture file must be less or equal to 5 Mb</string>
+    <string name="too_big_picture_resizing">Picture is bigger then 5 Mb, resizing</string>
     <string name="contact_added">New contact added</string>
     <string name="contact_already_added">Contact with that key already added</string>
     <string name="you_cant_add_yourself">You can\'t add your own account</string>
@@ -127,5 +128,10 @@
     <string name="check_for_updates_desc">Check for updates right now.</string>
     <string name="enable_domain_links">Please, enable Mimir to open links for it\'s own domain.</string>
     <string name="enable">Enable</string>
+    <string name="resize_big_pics">Resize big images</string>
+    <string name="resize_big_pics_desc">Before sending resize images bigger than 5 megabytes.</string>
+    <string name="image_settings">Image settings</string>
+    <string name="select_resize_size">Resize images to this size:</string>
+    <string name="select_resize_quality">Resave with another quality:</string>
 
 </resources>

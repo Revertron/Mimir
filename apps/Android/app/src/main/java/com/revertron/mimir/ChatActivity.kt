@@ -21,12 +21,15 @@ import androidx.appcompat.widget.*
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
+import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
+import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import io.getstream.avatarview.AvatarView
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
@@ -269,14 +272,18 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
     private fun getImageFromUri(uri: Uri) {
         if (uri.length(this) > PICTURE_MAX_SIZE) {
-            Toast.makeText(this, getString(R.string.too_big_picture), Toast.LENGTH_SHORT).show()
-            return
+            Toast.makeText(this, getString(R.string.too_big_picture_resizing), Toast.LENGTH_LONG).show()
         }
-        val message = prepareFileForMessage(this, uri)
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val resize = prefs.getInt(KEY_IMAGES_FORMAT, 0)
+        val imageSize = ImageSize.fromInt(resize)
+        val quality = prefs.getInt(KEY_IMAGES_QUALITY, 95)
+        // TODO move usage of this function to another Thread
+        val message = prepareFileForMessage(this, uri, imageSize, quality)
         Log.i(TAG, "File message for $uri is $message")
         if (message != null) {
             val fileName = message.getString("name")
-            val preview = getImagePreview(this, fileName, 512, 80)
+            val preview = getImagePreview(this, fileName, 320, 85)
             attachmentPreview.setImageBitmap(preview)
             attachmentPanel.visibility = View.VISIBLE
             attachmentJson = message
@@ -293,6 +300,8 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             attachmentJson!!.put("text", text)
             intent.putExtra("message", attachmentJson.toString())
             attachmentPanel.visibility = View.GONE
+            // TODO check for leaks
+            attachmentPreview.setImageDrawable(null)
             attachmentJson = null
         } else {
             intent.putExtra("message", text)
