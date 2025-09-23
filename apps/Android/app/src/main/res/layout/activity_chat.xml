@@ -195,7 +195,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/button_rounded"
-                android:src="@drawable/ic_send_plane2"
+                android:src="@drawable/ic_arrow_up_right"
                 android:padding="8dp"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="8dp"

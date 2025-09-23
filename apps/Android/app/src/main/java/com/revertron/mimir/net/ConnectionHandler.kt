@@ -117,6 +117,39 @@ class ConnectionHandler(
                     break
                 }
 
+                // When we are calling someone we ping a lot :)
+                val now = System.currentTimeMillis()
+                val callingOrInCall = callStatus == CallStatus.Calling || callStatus == CallStatus.InCall
+                if (callingOrInCall && now - lastPingTime >= 2000) {
+                    if (lastPingTime > lastPongTime && now - lastActiveTime >= 3500) {
+                        Log.w(TAG, "Connection probably severed 1")
+                        break
+                    }
+                    //Log.d(TAG, "Sending ping to $address")
+                    val baos = ByteArrayOutputStream()
+                    val dos = DataOutputStream(baos)
+                    writePing(dos)
+                    try {
+                        connection.writeWithTimeout(baos.toByteArray(), 2000)
+                        //connection.write(baos.toByteArray())
+                        //Log.i(TAG, "Sent")
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        if (e.message?.contains("deadline exceeded") == true) {
+                            Log.w(TAG, "Connection probably severed 2")
+                            break
+                        }
+                    }
+                    lastPingTime = now
+                    // No need to go through all that ping logic below
+                    continue
+                }
+                // If someone is calling us, but there is no even pings in 3s then the connection is dropped
+                if (callStatus == CallStatus.Receiving && now - lastActiveTime >= 3500) {
+                    Log.w(TAG, "Connection probably severed 3")
+                    break
+                }
+
                 if (System.currentTimeMillis() > lastActiveTime + 1000) {
                     try {
                         sleep(100)
@@ -139,7 +172,8 @@ class ConnectionHandler(
                         val baos = ByteArrayOutputStream()
                         val dos = DataOutputStream(baos)
                         writePing(dos)
-                        connection.write(baos.toByteArray())
+                        connection.writeWithTimeout(baos.toByteArray(), 2000)
+                        //connection.write(baos.toByteArray())
                         lastPingTime = now
                         //lastPongTime = 0L
                     }
@@ -370,12 +404,10 @@ class ConnectionHandler(
                     stopAudio()
                 }
                 MSG_TYPE_PING -> {
-                    Log.i(TAG, "Got ping")
                     lastPingTime = System.currentTimeMillis()
                     writePong(dos)
                 }
                 MSG_TYPE_PONG -> {
-                    Log.i(TAG, "Got pong")
                     lastPongTime = System.currentTimeMillis()
                 }
                 else -> {
@@ -415,7 +447,7 @@ class ConnectionHandler(
 
     fun sendData(bytes: ByteArray) {
         try {
-            connection.write(bytes)
+            connection.writeWithTimeout(bytes, 2000)
             lastActiveTime = System.currentTimeMillis()
         } catch (e: Exception) {
             stopAudio()

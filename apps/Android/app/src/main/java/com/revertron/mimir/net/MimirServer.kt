@@ -684,7 +684,10 @@ class MimirServer(
             callStartTime = System.currentTimeMillis()
             callIncoming = true
             val connection = connections.get(Hex.toHexString(callContact))
-            connection?.answerCall(true)
+            connection?.apply {
+                answerCall(true)
+                Log.i(TAG, "Call answered")
+            }
         }
     }
 
@@ -693,7 +696,10 @@ class MimirServer(
         synchronized(connections) {
             if (callContact == null) return
             val connection = connections.get(Hex.toHexString(callContact))
-            connection?.answerCall(false)
+            connection?.apply {
+                answerCall(false)
+                Log.i(TAG, "Call declined")
+            }
             val endTime = System.currentTimeMillis()
             if (callStartTime == 0L) {
                 callStartTime = endTime
