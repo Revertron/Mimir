@@ -11,15 +11,22 @@ android {
         applicationId "com.revertron.mimir"
         minSdk 23
         targetSdk 33
-        versionCode 18
-        versionName "2.0.0a49"
+        versionCode 19
+        versionName "2.0.0a53"
+        resourceConfigurations += ['en', 'ru']
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -34,6 +41,27 @@ android {
         viewBinding true
         buildConfig true
     }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging false
+        }
+        resources {
+            excludes += [
+                    'org/bouncycastle/pqc/crypto/picnic/*.*',
+                    'META-INF/*.version',
+                    'META-INF/*.SF',
+                    'META-INF/*.RSA',
+                    'META-INF/*.DSA',
+                    'META-INF/LICENSE*',
+                    'META-INF/**/LICENSE*',
+                    'META-INF/NOTICE*',
+                    'META-INF/DEPENDENCIES'
+            ]
+        }
+    }
+    aaptOptions {
+        noCompress 'wav', 'mp3', 'ogg'
+    }
 }
 
 dependencies {
@@ -41,18 +69,17 @@ dependencies {
     // gomobile bind -target=android -androidapi 21 -javapkg=com.revertron.mimir -o yggquic.aar ./mobile
     implementation fileTree(include: ['*.aar'], dir: 'libs')
     implementation 'androidx.core:core-ktx:1.17.0'
-    implementation 'androidx.appcompat:appcompat:1.7.1'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.3'
+    implementation 'androidx.appcompat:appcompat-resources:1.7.1'
     implementation 'androidx.preference:preference-ktx:1.2.1'
-    implementation 'com.google.android.material:material:1.12.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
     implementation 'androidx.exifinterface:exifinterface:1.4.1'
+    implementation 'com.google.android.material:material:1.13.0'
 
-    implementation 'org.bouncycastle:bcpkix-jdk18on:1.82'
-    implementation "io.getstream:avatarview-coil:1.0.7"
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.82'
+    implementation 'io.getstream:avatarview-coil:1.0.7'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'com.github.chrisbanes:PhotoView:2.3.0'
-    implementation 'junit:junit:4.13.2'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'

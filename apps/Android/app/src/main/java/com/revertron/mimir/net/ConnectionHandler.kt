@@ -13,6 +13,7 @@ import org.bouncycastle.util.encoders.Hex
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import kotlin.math.absoluteValue
 import kotlin.random.Random
 
 class ConnectionHandler(
@@ -165,8 +166,8 @@ class ConnectionHandler(
                         Log.w(TAG, "Connection probably severed")
                         break
                     }
-                    val pingTime = 120000
-                    val needPing = now > lastActiveTime + pingTime + (rand.nextInt() % 20000)
+                    val pingTime = 180000
+                    val needPing = now > lastActiveTime + pingTime - (rand.nextInt().absoluteValue % 20000)
                     if (needPing && now - lastPingTime > 60000) {
                         Log.d(TAG, "Sending ping to $address")
                         val baos = ByteArrayOutputStream()

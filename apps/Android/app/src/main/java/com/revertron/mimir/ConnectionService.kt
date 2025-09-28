@@ -332,15 +332,23 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
             val updatesEnabled = preferences.getBoolean(SettingsData.KEY_AUTO_UPDATES, true)
 
-            val delay = if (updatesEnabled && checkUpdates(windowContext, forced)) {
-                3600 * 1000L
+            if (updatesEnabled || forced) {
+                val delay = if (checkUpdates(windowContext, forced)) {
+                    3600 * 1000L
+                } else {
+                    600 * 1000L
+                }
+                updateAfter = System.currentTimeMillis() + delay
+                handler.postDelayed(delay) {
+                    updateTick()
+                }
             } else {
-                600 * 1000L
+                updateAfter = System.currentTimeMillis() + 600 * 1000L
+                handler.postDelayed(600 * 1000L) {
+                    updateTick()
+                }
             }
-            updateAfter = System.currentTimeMillis() + delay
-            handler.postDelayed(delay) {
-                updateTick()
-            }
+
         }
     }
 }

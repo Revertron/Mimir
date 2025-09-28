@@ -30,7 +30,7 @@
         android:appCategory="social"
         android:largeHeap="true"
         android:persistent="true"
-        android:supportsRtl="true"
+        android:extractNativeLibs="true"
         android:theme="@style/Theme.Mimir"
         android:name=".App"
         tools:targetApi="31">

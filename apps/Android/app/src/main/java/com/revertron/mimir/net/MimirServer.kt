@@ -5,9 +5,9 @@ import android.content.Context
 import android.os.PowerManager
 import android.util.Log
 import com.revertron.mimir.App
+import com.revertron.mimir.BuildConfig
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.haveNetwork
-import com.revertron.mimir.isGoogleOnline
 import com.revertron.mimir.storage.Peer
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.storage.SqlStorage
@@ -24,8 +24,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private const val CONNECTION_TRIES = 3
 private const val CONNECTION_PERIOD = 1000L
+
 //TODO Get from DNS TXT record
-private const val TRACKER_ADDR = "801bc33a735cded0588284af0bf1b8bdb4138f122a9c17ecee089e9ff151c3f6"
+private val TRACKERS = listOf(
+    "e1436b91fbcbbfe694177da47103b4e370658ba2db31e7879a8d613a447c9302", // Rev
+    "97fa689f6cebfea9b851569827674de89624048fb1e1f8e63bee634676822d8c", // Rev
+    "feb24fba1b06d9592e9826ffffb2f60d8dcd4a8c350ce2ee289f3166701c5be7", // Afka
+    "aa90d4a1826a6d485519d336c94b693f30adf63b8aaf01e2c3be53b1f0cc49e3"  // Souce Kalve
+)
 
 class MimirServer(
     val context: Context,
@@ -79,9 +85,8 @@ class MimirServer(
         if (!wakeLock.isHeld) wakeLock.acquire()
         val myPub = messenger.publicKey()
         val hexPub = Hex.toHexString(myPub)
-        val tracker = Hex.decode(TRACKER_ADDR)
         Log.i(TAG, "My network ADDR: $hexPub")
-        resolver = Resolver(messenger, tracker)
+        resolver = Resolver(messenger, TRACKERS)
         startResendThread()
         startOnlineStateThread()
         val peer = Peer(hexPub, clientId, 3, 0)
@@ -166,17 +171,14 @@ class MimirServer(
                 compareBy<Pair<String, PeerStats>> { it.second.fails }
                     .thenBy { it.second.cost }
             )
-        for (peer in sortedPeers) {
-            Log.i(TAG, "Peer: ${peer.first} -> ${peer.second}")
-        }
 
         val (newPeer, stats) = sortedPeers.first()
         Log.i(TAG, "Selected another peer: $newPeer with stats $stats")
         if (newPeer.contentEquals(oldPeer))
             return
         try {
-            messenger.addPeer(newPeer)
             messenger.removePeer(oldPeer)
+            messenger.addPeer(newPeer)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -187,11 +189,18 @@ class MimirServer(
 
     private fun startAnnounceThread(pubkey: ByteArray, privkey: ByteArray, peer: Peer, receiver: ResolverReceiver) {
         Thread {
+            var lastTrackersPing = System.currentTimeMillis()
             while (working.get()) {
                 sleep(5000)
                 try {
+                    val online = haveNetwork(context)
+                    if (online && System.currentTimeMillis() - lastTrackersPing >= 120000) {
+                        resolver.pingTrackers()
+                        lastTrackersPing = System.currentTimeMillis()
+                    }
+
                     val expiredTtl = getUtcTime() >= lastAnnounceTime + announceTtl
-                    if (App.app.online && (expiredTtl || forceAnnounce)) {
+                    if (App.app.online && online && (expiredTtl || forceAnnounce)) {
                         resolver.announce(pubkey, privkey, peer, receiver)
                         listener.onTrackerPing(false)
                         forceAnnounce = false
@@ -245,8 +254,8 @@ class MimirServer(
             while (working.get()) {
                 val missing = storage.getContactsWithoutValidAddresses()
                 //Log.i(TAG, "Found ${missing.size} contacts without addresses, resolving")
-                val online = haveNetwork(context)
                 for (contact in missing) {
+                    val online = haveNetwork(context)
                     if (online && App.app.online) {
                         resolver.resolveAddrs(contact, receiver)
                         sleep(1000)
@@ -273,7 +282,10 @@ class MimirServer(
                 val peersJSON = messenger.peersJSON
                 if (peersJSON != null && peersJSON != "null") {
                     val peers = JSONArray(peersJSON)
-                    if (peers.length() > 0) {
+                    val peersCount = peers.length()
+                    if (peersCount > 0) {
+                        if (peersCount > 1)
+                            Log.i(TAG, "Peers count: $peersCount")
                         val now = System.currentTimeMillis()
                         val peer = peers.getJSONObject(0)
                         //Log.i(TAG, "Peer: $peer")
@@ -285,10 +297,10 @@ class MimirServer(
                         {
                             Log.i(TAG, "Online changed to $up ($oldPeer)")
                             onServerStateChanged(up)
-                            if (up)
+                            if (up) {
                                 forceAnnounce = true
-                            else {
-                                if (online && !networkChanged) {
+                            } else {
+                                if (online && !networkChanged && peersCount == 1) {
                                     Log.i(TAG, "Seems that peer has gone, jumping")
                                     peerStats.getOrPut(oldPeer, { PeerStats(0, -1) }).apply {
                                         fails += 1
@@ -313,12 +325,15 @@ class MimirServer(
                                 count = 0
                             }
                         }
-                        if (online && up && peers.length() > 1 && now - oldPeerTime >= 5000) {
+                        if (online && up && peersCount > 1 && now - oldPeerTime >= 10000) {
                             var minimalCost = 500
                             var bestPeer = ""
                             // Collect all costs and calculate the best peer
-                            for (i in 0..peers.length() - 1) {
+                            for (i in 0..peersCount - 1) {
                                 val peer = peers.getJSONObject(i)
+                                if (BuildConfig.DEBUG) {
+                                    Log.i(TAG, "Peer: $peer")
+                                }
                                 val uri = peer.getString("URI")
                                 val cost = peer.optInt("Cost", 300)
                                 //Log.i(TAG, "Got cost of $oldPeer: $cost")
@@ -336,7 +351,7 @@ class MimirServer(
                             }
                             Log.i(TAG, "Selected the best peer: $bestPeer with cost $minimalCost")
                             // Remove all the peers except the best one
-                            for (i in 0..peers.length() - 1) {
+                            for (i in 0..peersCount - 1) {
                                 val peer = peers.getJSONObject(i)
                                 val uri = peer.getString("URI")
                                 if (!uri.contentEquals(bestPeer)) {
@@ -346,7 +361,7 @@ class MimirServer(
                             oldPeer = bestPeer
                         }
 
-                        if (!up && !networkChanged && online && now - oldPeerTime > 6000) {
+                        if (!up && !networkChanged && peersCount == 1 && online && now - oldPeerTime > 6000) {
                             Log.i(TAG, "Seems that peer is dead, jumping")
                             peerStats.getOrPut(oldPeer, { PeerStats(0, 500) }).apply {
                                 fails += 1
