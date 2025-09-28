@@ -13,7 +13,6 @@ import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import androidx.exifinterface.media.ExifInterface
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.TrafficStats
@@ -27,6 +26,7 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
+import androidx.exifinterface.media.ExifInterface
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.revertron.mimir.ui.Contact
@@ -394,6 +394,7 @@ private fun rotateBitmapAccordingToExif(bitmap: Bitmap, uri: Uri, contentResolve
  */
 fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, quality: Int): JSONObject? {
     val tag = "prepareFileForMessage"
+    // TODO fix getting size
     var size = uri.length(context)
 
     val inputStream = if (size <= PICTURE_MAX_SIZE) {
@@ -417,11 +418,11 @@ fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, qual
     val outputStream = FileOutputStream(outputFile)
     inputStream.use { input ->
         outputStream.use { output ->
-            val copied = input?.copyTo(output) ?: {
+            val copied = (input?.copyTo(output) ?: {
                 Log.e(tag, "File is not accessible")
                 null
-            }
-            if (copied != size) {
+            }) as Long
+            if (copied < size) {
                 Log.e(tag, "Error copying file to app storage!")
                 return null
             }
@@ -666,19 +667,19 @@ fun Uri.length(context: Context): Long {
 
     val TAG = "Uri.length"
 
-    val fromContentProviderColumn = fun(): Long {
+    val fromContentProviderColumn = fun(column: String): Long {
         // Try to get content length from the content provider column OpenableColumns.SIZE
         // which is recommended to implement by all the content providers
         var cursor: Cursor? = null
         return try {
             cursor = context.contentResolver.query(
                 this,
-                arrayOf(OpenableColumns.SIZE),
+                arrayOf(column),
                 null,
                 null,
                 null
             ) ?: throw Exception("Content provider returned null or crashed")
-            val sizeColumnIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+            val sizeColumnIndex = cursor.getColumnIndex(column)
             if (sizeColumnIndex != -1 && cursor.count > 0) {
                 cursor.moveToFirst()
                 cursor.getLong(sizeColumnIndex)
@@ -728,7 +729,7 @@ fun Uri.length(context: Context): Long {
             fromFileDescriptor()
         }
         ContentResolver.SCHEME_CONTENT -> {
-            val length = fromContentProviderColumn()
+            val length = fromContentProviderColumn(OpenableColumns.SIZE)
             if (length >= 0) {
                 length
             } else {

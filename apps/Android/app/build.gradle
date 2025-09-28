@@ -12,7 +12,7 @@ android {
         minSdk 23
         targetSdk 33
         versionCode 19
-        versionName "2.0.0a53"
+        versionName "2.0.0a54"
         resourceConfigurations += ['en', 'ru']
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

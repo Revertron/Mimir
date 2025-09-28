@@ -14,7 +14,7 @@ Only torrents circumvent these problems, and just because of some nodes that hav
 
 The IPv6 was going to change this, give us all thousands of free IPs that we could connect to each other and forget those pesky NATs. But for decades ISPs are not eager to use it for one reason or another. It can be just a complexity, or heavier to pose a censorship.
 
-But there is a network, called Yggdrasil, that gives everyone a free IPv6 and doesn't need a bless from your ISP. We finally have this possibility to use true P2P. And moreover, this network has a good encryption to protect all data that flows from one IP to another.
+But there is a network, called [Yggdrasil](https://yggdrasil-network.github.io/), that gives everyone a free IPv6 and doesn't need a bless from your ISP. We finally have this possibility to use true P2P. And moreover, this network has a good encryption to protect all data that flows from one IP to another.
 
 So, the Mimir is the first true P2P messenger to use these unusual conditions. Unlike traditional messengers, Mimir doesn’t need:
 
@@ -32,7 +32,7 @@ So, the Mimir is the first true P2P messenger to use these unusual conditions. U
 One of Mimir’s strong points is censorship circumvention: you can connect to any of hundreds of available nodes, host your own, or even build a private network. Freedom is literally in your hands.
 
 ## How it works?
-Mimir works right on device, having Yggdrasil node inside the client. All contacts connect to each other without using servers in the middle. Yggdrasil provides P2P connectivity without usual restrictions of regular Internet.
+Mimir works right on device, having Yggdrasil node inside the client (using [yggquic](https://github.com/Revertron/yggquic) library). All contacts connect to each other without using servers in the middle. Yggdrasil provides P2P connectivity without usual restrictions of regular Internet.
 
 On top of Yggdrasil it uses QUIC implementation that listens for connections from others and makes connections to them when needed. The established connection is held for indefinite time if you are online to speed up conversations.
 

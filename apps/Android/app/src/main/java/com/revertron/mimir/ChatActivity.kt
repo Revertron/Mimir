@@ -271,7 +271,8 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     }
 
     private fun getImageFromUri(uri: Uri) {
-        if (uri.length(this) > PICTURE_MAX_SIZE) {
+        val fileSize = uri.length(this)
+        if (fileSize > PICTURE_MAX_SIZE) {
             Toast.makeText(this, getString(R.string.too_big_picture_resizing), Toast.LENGTH_LONG).show()
         }
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
