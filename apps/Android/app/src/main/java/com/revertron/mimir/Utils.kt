@@ -1,5 +1,6 @@
 package com.revertron.mimir
 
+import android.app.AlertDialog
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,7 +10,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.AssetFileDescriptor
 import android.content.res.Resources
-import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -19,12 +19,19 @@ import android.net.TrafficStats
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.provider.OpenableColumns
 import android.util.Log
+import android.util.TypedValue
+import android.util.TypedValue.COMPLEX_UNIT_DIP
+import android.view.ContextThemeWrapper
+import android.view.LayoutInflater
 import android.webkit.MimeTypeMap
 import android.widget.ImageView
 import android.widget.Toast
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.RoundedBitmapDrawable
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
+import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.google.zxing.BarcodeFormat
@@ -52,6 +59,7 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.Random
 import kotlin.math.abs
+import kotlin.math.min
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
 const val UPDATE_SERVER = "https://update.mimir-app.net"
@@ -290,6 +298,83 @@ fun formatDuration(elapsed: Long): String {
     return text
 }
 
+/**
+ * Load avatar from a user-picked [Uri] and return a **square** bitmap whose
+ * **smallest** side is exactly [maxSize] px.
+ *
+ * Large images are
+ * 1. down-scaled so that the *smaller* dimension becomes [maxSize],
+ * 2. centre-cropped to a square,
+ * 3. returned as an immutable [Bitmap].
+ *
+ * **Call this from a background thread only** – the function blocks.
+ *
+ * @param uri      content:// or file:// Uri obtained from ActivityResultContracts.GetContent
+ * @param maxSize  desired width/height of the final square avatar
+ * @return         square avatar bitmap, or null if the Uri cannot be decoded
+ */
+fun loadSquareAvatar(context: Context, uri: Uri, maxSize: Int): Bitmap? {
+    val cr = context.contentResolver
+
+    /* ---------------------------------------------------------------------
+       1. Decode only bounds → calculate inSampleSize for the *biggest*
+          possible down-scale that still keeps the smaller side ≥ maxSize
+       ------------------------------------------------------------------ */
+    val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    cr.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, o) }
+
+    val (w, h) = o.outWidth to o.outHeight
+    if (w <= 0 || h <= 0) return null
+    if (w == h && w < maxSize) {
+        val bmp = cr.openInputStream(uri).use { ins ->
+            BitmapFactory.decodeStream(ins)
+        } ?: return null
+        return bmp
+    }
+
+    val shortEdge = min(w, h)
+    val scaleFactor = shortEdge / maxSize        // integer scale
+    val sampleSize = scaleFactor.coerceAtLeast(1)
+
+    /* ---------------------------------------------------------------------
+       2. Decode *with* sampling
+       ------------------------------------------------------------------ */
+    val o2 = BitmapFactory.Options().apply {
+        inSampleSize = sampleSize
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    val bmp = cr.openInputStream(uri).use { ins ->
+        BitmapFactory.decodeStream(ins, null, o2)
+    } ?: return null
+
+    /* ---------------------------------------------------------------------
+       3. Fine-scale so that the *smaller* side becomes exactly maxSize
+       ------------------------------------------------------------------ */
+    val scale = maxSize.toFloat() / min(bmp.width, bmp.height)
+    val matrix = Matrix().apply { postScale(scale, scale) }
+
+    val scaled = Bitmap.createBitmap(
+        bmp, 0, 0, bmp.width, bmp.height, matrix, true
+    )
+
+    /* ---------------------------------------------------------------------
+       4. Centre-crop to square
+       ------------------------------------------------------------------ */
+    val cropSize = min(scaled.width, scaled.height)
+    val cropX = (scaled.width - cropSize) / 2
+    val cropY = (scaled.height - cropSize) / 2
+
+    val avatar = Bitmap.createBitmap(
+        scaled, cropX, cropY, cropSize, cropSize
+    )
+
+    /* ---------------------------------------------------------------------
+       5. Clean up if we created an intermediate bitmap
+       ------------------------------------------------------------------ */
+    if (scaled != bmp) scaled.recycle()
+    return avatar
+}
+
 enum class ImageSize(val maxEdge: Int) {
     NoScale(20000),
     HighDPI(3840),
@@ -342,8 +427,34 @@ fun Uri.resizeAndCompress(context: Context, target: ImageSize, quality: Int = 90
     // Compress to JPEG
     return ByteArrayOutputStream().use { out ->
         rotated.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        rotated.recycle()
         out.toByteArray()
     }
+}
+
+fun loadRoundedAvatar(context: Context, fileName: String?, size: Int = 32, corners: Int = 6): RoundedBitmapDrawable? {
+    if (fileName == null || fileName.isEmpty()) return null
+    if (fileName.isNotEmpty()) {
+        val avatarsDir = File(context.filesDir, "avatars")
+        val f = File(avatarsDir, fileName)
+        val resources = context.resources
+        try {
+            f.inputStream().use {
+                val iconSize = TypedValue.applyDimension(COMPLEX_UNIT_DIP, size.toFloat(), resources.displayMetrics).toInt()
+                val raw = BitmapFactory.decodeFile(f.absolutePath)
+                val scaled = raw.scale(iconSize, iconSize)
+
+                val drawable = RoundedBitmapDrawableFactory.create(resources, scaled).apply {
+                    cornerRadius = TypedValue.applyDimension(COMPLEX_UNIT_DIP, corners.toFloat(), resources.displayMetrics)
+                }
+                return drawable
+            }
+        } catch (e: IOException) {
+            Log.e("Utils", e.toString())
+            return null
+        }
+    }
+    return null
 }
 
 /* -------------------------------------------------------------- */
@@ -404,7 +515,9 @@ fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, qual
         Log.i(tag, "File is too big, will try to resize")
         val resized = uri.resizeAndCompress(context, imageSize, quality)
         Log.i(tag, "Resized from $size to ${resized.size}")
-        size = resized.size.toLong()
+        val newSize = resized.size.toLong()
+        if (newSize > size || newSize > PICTURE_MAX_SIZE) return null
+        size = newSize
         ByteArrayInputStream(resized)
     }
     val imagesDir = File(context.filesDir, "files")
@@ -422,7 +535,7 @@ fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, qual
                 Log.e(tag, "File is not accessible")
                 null
             }) as Long
-            if (copied < size) {
+            if (copied != size) {
                 Log.e(tag, "Error copying file to app storage!")
                 return null
             }
@@ -446,6 +559,32 @@ fun getFileHash(file: File): ByteArray {
     }
     inputStream.close()
     return messageDigest.digest()
+}
+
+/**
+ * Returns the image file extension ("jpg", "png", "webp", "gif", "bmp")
+ * if the provided ByteArray starts with a supported Android‐compatible
+ * image signature, otherwise null.
+ */
+fun getImageExtensionOrNull(data: ByteArray): String? {
+    if (data.isEmpty()) return null
+
+    return when {
+        data.startsWith(0xFF, 0xD8, 0xFF) -> "jpg"
+        data.startsWith(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) -> "png"
+        data.startsWith(0x52, 0x49, 0x46, 0x46) &&
+                data.size >= 12 &&
+                data[8] == 0x57.toByte() && data[9] == 0x45.toByte() &&
+                data[10] == 0x42.toByte() && data[11] == 0x50.toByte() -> "webp"
+        data.startsWith(0x47, 0x49, 0x46, 0x38) -> "gif"
+        data.startsWith(0x42, 0x4D) -> "bmp"
+        else -> null
+    }
+}
+
+private fun ByteArray.startsWith(vararg magics: Int): Boolean {
+    if (size < magics.size) return false
+    return magics.indices.all { this[it] == magics[it].toByte() }
 }
 
 fun getMimeType(context: Context, uri: Uri): String? {
@@ -551,6 +690,21 @@ fun saveFileForMessage(context: Context, fileName: String, data: ByteArray) {
     createImagePreview(originalFile, previewFile.absolutePath, 512, 80)
 }
 
+fun showQrCodeDialog(context: Context, name: String, public: String) {
+    val view = LayoutInflater.from(context).inflate(R.layout.qr_code_dialog, null)
+    val imageView = view.findViewById<AppCompatImageView>(R.id.image_view)
+    updateQrCode(name, public, imageView)
+    val wrapper = ContextThemeWrapper(context, R.style.MimirDialog)
+    AlertDialog.Builder(wrapper)
+        .setTitle(context.getString(R.string.my_qr_code))
+        .setView(view)
+        .setIcon(R.drawable.ic_qrcode)
+        .setPositiveButton(context.getString(android.R.string.ok)) { dialog, _ ->
+            dialog.cancel()
+        }
+        .show()
+}
+
 fun randomString(length: Int): String {
     val characters = ('a'..'z') + ('A'..'Z') + ('0'..'9')
     return (1..length)
@@ -605,7 +759,7 @@ fun isColorDark(color: Int): Boolean {
 
 fun getAvatarColor(pubkey: ByteArray): Int {
     val hashCode = pubkey.contentHashCode()
-    return darkColors[abs(hashCode) % darkColors.size].toInt()
+    return lightColors[abs(hashCode) % lightColors.size].toInt()
 }
 
 private val darkColors = arrayOf(
@@ -641,6 +795,39 @@ private val darkColors = arrayOf(
     0xFF90EE90  // Light green
 )
 
+private val lightColors = arrayOf(
+    0xFF6F8F8F, // light slate gray
+    0xFF8FB2D4, // light steel blue
+    0xFF95AB5F, // light olive green
+    0xFFFDF7BB, // light khaki
+    0xFFCFFCCF, // light sea green
+    0xFFA6EDE6, // light aquamarine
+    0xFF5151FF, // light medium blue
+    0xFFD3A0FF, // light medium purple
+    0xFF7CD7A1, // light sea green
+    0xFFAB98FF, // light slate blue
+    0xFF52FFBA, // light spring green
+    0xFF8AF1EC, // light turquoise
+    0xFFABCE63, // light olive drab
+    0xFFD8FFD8, // light pale green
+    0xFFCFFFFF, // light pale turquoise
+    0xFFF8C64B, // light goldenrod
+    0xFF4E9E4E, // light dark green
+    0xFFE9E9E9, // light grey
+    0xFFFFBD4D, // light orange
+    0xFFBD6CFF, // light orchid
+    0xFFFFD6BB, // light salmon
+    0xFF52EFF1, // light turquoise
+    0xFFD44CFF, // light violet
+    0xFF52DFFF, // light sky blue
+    0xFFA9A9A9, // light dim gray
+    0xFF62BB62, // light forest green
+    0xFFFFE755, // light gold
+    0xFFCDFF6F, // light green yellow
+    0xFFCDE8FF, // lighter blue
+    0xFFB0FFB0  // lighter green
+)
+
 fun getInitials(contact: Contact): String {
     val name = contact.name.trim()
     if (name.isEmpty() || name.length < 2) {
@@ -666,33 +853,6 @@ enum class State {
 fun Uri.length(context: Context): Long {
 
     val TAG = "Uri.length"
-
-    val fromContentProviderColumn = fun(column: String): Long {
-        // Try to get content length from the content provider column OpenableColumns.SIZE
-        // which is recommended to implement by all the content providers
-        var cursor: Cursor? = null
-        return try {
-            cursor = context.contentResolver.query(
-                this,
-                arrayOf(column),
-                null,
-                null,
-                null
-            ) ?: throw Exception("Content provider returned null or crashed")
-            val sizeColumnIndex = cursor.getColumnIndex(column)
-            if (sizeColumnIndex != -1 && cursor.count > 0) {
-                cursor.moveToFirst()
-                cursor.getLong(sizeColumnIndex)
-            } else {
-                -1
-            }
-        } catch (e: Exception) {
-            Log.d(TAG, e.message ?: e.javaClass.simpleName)
-            -1
-        } finally {
-            cursor?.close()
-        }
-    }
 
     val fromFileDescriptor = fun(): Long {
         // Try to get content length from content scheme uri or file scheme uri
@@ -729,12 +889,11 @@ fun Uri.length(context: Context): Long {
             fromFileDescriptor()
         }
         ContentResolver.SCHEME_CONTENT -> {
-            val length = fromContentProviderColumn(OpenableColumns.SIZE)
-            if (length >= 0) {
-                length
-            } else {
-                fromFileDescriptor()
-            }
+            val contentResolver = context.contentResolver
+            val stream = contentResolver.openInputStream(this)
+            val size = (stream?.available() ?: 0).toLong()
+            stream?.close()
+            size
         }
         ContentResolver.SCHEME_ANDROID_RESOURCE -> {
             fromAssetFileDescriptor()

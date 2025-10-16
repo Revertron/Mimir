@@ -32,6 +32,7 @@ class App: Application() {
         }
 
         NotificationManager.createCallsNotificationChannel(this)
+        NotificationManager.createCallOngoingNotificationChannel(this)
 
         storage = SqlStorage(this)
         storage.cleanUp()

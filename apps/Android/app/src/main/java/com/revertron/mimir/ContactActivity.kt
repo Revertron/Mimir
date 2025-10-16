@@ -30,13 +30,17 @@ class ContactActivity: BaseActivity() {
         name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         host = getMimirUriHost()
 
+        val id = getStorage().getContactId(pubkey)
+        val avatar = getStorage().getContactAvatar(id, 128, 8)
+        if (avatar != null) {
+            val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
+            avatarView.setImageDrawable(avatar)
+        }
+
         findViewById<AppCompatEditText>(R.id.contact_name).setText(name)
         val pubKeyEdit = findViewById<AppCompatEditText>(R.id.contact_public_key)
         val public = Hex.toHexString(pubkey)
         pubKeyEdit.setText(public)
-
-        val qrCodeImageView = findViewById<AppCompatImageView>(R.id.qr_code)
-        updateQrCode(name, public, qrCodeImageView)
 
         findViewById<View>(R.id.button_copy).setOnClickListener {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
@@ -63,6 +67,11 @@ class ContactActivity: BaseActivity() {
             clipboard.setPrimaryClip(clip)
             Toast.makeText(this@ContactActivity,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
             true
+        }
+
+        val qrCode = findViewById<View>(R.id.button_qr)
+        qrCode.setOnClickListener {
+            showQrCodeDialog(this, name, public)
         }
     }
 

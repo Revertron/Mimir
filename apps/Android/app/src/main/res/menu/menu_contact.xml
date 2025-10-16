@@ -6,9 +6,20 @@
         android:title="@string/make_call"
         android:icon="@drawable/ic_phone_outline"
         app:showAsAction="always" />
-    <item android:id="@+id/contact_info"
-        android:orderInCategory="2"
-        android:title="@string/contact_info"
-        android:icon="@drawable/ic_contact_info"
-        app:showAsAction="ifRoom" />
+    <item android:id="@+id/mute_contact"
+        android:title="@string/mute_contact"
+        android:icon="@drawable/ic_volume_off"
+        app:showAsAction="never" />
+    <item android:id="@+id/block_contact"
+        android:title="@string/block_contact"
+        android:icon="@drawable/ic_block_user"
+        app:showAsAction="never" />
+    <item android:id="@+id/clear_history"
+        android:title="@string/clear_history"
+        android:icon="@drawable/ic_clean_chat_outline"
+        app:showAsAction="never" />
+    <item android:id="@+id/remove_contact"
+        android:icon="@drawable/ic_contact_remove"
+        android:title="@string/remove_contact"
+        app:showAsAction="never" />
 </menu>

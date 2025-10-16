@@ -74,7 +74,6 @@ class NotificationManager(val context: Context): StorageListener {
         }
 
         fun showCallNotification(connectionService: ConnectionService, context: Context, inCall: Boolean, contact: ByteArray) {
-            createCallOngoingNotificationChannel(context)
             Log.i(TAG, "showCallNotification inCall: $inCall")
 
             val storage = (connectionService.application as App).storage
@@ -145,6 +144,7 @@ class NotificationManager(val context: Context): StorageListener {
                 ONGOING_CALL_NOTIFICATION_ID
             else
                 INCOMING_CALL_NOTIFICATION_ID
+            notification.flags = notification.flags or Notification.FLAG_INSISTENT
             NotificationManagerCompat.from(context).notify(id, notification)
         }
     }

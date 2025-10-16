@@ -1,6 +1,7 @@
 package com.revertron.mimir.ui
 
 import android.annotation.SuppressLint
+import android.graphics.PorterDuff
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -8,7 +9,6 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.*
-import io.getstream.avatarview.AvatarView
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -24,7 +24,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: V
         val lastMessageTime: AppCompatTextView = view.findViewById(R.id.last_message_time)
         val unreadCount: AppCompatTextView = view.findViewById(R.id.unread_count)
         val deliveredIcon: AppCompatImageView = view.findViewById(R.id.delivered_icon)
-        val avatar: AvatarView = view.findViewById(R.id.avatar)
+        val avatar: AppCompatImageView = view.findViewById(R.id.avatar)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -70,14 +70,13 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: V
             }
         }
         holder.itemView.tag = contact
-        val initials = getInitials(contact)
-        holder.avatar.avatarInitials = initials
-        val avatarColor = getAvatarColor(contact.pubkey)
-        holder.avatar.avatarInitialsBackgroundColor = avatarColor
-        if (isColorDark(avatarColor)) {
-            holder.avatar.avatarInitialsTextColor = 0xFFFFFFFF.toInt()
+        if (contact.avatar != null) {
+            holder.avatar.clearColorFilter()
+            holder.avatar.setImageDrawable(contact.avatar)
         } else {
-            holder.avatar.avatarInitialsTextColor = 0xFF000000.toInt()
+            holder.avatar.setImageResource(R.drawable.button_rounded_white)
+            val avatarColor = getAvatarColor(contact.pubkey)
+            holder.avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
     }
 

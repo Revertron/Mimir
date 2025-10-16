@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.PorterDuff
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -24,12 +25,12 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatImageButton
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.ui.Contact
-import io.getstream.avatarview.AvatarView
 import org.bouncycastle.util.encoders.Hex
 
 class CallActivity: BaseActivity() {
@@ -144,22 +145,22 @@ class CallActivity: BaseActivity() {
         }
 
         val id = getStorage().getContactId(pubkey)
-        contact = Contact(id, pubkey, name, null, 0)
+        val avatarPic = getStorage().getContactAvatar(id)
+        contact = Contact(id, pubkey, name, null, 0, avatarPic)
 
         val nameView = findViewById<AppCompatTextView>(R.id.name)
         nameView.text = name
         timerView = findViewById(R.id.timer)
         timerView.visibility = View.GONE
 
-        val avatar = findViewById<AvatarView>(R.id.avatar)
-        val initials = getInitials(contact)
-        avatar.avatarInitials = initials
-        val avatarColor = getAvatarColor(contact.pubkey)
-        avatar.avatarInitialsBackgroundColor = avatarColor
-        if (isColorDark(avatarColor)) {
-            avatar.avatarInitialsTextColor = 0xFFFFFFFF.toInt()
+        val avatar = findViewById<AppCompatImageView>(R.id.avatar)
+        if (contact.avatar != null) {
+            avatar.clearColorFilter()
+            avatar.setImageDrawable(contact.avatar)
         } else {
-            avatar.avatarInitialsTextColor = 0xFF000000.toInt()
+            avatar.setImageResource(R.drawable.button_rounded_white)
+            val avatarColor = getAvatarColor(contact.pubkey)
+            avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
 
         val answer = findViewById<AppCompatImageButton>(R.id.phone_answer)

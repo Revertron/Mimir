@@ -1,28 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.appcompat.widget.LinearLayoutCompat
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     xmlns:tools="http://schemas.android.com/tools"
     android:orientation="horizontal"
-    android:padding="16dp"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="8dp"
     android:gravity="center_vertical"
     android:background="@drawable/contact_background">
 
-    <io.getstream.avatarview.AvatarView
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/avatar"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_marginEnd="8dp"
-        app:avatarViewShape="rounded_rect"
-        app:avatarViewBorderRadius="4dp"
-        app:avatarViewInitialsTextSizeRatio="0.5"
-        app:avatarViewInitials="Mi"
-        app:avatarViewBorderWidth="0dp"
-        app:avatarViewBorderColor="@color/gray_DD"
-        app:avatarViewInitialsTextColor="@color/black"
-        app:avatarViewInitialsBackgroundColor="@color/gray_80"/>
+        android:adjustViewBounds="true" />
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"

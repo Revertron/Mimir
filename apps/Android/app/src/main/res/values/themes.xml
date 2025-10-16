@@ -63,6 +63,15 @@
         <item name="android:buttonBarButtonStyle">@style/DialogButtons</item>
     </style>
 
+    <!-- rounded square avatar -->
+    <style name="Avatar">
+        <item name="shapeAppearanceOverlay">@style/Avatar.Rounded</item>
+    </style>
+
+    <style name="Avatar.Rounded">
+        <item name="cornerSize">@dimen/avatar_corner</item>
+    </style>
+
     <style name="DialogButtons" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
         <item name="android:textColor">?attr/iconColor</item>
     </style>

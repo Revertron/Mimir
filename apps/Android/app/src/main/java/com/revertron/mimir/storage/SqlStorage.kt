@@ -6,13 +6,18 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteDoneException
 import android.database.sqlite.SQLiteOpenHelper
+import android.graphics.drawable.Drawable
 import android.provider.Settings
 import android.util.Log
 import androidx.core.database.getBlobOrNull
+import androidx.core.database.getStringOrNull
 import com.revertron.mimir.NotificationManager
 import com.revertron.mimir.R
 import com.revertron.mimir.formatDuration
+import com.revertron.mimir.getImageExtensionOrNull
 import com.revertron.mimir.getUtcTime
+import com.revertron.mimir.loadRoundedAvatar
+import com.revertron.mimir.randomString
 import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.KeyGenerationParameters
@@ -21,10 +26,12 @@ import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
+import java.io.File
 import java.security.SecureRandom
-import java.util.*
+import java.util.Date
+import java.util.Random
 
-class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
+class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
     companion object {
         const val TAG = "SqlStorage"
@@ -303,6 +310,56 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
     }
 
+    fun updateContactInfo(contactId: Long, info: String) {
+        val values = ContentValues().apply {
+            put("info", info)
+            put("updated", getUtcTime())
+        }
+        writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
+    }
+
+    fun updateContactAvatar(contactId: Long, avatar: ByteArray?) {
+        val cursor = this.readableDatabase.query("contacts", arrayOf("avatar"), "id = ?", arrayOf("$contactId"), null, null, null)
+        val curFileName = if (cursor.moveToNext()) {
+            cursor.getString(0)
+        } else {
+            ""
+        }
+        cursor.close()
+
+        // Contact didn't have avatar until this time, will save new
+        val avatarsDir = File(this.context.filesDir, "avatars")
+        if (!avatarsDir.exists()) {
+            avatarsDir.mkdirs()
+        }
+
+        if (curFileName != null && curFileName.isNotEmpty()) {
+            val oldFile = File(avatarsDir, curFileName)
+            oldFile.delete()
+            if (avatar == null || avatar.isEmpty()) {
+                val values = ContentValues().apply {
+                    put("avatar", "")
+                    put("updated", getUtcTime())
+                }
+                writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
+                return
+            }
+        }
+        if (avatar == null) return
+
+        val fileName = randomString(16)
+        val ext = getImageExtensionOrNull(avatar) ?: return
+        val fullName = "$fileName.$ext"
+        val outputFile = File(avatarsDir, fullName)
+        outputFile.outputStream().use { it.write(avatar) }
+
+        val values = ContentValues().apply {
+            put("avatar", fullName)
+            put("updated", getUtcTime())
+        }
+        writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
+    }
+
     fun addMessage(contact: ByteArray, guid: Long, replyTo: Long, incoming: Boolean, delivered: Boolean, sendTime: Long, editTime: Long, type: Int, message: ByteArray): Long {
         var id = getContactId(contact)
         if (id <= 0) {
@@ -546,15 +603,37 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return name
     }
 
+    fun getContactAvatar(id: Long, size: Int = 32, corners: Int = 6): Drawable? {
+        val db = this.readableDatabase
+        val cursor = db.query("contacts", arrayOf("avatar"), "id = ?", arrayOf(id.toString()), null, null, null)
+        while (cursor.moveToNext()) {
+            val avatar = cursor.getStringOrNull(0)
+            cursor.close()
+            return if (!avatar.isNullOrEmpty()) {
+                loadRoundedAvatar(context, avatar, size, corners)
+            } else {
+                null
+            }
+        }
+        cursor.close()
+        return null
+    }
+
     fun getContactList(): List<Contact> {
         val list = mutableListOf<Contact>()
         val db = this.readableDatabase
-        val cursor = db.query("contacts", arrayOf("id", "pubkey", "name"), "", emptyArray(), null, null, "name", "")
+        val cursor = db.query("contacts", arrayOf("id", "pubkey", "name", "avatar"), "", emptyArray(), null, null, "name", "")
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
             val pubkey = cursor.getBlob(1)
             val name = cursor.getString(2)
-            list.add(Contact(id, pubkey, name, null, 0))
+            val avatar = cursor.getStringOrNull(3)
+            val drawable = if (!avatar.isNullOrEmpty()) {
+                loadRoundedAvatar(context, avatar)
+            } else {
+                null
+            }
+            list.add(Contact(id, pubkey, name, null, 0, drawable))
         }
         cursor.close()
         for (c in list) {
@@ -680,6 +759,15 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
         return this.writableDatabase.update("accounts", values, "id = ?", arrayOf("$id")) > 0
     }
 
+    fun updateAvatar(id: Int, path: String): Boolean {
+        val utcTime = getUtcTime()
+        val values = ContentValues().apply {
+            put("avatar", path)
+            put("updated", utcTime)
+        }
+        return this.writableDatabase.update("accounts", values, "id = ?", arrayOf("$id")) > 0
+    }
+
     fun getContactUpdateTime(pubkey: ByteArray): Long {
         val contactId = getContactId(pubkey)
         val cursor = this.readableDatabase.query("contacts", arrayOf("updated"), "id = ?", arrayOf("$contactId"), null, null, null)
@@ -692,6 +780,19 @@ class SqlStorage(context: Context): SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     fun removeContactAndChat(id: Long) {
+        // Firstly, we delete avatar file
+        val cursor = this.readableDatabase.query("contacts", arrayOf("avatar"), "id = ?", arrayOf("$id"), null, null, null)
+        if (cursor.moveToNext()) {
+            val fileName = cursor.getString(0)
+            if (fileName != null && fileName.isNotEmpty()) {
+                val avatarsDir = File(this.context.filesDir, "avatars")
+                val file = File(avatarsDir, fileName)
+                file.delete()
+            }
+        }
+        cursor.close()
+
+        // TODO remove all files belonging to messages
         val db = writableDatabase
         if (db.delete("contacts", "id = ?", arrayOf("$id")) > 0) {
             db.delete("messages", "contact = ?", arrayOf("$id"))

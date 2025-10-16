@@ -7,7 +7,7 @@
     <string name="channel_description_messages">Канал сообщений</string>
     <string name="channel_name_messages_with_contact">Контакт %d</string>
     <string name="channel_description_messages_with_contact">Сообщения от контакта %d</string>
-    <string name="channel_name_calls">Звонки</string>
+    <string name="channel_name_calls">Аудио звонки</string>
     <string name="channel_description_calls">Канал звонков</string>
     <string name="state_offline">Не в сети</string>
     <string name="state_online">В сети</string>
@@ -45,7 +45,8 @@
     <string name="rename">Переименовать</string>
     <string name="rename_contact">Переименовать контакт</string>
     <string name="copy_contact_id">Скопировать ID контакта</string>
-    <string name="not_yet_implemented">Ещё не реализованно</string>
+    <string name="copy_contact_link">Скопировать ссылку контакта</string>
+    <string name="not_yet_implemented">Ещё не реализовано</string>
     <string name="too_big_picture">Файл картинки не может быть больше 5 мегабайт</string>
     <string name="too_big_picture_resizing">Картинка больше 5 мегабайт, ужимаем</string>
     <string name="contact_added">Добавлен новый контакт</string>
@@ -124,4 +125,14 @@
     <string name="image_settings">Настройки картинок</string>
     <string name="select_resize_size">Уменьшать картинки до этого размера:</string>
     <string name="select_resize_quality">Пересохранять с этим качеством:</string>
+    <string name="mute_contact">Без звука</string>
+    <string name="clear_history">Очистить историю</string>
+    <string name="block_contact">Заблокировать</string>
+    <string name="my_qr_code">Мой QR-код</string>
+    <string name="copy_my_id">Скопировать мой ID</string>
+    <string name="copy_link_to_my_id">Скопировать ссылку на мой ID</string>
+    <string name="show_qr_code_of_my_contact">Показать мой QR-код</string>
+    <string name="share_my_contact">Поделиться моим контактом:</string>
+    <string name="share_contact">Поделиться контактом:</string>
+    <string name="show_contact_qr_code">Показать QR-код контакта</string>
 </resources>

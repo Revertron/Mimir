@@ -16,18 +16,15 @@
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <io.getstream.avatarview.AvatarView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/avatar"
             android:layout_width="128dp"
             android:layout_height="128dp"
-            app:avatarViewShape="rounded_rect"
-            app:avatarViewBorderRadius="4dp"
-            app:avatarViewInitialsTextSizeRatio="0.5"
-            app:avatarViewInitials="Mi"
-            app:avatarViewBorderWidth="0dp"
-            app:avatarViewBorderColor="@color/gray_DD"
-            app:avatarViewInitialsTextColor="@color/black"
-            app:avatarViewInitialsBackgroundColor="@color/gray_80" />
+            android:adjustViewBounds="true"
+            style="@style/Avatar"
+            android:clipToOutline="true"
+            android:background="@drawable/bg_rounded"
+            app:srcCompat="@drawable/button_rounded_white" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 

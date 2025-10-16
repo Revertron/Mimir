@@ -80,6 +80,13 @@ class ConnectionHandler(
                             val bytes = baos.toByteArray()
                             connection.write(bytes)
                             Log.i(TAG, "Message ${message.second.guid} sent, ${bytes.size} bytes")
+                        } else if (!infoRequested) {
+                            val baos = ByteArrayOutputStream()
+                            val dos = DataOutputStream(baos)
+                            writeInfoRequest(dos, infoProvider.getContactUpdateTime(peer!!))
+                            val bytes = baos.toByteArray()
+                            connection.write(bytes)
+                            infoRequested = true
                         }
                         processCallStates()
                     }
@@ -299,13 +306,6 @@ class ConnectionHandler(
                     }
                     // Client answered challenge
                     writeOk(dos, 0)
-                    if (!infoRequested) {
-                        if (peer == null) {
-                            return false
-                        }
-                        writeInfoRequest(dos, infoProvider.getContactUpdateTime(peer!!))
-                        infoRequested = true
-                    }
                     peerStatus = Status.AuthDone
                     synchronized(listener) {
                         peer?.let { listener.onClientConnected(it, address, peerClientId) }

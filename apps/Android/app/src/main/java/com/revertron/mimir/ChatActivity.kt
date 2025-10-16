@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.PorterDuff
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
@@ -30,7 +31,6 @@ import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
-import io.getstream.avatarview.AvatarView
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 import java.lang.Thread.sleep
@@ -75,24 +75,27 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         val id = getStorage().getContactId(pubkey)
-        contact = Contact(id, pubkey, name, null, 0)
+        val avatarPic = getStorage().getContactAvatar(id)
+        contact = Contact(id, pubkey, name, null, 0, avatarPic)
 
         findViewById<AppCompatTextView>(R.id.title).text = contact.name
         supportActionBar?.title = ""
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        val avatar = findViewById<AvatarView>(R.id.avatar)
-        val initials = getInitials(contact)
-        avatar.avatarInitials = initials
-        val avatarColor = getAvatarColor(contact.pubkey)
-        avatar.avatarInitialsBackgroundColor = avatarColor
-        if (isColorDark(avatarColor)) {
-            avatar.avatarInitialsTextColor = 0xFFFFFFFF.toInt()
+        val avatar = findViewById<AppCompatImageView>(R.id.avatar)
+        if (contact.avatar != null) {
+            avatar.clearColorFilter()
+            avatar.setImageDrawable(contact.avatar)
         } else {
-            avatar.avatarInitialsTextColor = 0xFF000000.toInt()
+            avatar.setImageResource(R.drawable.button_rounded_white)
+            val avatarColor = getAvatarColor(contact.pubkey)
+            avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
         avatar.setOnClickListener {
-            connect(this@ChatActivity, contact.pubkey)
+            val intent = Intent(this, ContactActivity::class.java)
+            intent.putExtra("pubkey", contact.pubkey)
+            intent.putExtra("name", contact.name)
+            startActivity(intent, animFromRight.toBundle())
         }
 
         replyPanel = findViewById(R.id.reply_panel)
@@ -196,12 +199,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             R.id.contact_call -> {
                 checkAndRequestAudioPermission()
             }
-            R.id.contact_info -> {
-                val intent = Intent(this, ContactActivity::class.java)
-                intent.putExtra("pubkey", contact.pubkey)
-                intent.putExtra("name", contact.name)
-                startActivity(intent, animFromRight.toBundle())
+            R.id.clear_history -> {
+
             }
+
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
             }

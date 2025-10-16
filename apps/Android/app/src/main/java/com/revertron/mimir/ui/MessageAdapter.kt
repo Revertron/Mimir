@@ -76,15 +76,17 @@ class MessageAdapter(
             1 -> {
                 if (message.data != null) {
                     val json = JSONObject(String(message.data))
-                    val cachePath = holder.itemView.context.cacheDir.absolutePath + "/files/" + json.getString("name")
-                    val filePath = holder.itemView.context.filesDir.absolutePath + "/files/" + json.getString("name")
-                    val cacheFile = File(cachePath)
+                    val name = json.getString("name")
+                    val cachePath = File(holder.itemView.context.cacheDir, "files")
+                    val filePath = File(holder.itemView.context.filesDir, "files")
+                    val cacheFile = File(cachePath, name)
+                    val imageFile = File(filePath, name)
                     if (cacheFile.exists()) {
                         val uri: Uri = Uri.fromFile(cacheFile)
                         holder.picture.setImageURI(uri)
-                        holder.picture.tag = Uri.fromFile(File(filePath))
+                        holder.picture.tag = Uri.fromFile(imageFile)
                     } else {
-                        val file = File(filePath)
+                        val file = File(filePath, name)
                         if (file.exists()) {
                             val uri: Uri = Uri.fromFile(file)
                             holder.picture.setImageURI(uri)

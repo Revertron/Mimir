@@ -2,20 +2,29 @@ package com.revertron.mimir
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
+import android.util.Log
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.Toolbar
+import com.revertron.mimir.ChatActivity.Companion.PICK_IMAGE_REQUEST_CODE
+import com.revertron.mimir.storage.AccountInfo
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import java.io.File
 import java.net.URLEncoder
 
 class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
+
+    val accountNumber = 1 //TODO make multi account
+    lateinit var accountInfo: AccountInfo
+    lateinit var myNameEdit: AppCompatEditText
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_accounts)
@@ -25,28 +34,21 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setOnMenuItemClickListener(this)
 
-        val accountNumber = 1 //TODO make multi account
-
-        val accountInfo = getStorage().getAccountInfo(accountNumber, 0L)!!
+        accountInfo = getStorage().getAccountInfo(accountNumber, 0L)!!
         var name = accountInfo.name
         val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded).uppercase()
 
-        val qrCodeImageView = findViewById<AppCompatImageView>(R.id.qr_code)
+        val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
+        if (accountInfo.avatar.isNotEmpty()) {
+            val avatar = loadRoundedAvatar(this, accountInfo.avatar, 128, 8)
+            avatarView.setImageDrawable(avatar)
+        }
+        avatarView.setOnClickListener {
+            selectPicture()
+        }
 
-        val myNameEdit = findViewById<AppCompatEditText>(R.id.contact_name)
+        myNameEdit = findViewById(R.id.contact_name)
         myNameEdit.setText(name)
-        // Saving the name when it changes
-        myNameEdit.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val newName = s.toString()
-                if (getStorage().updateName(accountNumber, newName)) {
-                    name = newName
-                    updateQrCode(name, public, qrCodeImageView)
-                }
-            }
-        })
 
         val pubKeyEdit = findViewById<AppCompatEditText>(R.id.contact_public_key)
         pubKeyEdit.setText(public)
@@ -80,7 +82,10 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
             true
         }
 
-        updateQrCode(name, public, qrCodeImageView)
+        val qrCode = findViewById<View>(R.id.button_qr)
+        qrCode.setOnClickListener {
+            showQrCodeDialog(this, myNameEdit.text.toString(), public)
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -91,6 +96,12 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         return super.onOptionsItemSelected(item)
     }
 
+    override fun onStop() {
+        val newName = myNameEdit.text.toString()
+        getStorage().updateName(accountNumber, newName)
+        super.onStop()
+    }
+
     override fun finish() {
         super.finish()
         @Suppress("DEPRECATION")
@@ -99,5 +110,45 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         return true
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_IMAGE_REQUEST_CODE && resultCode == RESULT_OK) {
+            if (data == null || data.data == null) {
+                Log.e(ChatActivity.Companion.TAG, "Error getting picture")
+                return
+            }
+            val selectedPictureUri = data.data!!
+            Thread {
+                val bmp = loadSquareAvatar(this.applicationContext, selectedPictureUri, 256)
+                if (bmp != null) {
+                    val avatarsDir = File(filesDir, "avatars")
+                    if (!avatarsDir.exists()) {
+                        avatarsDir.mkdirs()
+                    }
+                    val fileName = accountInfo.avatar.ifEmpty {
+                        randomString(16) + ".jpg"
+                    }
+
+                    // TODO support avatars with opacity like PNG
+                    val f = File(avatarsDir, fileName)
+                    f.outputStream().use {
+                        bmp.compress(Bitmap.CompressFormat.JPEG, 95, it)
+                    }
+                    getStorage().updateAvatar(accountNumber, fileName)
+                    runOnUiThread({
+                        val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
+                        avatarView.setImageBitmap(bmp)
+                    })
+                }
+            }.start()
+        }
+    }
+
+    private fun selectPicture() {
+        val intent = Intent(Intent.ACTION_PICK)
+        intent.type = "image/*"
+        startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
     }
 }

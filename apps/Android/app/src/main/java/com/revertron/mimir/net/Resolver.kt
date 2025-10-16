@@ -39,12 +39,6 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
     private fun getBestTracker(): ByteArray {
         val tracker = synchronized(trackers) {
             trackers.sortBy { (_, i) -> i }
-            if (BuildConfig.DEBUG) {
-                for (tr in trackers) {
-                    val hex = Hex.toHexString(tr.first)
-                    Log.i(TAG, "Tr: $hex time ${tr.second}")
-                }
-            }
             trackers[0]
         }
         if (BuildConfig.DEBUG) {
@@ -103,14 +97,14 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
                 socket?.write(request)
                 //Log.i(TAG, "Packet sent")
                 val buf = ByteArray(1024)
-                val length = socket!!.readWithTimeout(buf, 1500)
+                val length = socket!!.readWithTimeout(buf, 2500)
                 //Log.i(TAG, "Read $length bytes")
                 setTime(tracker, (System.currentTimeMillis() - start).toInt())
                 process(buf.copyOfRange(0, length.toInt()), pubkey, receiver)
                 //startTimeoutThread(nonce, receiver)
             } catch (e: Exception) {
-                e.printStackTrace()
-                Log.e(TAG, "Error resolving: $e")
+                //e.printStackTrace()
+                Log.w(TAG, "Error resolving: $e")
                 incTime(tracker)
                 receiver.onError(pubkey)
             } finally {
@@ -146,7 +140,7 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
                 socket = messenger.connect(tracker)
                 socket?.write(request)
                 val buf = ByteArray(1024)
-                val length = socket!!.readWithTimeout(buf, 1500)
+                val length = socket!!.readWithTimeout(buf, 2500)
                 setTime(tracker, (System.currentTimeMillis() - start).toInt())
                 //Log.i(TAG, "Read $length bytes")
                 process(buf.copyOfRange(0, length.toInt()), pubkey, receiver)
@@ -212,21 +206,19 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
         if (BuildConfig.DEBUG) {
             Log.i(TAG, "Pinging trackers")
         }
-        val trackers = synchronized(trackers) { trackers.toList() }
-        for (t in trackers) {
-            var socket: Connection? = null
-            val tracker = t.first
-            synchronized(lock) {
-                try {
-                    val start = System.currentTimeMillis()
-                    socket = messenger.connect(tracker)
-                    setTime(tracker, (System.currentTimeMillis() - start).toInt())
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    incTime(tracker)
-                } finally {
-                    socket?.close()
-                }
+        val tracker = synchronized(trackers) { trackers.toList().random() }
+        var socket: Connection? = null
+        val addr = tracker.first
+        synchronized(lock) {
+            try {
+                val start = System.currentTimeMillis()
+                socket = messenger.connect(addr)
+                socket?.close()
+                setTime(addr, (System.currentTimeMillis() - start).toInt())
+            } catch (e: Exception) {
+                incTime(addr)
+            } finally {
+                socket?.close()
             }
         }
     }

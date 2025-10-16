@@ -7,7 +7,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.PorterDuff
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Bundle
@@ -54,45 +54,26 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
-    lateinit var topSheet: LinearLayout
-    lateinit var overlay: View
+    var avatarDrawable: Drawable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.setHomeActionContentDescription(R.string.account)
         if (intent?.hasExtra("no_service") != true) {
             startService()
         }
 
-        /*topSheet = findViewById(R.id.topSheet)
-        overlay = findViewById(R.id.overlay)
-
-        toolbar.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_settings) {
-                if (topSheet.isGone) openMenu() else closeMenu()
-                true
-            } else false
+        val info = getStorage().getAccountInfo(1, 0L)
+        if (info != null && info.avatar.isNotEmpty()) {
+            avatarDrawable = loadRoundedAvatar(this, info.avatar)
+            if (avatarDrawable != null) {
+                toolbar.navigationIcon = avatarDrawable
+            }
         }
-
-        overlay.setOnClickListener {
-            closeMenu()
-        }
-        findViewById<View>(R.id.menu_item_settings).setOnClickListener { view ->
-            closeMenu()
-            val intent = Intent(this, SettingsActivity::class.java)
-            startActivity(intent)
-            overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
-        }
-        findViewById<View>(R.id.menu_item_about).setOnClickListener { view ->
-            closeMenu()
-            val intent = Intent(this, AboutActivity::class.java)
-            startActivity(intent)
-            overridePendingTransition(R.anim.slide_in_right, R.anim.hold_still)
-        }*/
 
         getStorage().listeners.add(this)
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
@@ -179,14 +160,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         return true
     }
 
-    /*override fun onBackPressed() {
-        if (topSheet.isVisible) {
-            closeMenu()
-            return
-        }
-        super.onBackPressed()
-    }*/
-
     override fun onMessageReceived(id: Long, contactId: Long): Boolean {
         runOnUiThread {
             refreshContacts()
@@ -195,19 +168,22 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     }
 
     fun showOnlineState(isOnline: Boolean) {
-        val avatar = ContextCompat.getDrawable(this, R.drawable.contact_no_avatar_small)!!
-        val badge    = ContextCompat.getDrawable(this, R.drawable.status_badge_green)!!.mutate()
-
-        if (!isOnline) {
-            badge.setTint(0xFFCC0000.toInt())
-            badge.setTintMode(PorterDuff.Mode.SRC_IN)
+        val avatar = if (avatarDrawable != null) {
+            avatarDrawable
+        } else {
+            ContextCompat.getDrawable(this, R.drawable.contact_no_avatar_small)!!
+        }
+        val badge = if (isOnline) {
+            ContextCompat.getDrawable(this, R.drawable.status_badge_green)!!
+        } else {
+            ContextCompat.getDrawable(this, R.drawable.status_badge_red)!!
         }
 
         // combine both drawables; dot on top, bottom-right aligned
         val layers = arrayOf(avatar, badge)
         val layered = LayerDrawable(layers)
 
-        val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
         toolbar.navigationIcon = layered
     }
 
@@ -272,28 +248,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                     .show()
             }
         }
-    }
-
-    fun openMenu() {
-        topSheet.visibility = View.VISIBLE
-        overlay.visibility = View.VISIBLE
-
-        topSheet.translationY = -topSheet.height.toFloat()
-        topSheet.animate()
-            .translationY(0f)
-            .setDuration(250)
-            .start()
-    }
-
-    fun closeMenu() {
-        topSheet.animate()
-            .translationY(-topSheet.height.toFloat())
-            .setDuration(250)
-            .withEndAction {
-                topSheet.visibility = View.GONE
-                overlay.visibility = View.GONE
-            }
-            .start()
     }
 
     @Suppress("NAME_SHADOWING")

@@ -2,8 +2,8 @@
 
     <!-- 16 dp transparent square -->
     <item
-        android:width="16dp"
-        android:height="16dp">
+        android:width="32dp"
+        android:height="32dp">
         <shape android:shape="rectangle">
             <solid android:color="@android:color/transparent"/>
         </shape>
@@ -11,8 +11,8 @@
 
     <!-- 10 dp dot shadow -->
     <item
-        android:width="11dp"
-        android:height="11dp"
+        android:width="9dp"
+        android:height="9dp"
         android:gravity="bottom|end">
         <shape android:shape="oval">
             <solid android:color="#FF000000"/>
@@ -21,8 +21,8 @@
 
     <!-- 10 dp dot in the bottom-right corner -->
     <item
-        android:width="10dp"
-        android:height="10dp"
+        android:width="8dp"
+        android:height="8dp"
         android:right="0.5dp"
         android:bottom="0.5dp"
         android:gravity="bottom|end">

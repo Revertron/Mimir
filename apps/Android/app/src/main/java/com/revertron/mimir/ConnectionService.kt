@@ -34,6 +34,7 @@ import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
+import java.io.File
 
 class ConnectionService : Service(), EventListener, InfoProvider {
 
@@ -293,8 +294,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val info = (application as App).storage.getAccountInfo(1, ifUpdatedSince) ?: return null
         var avatar: ByteArray? = null
         if (info.avatar.isNotEmpty()) {
-            val file = getFileStreamPath(info.avatar)
-            avatar = file.readBytes()
+            val avatarsDir = File(filesDir, "avatars")
+            val f = File(avatarsDir, info.avatar)
+            avatar = f.readBytes()
         }
         return InfoResponse(info.updated, info.name, info.info, avatar)
     }
@@ -306,8 +308,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     override fun updateContactInfo(pubkey: ByteArray, info: InfoResponse) {
         val storage = (application as App).storage
         val id = storage.getContactId(pubkey)
-        Log.i(TAG, "Renaming contact $id to ${info.nickname}")
+        Log.i(TAG, "Updating contact info $id to ${info.nickname}")
         storage.renameContact(id, info.nickname, false)
+        storage.updateContactInfo(id, info.info)
+        storage.updateContactAvatar(id, info.avatar)
     }
 
     override fun getFilesDirectory(): String {

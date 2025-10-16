@@ -6,7 +6,7 @@
     <string name="channel_description_messages">Messages channel</string>
     <string name="channel_name_messages_with_contact">Contact %d</string>
     <string name="channel_description_messages_with_contact">Messages with contact %d</string>
-    <string name="channel_name_calls">Calls</string>
+    <string name="channel_name_calls">Audio calls</string>
     <string name="channel_description_calls">Calls notification channel</string>
     <string name="state_offline">Offline</string>
     <string name="state_online">Online</string>
@@ -46,6 +46,7 @@
     <string name="rename">Rename</string>
     <string name="rename_contact">Rename contact</string>
     <string name="copy_contact_id">Copy contact ID</string>
+    <string name="copy_contact_link">Copy contact link</string>
     <string name="not_yet_implemented">Not yet implemented</string>
     <string name="too_big_picture">Picture file must be less or equal to 5 Mb</string>
     <string name="too_big_picture_resizing">Picture is bigger then 5 Mb, resizing</string>
@@ -133,5 +134,15 @@
     <string name="image_settings">Image settings</string>
     <string name="select_resize_size">Resize images to this size:</string>
     <string name="select_resize_quality">Resave with another quality:</string>
+    <string name="mute_contact">Mute</string>
+    <string name="clear_history">Clear history</string>
+    <string name="block_contact">Block contact</string>
+    <string name="my_qr_code">My QR-code</string>
+    <string name="copy_my_id">Copy my ID</string>
+    <string name="copy_link_to_my_id">Copy link to my ID</string>
+    <string name="show_qr_code_of_my_contact">Show QR-code of my contact</string>
+    <string name="share_my_contact">Share my contact:</string>
+    <string name="share_contact">Share contact:</string>
+    <string name="show_contact_qr_code">Show contact QR-code</string>
 
 </resources>

@@ -20,27 +20,20 @@
         app:layout_constraintRight_toRightOf="parent">
 
         <FrameLayout
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:layout_marginEnd="8dp">
-            <io.getstream.avatarview.AvatarView
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/avatar"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:layout_gravity="start"
-                app:avatarViewShape="rounded_rect"
-                app:avatarViewBorderRadius="4dp"
-                app:avatarViewInitialsTextSizeRatio="0.5"
-                app:avatarViewInitials="Mi"
-                app:avatarViewBorderWidth="0dp"
-                app:avatarViewBorderColor="@color/gray_DD"
-                app:avatarViewInitialsTextColor="@color/black"
-                app:avatarViewInitialsBackgroundColor="@color/gray_80"/>
+                android:adjustViewBounds="true" />
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/status_image"
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:layout_gravity="bottom|right"
                 android:background="@color/transparent"
                 app:srcCompat="@drawable/status_badge_yellow" />

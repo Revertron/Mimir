@@ -25,6 +25,8 @@ const val MSG_TYPE_CALL_HANG = 2002
 const val MSG_TYPE_CALL_PACKET = 2003
 const val MSG_TYPE_OK = 32767
 
+const val MAX_AVATAR_SIZE = 500 * 1024 * 1024
+
 data class Header(val stream: Int, val type: Int, val size: Long)
 data class ClientHello(val version: Int, val pubkey: ByteArray, val receiver: ByteArray, val clientId: Int, val address: ByteArray? = null)
 data class Challenge(val data: ByteArray)
@@ -351,16 +353,28 @@ fun readInfoResponse(dis: DataInputStream): InfoResponse? {
 
     size = dis.readInt()
     val avatar = if (size > 0) {
-        val data = ByteArray(size)
-        var count = 0
-        while (count < size) {
-            val read = dis.read(data, count, size - count)
-            if (read < 0) {
-                return null
+        if (size <= MAX_AVATAR_SIZE) {
+            val data = ByteArray(size)
+            var count = 0
+            while (count < size) {
+                val read = dis.read(data, count, size - count)
+                if (read < 0) {
+                    return null
+                }
+                count += read
             }
-            count += read
+            data
+        } else {
+            // If the user wishes to flood us with something big we just discard it
+            var remaining = size
+            val discard = ByteArray(8192)
+            while (remaining > 0) {
+                val read = dis.read(discard, 0, minOf(discard.size, remaining))
+                if (read < 0) break
+                remaining -= read
+            }
+            null
         }
-        data
     } else {
         null
     }

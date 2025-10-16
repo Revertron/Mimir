@@ -30,7 +30,7 @@ private val TRACKERS = listOf(
     "e1436b91fbcbbfe694177da47103b4e370658ba2db31e7879a8d613a447c9302", // Rev
     "97fa689f6cebfea9b851569827674de89624048fb1e1f8e63bee634676822d8c", // Rev
     "00ff91ffad7fe6217c618cdb3e9d70663aa1e7794670fac3088306e1b88cbdfe", // Rev
-    "feb24fba1b06d9592e9826ffffb2f60d8dcd4a8c350ce2ee289f3166701c5be7", // Afka
+    "b4f1946a617ba621a560440cbc92350f6b5e5c158f10a945453758b718e83f2d", // Afka
     "aa90d4a1826a6d485519d336c94b693f30adf63b8aaf01e2c3be53b1f0cc49e3"  // Souce Kalve
 )
 
@@ -92,7 +92,7 @@ class MimirServer(
         startOnlineStateThread()
         val peer = Peer(hexPub, clientId, 3, 0)
         startAnnounceThread(pubkey, privkey, peer, this)
-        startRediscoverThread()
+        //startRediscoverThread()
         while (working.get()) {
             try {
                 sleep(1000)
@@ -195,7 +195,7 @@ class MimirServer(
                 sleep(5000)
                 try {
                     val online = haveNetwork(context)
-                    if (online && System.currentTimeMillis() - lastTrackersPing >= 120000) {
+                    if (online && System.currentTimeMillis() - lastTrackersPing >= 180000) {
                         resolver.pingTrackers()
                         lastTrackersPing = System.currentTimeMillis()
                     }
@@ -258,6 +258,7 @@ class MimirServer(
                 for (contact in missing) {
                     val online = haveNetwork(context)
                     if (online && App.app.online) {
+                        Log.d(TAG, "Rediscovering ${Hex.toHexString(contact)}")
                         resolver.resolveAddrs(contact, receiver)
                         sleep(1000)
                     }
@@ -399,6 +400,7 @@ class MimirServer(
 
     fun reconnectPeers() {
         messenger.retryPeersNow()
+        announceTtl = 0L
     }
 
     private fun sendUnsent() {
