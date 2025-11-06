@@ -1,12 +1,15 @@
 package com.revertron.mimir.ui
 
+import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
@@ -20,9 +23,8 @@ import java.util.Date
 
 class MessageAdapter(
     private val storage: SqlStorage,
-    private val userId: Long,
-    private val multiChat: Boolean,
-    private val myName: String,
+    private val chatId: Long,
+    private val groupChat: Boolean,
     private val contactName: String,
     private val onClick: View.OnClickListener,
     private val onReplyClick: View.OnClickListener,
@@ -31,9 +33,19 @@ class MessageAdapter(
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
-    private val messageIds = storage.getMessageIds(userId).toMutableList()
 
-    class ViewHolder(view: View): RecyclerView.ViewHolder(view) {
+    private val messageIds = if (groupChat) {
+        storage.getGroupMessageIds(chatId).toMutableList()
+    } else {
+        // For 1-on-1 chats, chatId is actually the userId
+        storage.getMessageIds(chatId).toMutableList()
+    }
+
+    // Cached nicknames and avatars
+    private val users: HashMap<Long, Pair<String, Drawable?>> = HashMap()
+
+    class ViewHolder(view: View, hasAvatar: Boolean): RecyclerView.ViewHolder(view) {
+        val avatar: AppCompatImageView? = if (hasAvatar) view.findViewById(R.id.avatar) else null
         val name: AppCompatTextView = view.findViewById(R.id.name)
         val message: AppCompatTextView = view.findViewById(R.id.text)
         val picture: AppCompatImageView = view.findViewById(R.id.picture)
@@ -56,18 +68,35 @@ class MessageAdapter(
         //TODO make item background reflect touches
         view.findViewById<View>(R.id.reply_panel).setOnClickListener(onReplyClick)
         view.findViewById<View>(R.id.picture).setOnClickListener(onPictureClick)
+        if (!groupChat) {
+            view.findViewById<View>(R.id.avatar)?.visibility = View.GONE
+        }
 
-        return ViewHolder(view)
+        return ViewHolder(view, viewType == 0 && groupChat)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val message = storage.getMessage(messageIds[position]) ?: return
-        if (multiChat) {
-            val name = if (message.incoming) contactName else myName
-            holder.name.text = "$name:"
-            holder.name.visibility = View.VISIBLE
+        val message = if (groupChat) {
+            storage.getMessage(chatId, messageIds[position].first)
+        } else {
+            storage.getMessage(messageIds[position].first)
+        } ?: return
+
+        if (groupChat) {
+            if (message.incoming) {
+                val user = users.getOrPut(message.contact, {
+                    // TODO make default values
+                    storage.getMemberInfo(message.contact, chatId, 48, 6)!!
+                })
+                holder.name.text = user.first
+                holder.name.visibility = View.VISIBLE
+                holder.avatar?.setImageDrawable(user.second)
+            } else {
+                holder.name.visibility = View.GONE
+            }
         } else {
             holder.name.visibility = View.GONE
+            holder.avatar?.visibility = View.GONE
         }
         holder.message.text = message.getText(holder.itemView.context)
         holder.message.setCompoundDrawables(null, null, null ,null)
@@ -75,7 +104,9 @@ class MessageAdapter(
         when (message.type) {
             1 -> {
                 if (message.data != null) {
-                    val json = JSONObject(String(message.data))
+                    val string = String(message.data)
+                    Log.i("Adapter", "Message: $string")
+                    val json = JSONObject(string)
                     val name = json.getString("name")
                     val cachePath = File(holder.itemView.context.cacheDir, "files")
                     val filePath = File(holder.itemView.context.filesDir, "files")
@@ -146,7 +177,11 @@ class MessageAdapter(
             layoutParams.updateMargins(top = 0)
         }
         //TODO somehow propagate this event to notification manager to cancel notification if it exists
-        storage.setMessageRead(userId, message.id, true)
+        if (!groupChat) {
+            storage.setMessageRead(chatId, message.id, true)
+        } else {
+            storage.setGroupMessageRead(chatId, message.id, true)
+        }
     }
 
     private fun formatTime(time: Long): String {
@@ -160,31 +195,31 @@ class MessageAdapter(
     }
 
     override fun getItemViewType(position: Int): Int {
-        //TODO optimize double get of message from DB
-        val message = storage.getMessage(messageIds[position]) ?: return 0
-        return if (message.incoming) 0 else 1
+        return if (messageIds[position].second) 0 else 1
     }
 
     override fun getItemCount(): Int {
         return messageIds.size
     }
 
-    fun addMessageId(messageId: Long) {
-        messageIds.add(messageId)
+    fun addMessageId(messageId: Long, incoming: Boolean) {
+        messageIds.add(messageId to incoming)
         notifyItemInserted(messageIds.size - 1)
     }
 
     fun deleteMessageId(messageId: Long) {
-        val index = messageIds.indexOf(messageId)
-        if (index > 0) {
-            messageIds.remove(messageId)
-            notifyItemRemoved(index)
+        for ((index, message) in messageIds.withIndex()) {
+            if (message.first == messageId) {
+                messageIds.removeAt(index)
+                notifyItemChanged(index)
+                break
+            }
         }
     }
 
     fun setMessageDelivered(id: Long, delivered: Boolean) {
         for ((index, message) in messageIds.withIndex()) {
-            if (message == id) {
+            if (message.first == id) {
                 notifyItemChanged(index)
                 break
             }
@@ -193,7 +228,7 @@ class MessageAdapter(
 
     fun getMessageIdPosition(id: Long): Int {
         for ((index, message) in messageIds.withIndex()) {
-            if (message == id) {
+            if (message.first == id) {
                 return index
             }
         }

@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.storage.StorageListener
+import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
 import org.bouncycastle.util.encoders.Hex
@@ -79,7 +80,20 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         if (recycler.adapter == null) {
             val contacts = (application as App).storage.getContactList()
-            val adapter = ContactsAdapter(contacts, this, null)
+
+            // Convert to ChatListItem
+            val chatItems = contacts.map { contact ->
+                ChatListItem.ContactItem(
+                    id = contact.id,
+                    pubkey = contact.pubkey,
+                    name = contact.name,
+                    lastMessage = contact.lastMessage,
+                    unreadCount = contact.unread,
+                    avatar = contact.avatar
+                )
+            }
+
+            val adapter = ContactsAdapter(chatItems, this, null)
             recycler.adapter = adapter
             recycler.layoutManager = LinearLayoutManager(this)
         } else {
@@ -112,13 +126,13 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
     }
 
     override fun onClick(view: View) {
-        if (view.tag != null) {
-            val contact = view.tag as Contact
-            val addr = Hex.toHexString(contact.pubkey)
+        if (view.tag is ChatListItem.ContactItem) {
+            val contactItem = view.tag as ChatListItem.ContactItem
+            val addr = Hex.toHexString(contactItem.pubkey)
             Log.i(TAG, "Clicked on $addr")
             val intent = Intent(this, ChatActivity::class.java)
-            intent.putExtra("pubkey", contact.pubkey)
-            intent.putExtra("name", contact.name)
+            intent.putExtra("pubkey", contactItem.pubkey)
+            intent.putExtra("name", contactItem.name)
             intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
             startActivity(intent, animFromRight.toBundle())
             finish()
@@ -127,8 +141,21 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
 
     private fun refreshContacts() {
         val contacts = (application as App).storage.getContactList()
+
+        // Convert to ChatListItem
+        val chatItems = contacts.map { contact ->
+            ChatListItem.ContactItem(
+                id = contact.id,
+                pubkey = contact.pubkey,
+                name = contact.name,
+                lastMessage = contact.lastMessage,
+                unreadCount = contact.unread,
+                avatar = contact.avatar
+            )
+        }
+
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         val adapter = recycler.adapter as ContactsAdapter
-        adapter.setContacts(contacts)
+        adapter.setContacts(chatItems)
     }
 }

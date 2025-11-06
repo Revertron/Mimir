@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".NewChatActivity">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
+        android:theme="@style/MimirToolbar"
+        android:elevation="4dp"
+        app:title="@string/create_new_chat"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent" />
+
+    <ScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintBottom_toTopOf="@id/create_button"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent">
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <FrameLayout
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="24dp">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/avatar_image"
+                    android:layout_width="120dp"
+                    android:layout_height="120dp"
+                    android:scaleType="centerCrop"
+                    android:background="@drawable/button_rounded_white"
+                    android:src="@drawable/ic_message_plus_outline"
+                    android:padding="32dp" />
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/avatar_edit_icon"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="bottom|end"
+                    android:background="@drawable/button_rounded"
+                    android:src="@drawable/ic_image_remove_outline"
+                    android:padding="8dp"
+                    android:elevation="2dp" />
+            </FrameLayout>
+
+            <!-- Chat Name -->
+            <androidx.appcompat.widget.AppCompatTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/group_name"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="16dp">
+
+                <androidx.appcompat.widget.AppCompatEditText
+                    android:id="@+id/name_edit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/group_name_hint"
+                    android:inputType="textCapWords"
+                    android:maxLength="20"
+                    android:singleLine="true"
+                    android:padding="12dp" />
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/name_counter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:text="0/20"
+                    android:textSize="12sp"
+                    android:alpha="0.6"
+                    android:layout_marginTop="4dp" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Chat Description -->
+            <androidx.appcompat.widget.AppCompatTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/group_description"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="16dp">
+
+                <androidx.appcompat.widget.AppCompatEditText
+                    android:id="@+id/description_edit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/group_description_hint"
+                    android:inputType="textCapSentences|textMultiLine"
+                    android:maxLength="200"
+                    android:minHeight="80dp"
+                    android:gravity="top"
+                    android:maxLines="5"
+                    android:padding="12dp" />
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/description_counter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:text="0/200"
+                    android:textSize="12sp"
+                    android:alpha="0.6"
+                    android:layout_marginTop="4dp" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Info Text -->
+            <androidx.appcompat.widget.AppCompatTextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/create_chat_info"
+                android:textSize="12sp"
+                android:alpha="0.7"
+                android:layout_marginTop="8dp" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+    </ScrollView>
+
+    <!-- Create Button -->
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/create_button"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/create_chat"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:layout_margin="16dp"
+        android:background="@drawable/button_rounded"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent" />
+
+    <!-- Progress Overlay -->
+    <FrameLayout
+        android:id="@+id/progress_overlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#80000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent">
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:background="@drawable/button_rounded_white"
+            android:padding="24dp"
+            android:gravity="center">
+
+            <ProgressBar
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginBottom="16dp"
+                style="@style/Widget.AppCompat.ProgressBar" />
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/progress_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/creating_chat"
+                android:textSize="16sp" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+    </FrameLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

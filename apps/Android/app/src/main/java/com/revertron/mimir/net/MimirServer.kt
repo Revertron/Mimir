@@ -40,6 +40,7 @@ class MimirServer(
     val peerProvider: PeerProvider,
     private val clientId: Int,
     private val keyPair: AsymmetricCipherKeyPair,
+    private val messenger: Messenger,
     private val listener: EventListener,
     private val infoProvider: InfoProvider,
     private val wakeLock: PowerManager.WakeLock
@@ -53,7 +54,6 @@ class MimirServer(
     private val working = AtomicBoolean(true)
     private val connections = HashMap<String, ConnectionHandler>(5)
     private val connectContacts = HashSet<String>(5)
-    private lateinit var messenger: Messenger
     private var hasNewMessages = false
     private var callStatus: CallStatus = CallStatus.Idle
     private var callContact: ByteArray? = null
@@ -72,21 +72,21 @@ class MimirServer(
 
     @SuppressLint("WakelockTimeout", "Wakelock")
     override fun run() {
-        val peers = peerProvider.getPeers()
-
-        oldPeer = peers.random()
-        Log.i(TAG, "Selected random peer: $oldPeer")
-
-        oldPeerTime = System.currentTimeMillis()
-        messenger = Yggmobile.newMessenger(oldPeer)
-        for (peer in peers) {
-            if (peer.contentEquals(oldPeer)) continue
-            messenger.addPeer(peer)
-        }
         if (!wakeLock.isHeld) wakeLock.acquire()
         val myPub = messenger.publicKey()
         val hexPub = Hex.toHexString(myPub)
         Log.i(TAG, "My network ADDR: $hexPub")
+
+        // Initialize oldPeer from messenger
+        val peersJSON = messenger.peersJSON
+        if (peersJSON != null && peersJSON != "null") {
+            val peersArray = org.json.JSONArray(peersJSON)
+            if (peersArray.length() > 0) {
+                oldPeer = peersArray.getJSONObject(0).getString("URI")
+                oldPeerTime = System.currentTimeMillis()
+            }
+        }
+
         resolver = Resolver(messenger, TRACKERS)
         startResendThread()
         startOnlineStateThread()

@@ -13,7 +13,11 @@ import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
-class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: View.OnClickListener, private val onLongClick: View.OnLongClickListener?): RecyclerView.Adapter<ContactsAdapter.ViewHolder>() {
+class ContactsAdapter(
+    private var dataSet: List<ChatListItem>,
+    private val onClick: View.OnClickListener,
+    private val onLongClick: View.OnLongClickListener?
+): RecyclerView.Adapter<ContactsAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
@@ -25,6 +29,7 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: V
         val unreadCount: AppCompatTextView = view.findViewById(R.id.unread_count)
         val deliveredIcon: AppCompatImageView = view.findViewById(R.id.delivered_icon)
         val avatar: AppCompatImageView = view.findViewById(R.id.avatar)
+        val groupChatIcon: AppCompatImageView = view.findViewById(R.id.group_chat_icon)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -37,12 +42,17 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: V
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val contact = dataSet[position]
-        holder.contactName.text = contact.name.ifEmpty { holder.itemView.context.getString(R.string.unknown_nickname) }
-        holder.lastMessage.text = contact.lastMessage?.getText(holder.avatar.context) ?: ""
-        if ((contact.lastMessage?.time ?: 0) > 0) {
+        val item = dataSet[position]
+
+        // Set common fields
+        holder.contactName.text = item.name.ifEmpty {
+            holder.itemView.context.getString(R.string.unknown_nickname)
+        }
+
+        // Set last message time
+        if (item.lastMessageTime > 0) {
             holder.lastMessageTime.visibility = View.VISIBLE
-            val date = Date(contact.lastMessage?.time ?: 0)
+            val date = Date(item.lastMessageTime)
             val diff = Date().time - date.time
             if (diff > 86400 * 1000) {
                 holder.lastMessageTime.text = dateFormatter.format(date)
@@ -52,24 +62,45 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: V
         } else {
             holder.lastMessageTime.visibility = View.GONE
         }
-        if (contact.unread > 0) {
-            holder.unreadCount.text = contact.unread.toString()
+
+        // Set unread count
+        if (item.unreadCount > 0) {
+            holder.unreadCount.text = item.unreadCount.toString()
             holder.unreadCount.visibility = View.VISIBLE
             holder.deliveredIcon.visibility = View.GONE
         } else {
             holder.unreadCount.visibility = View.GONE
-            if (contact.lastMessage?.delivered != null) {
-                if (contact.lastMessage?.delivered!!) {
-                    holder.deliveredIcon.setImageResource(R.drawable.ic_message_delivered)
-                } else {
-                    holder.deliveredIcon.setImageResource(R.drawable.ic_message_not_sent)
-                }
-                holder.deliveredIcon.visibility = View.VISIBLE
-            } else {
-                holder.deliveredIcon.visibility = View.GONE
-            }
         }
-        holder.itemView.tag = contact
+
+        // Handle specific item types
+        when (item) {
+            is ChatListItem.ContactItem -> bindContactItem(holder, item)
+            is ChatListItem.GroupChatItem -> bindGroupChatItem(holder, item)
+        }
+
+        holder.itemView.tag = item
+    }
+
+    private fun bindContactItem(holder: ViewHolder, contact: ChatListItem.ContactItem) {
+        // Hide group chat icon for regular contacts
+        holder.groupChatIcon.visibility = View.GONE
+
+        // Set last message
+        holder.lastMessage.text = contact.lastMessage?.getText(holder.avatar.context) ?: ""
+
+        // Set delivered icon (only for contacts, not group chats)
+        if (contact.unreadCount == 0 && contact.lastMessage?.delivered != null) {
+            if (contact.lastMessage?.delivered == true) {
+                holder.deliveredIcon.setImageResource(R.drawable.ic_message_delivered)
+            } else {
+                holder.deliveredIcon.setImageResource(R.drawable.ic_message_not_sent)
+            }
+            holder.deliveredIcon.visibility = View.VISIBLE
+        } else {
+            holder.deliveredIcon.visibility = View.GONE
+        }
+
+        // Set avatar
         if (contact.avatar != null) {
             holder.avatar.clearColorFilter()
             holder.avatar.setImageDrawable(contact.avatar)
@@ -80,21 +111,43 @@ class ContactsAdapter(private var dataSet: List<Contact>, private val onClick: V
         }
     }
 
+    private fun bindGroupChatItem(holder: ViewHolder, groupChat: ChatListItem.GroupChatItem) {
+        // Show group chat icon
+        holder.groupChatIcon.visibility = View.VISIBLE
+
+        // Set last message (for group chats, we might want to show sender name in the future)
+        holder.lastMessage.text = groupChat.lastMessageText ?: groupChat.description
+
+        // Group chats don't show delivered icon
+        holder.deliveredIcon.visibility = View.GONE
+
+        // Set avatar
+        if (groupChat.avatar != null) {
+            holder.avatar.clearColorFilter()
+            holder.avatar.setImageDrawable(groupChat.avatar)
+        } else {
+            holder.avatar.setImageResource(R.drawable.button_rounded_white)
+            // Use chat ID for color generation
+            val avatarColor = getAvatarColor(groupChat.chatId.toString().toByteArray())
+            holder.avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
+        }
+    }
+
     override fun getItemCount(): Int {
         return dataSet.size
     }
 
     @SuppressLint("NotifyDataSetChanged")
-    fun setContacts(contacts: List<Contact>) {
-        dataSet = contacts
+    fun setContacts(items: List<ChatListItem>) {
+        dataSet = items
         notifyDataSetChanged()
     }
 
     fun setMessageDelivered(id: Long) {
-        for ((index, contact) in dataSet.withIndex()) {
-            if (contact.lastMessage != null) {
-                if (contact.lastMessage?.id == id) {
-                    contact.lastMessage?.delivered = true
+        for ((index, item) in dataSet.withIndex()) {
+            if (item is ChatListItem.ContactItem && item.lastMessage != null) {
+                if (item.lastMessage?.id == id) {
+                    item.lastMessage?.delivered = true
                     notifyItemChanged(index)
                 }
             }

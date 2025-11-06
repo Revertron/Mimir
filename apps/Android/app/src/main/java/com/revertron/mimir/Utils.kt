@@ -119,7 +119,7 @@ fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
         val current = Version.parse(BuildConfig.VERSION_NAME)
         if (newestCode > current && newestVersion != null) {
             Log.i(TAG, "Found new version: $newestVersion")
-            fireNotification(context, newestCode, newestDesc!!, newestApkPath!!)
+            NotificationHelper.showUpdateAvailableNotification(context, newestCode, newestDesc!!, newestApkPath!!)
         } else if (forced) {
             Toast.makeText(context, R.string.already_last_version, Toast.LENGTH_LONG).show()
         }
@@ -133,42 +133,6 @@ fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
     }
 }
 
-private fun fireNotification(context: Context, v: Version, newestDesc: String, newestApkPath: String) {
-    val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-
-    val intent = Intent(context, UpdateActivity::class.java).apply {
-        this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        putExtra("version", v.toString())
-        putExtra("desc", newestDesc)
-        putExtra("apk", "$UPDATE_SERVER${newestApkPath}")
-    }
-
-    val pending = PendingIntent.getActivity(context, 5, intent, flags)
-
-    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = NotificationChannel("updates", "App updates", NotificationManager.IMPORTANCE_HIGH)
-        nm.createNotificationChannel(channel)
-    }
-
-    val deleteIntent = Intent(context, ConnectionService::class.java).apply {
-        putExtra("command", "update_dismissed")
-    }
-    val deletePending = PendingIntent.getService(context, 6, deleteIntent, flags)
-
-    val note = NotificationCompat.Builder(context, "updates")
-        .setSmallIcon(android.R.drawable.stat_sys_download_done)
-        .setContentTitle(context.getString(R.string.new_version_available, v))
-        .setContentText(context.getString(R.string.tap_to_see_what_s_new))
-        .setGroup("new_update")
-        .setAutoCancel(true)
-        .setDeleteIntent(deletePending)
-        .setContentIntent(pending)
-        .build()
-
-    nm.notify(4477, note)
-}
-
 fun getSystemLocale(): Pair<String, String> {
     val locale: Locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         Resources.getSystem().configuration.locales[0]
@@ -177,45 +141,6 @@ fun getSystemLocale(): Pair<String, String> {
     }
 
     return Pair(locale.language, locale.toLanguageTag())
-}
-
-fun createServiceNotification(context: Context, state: State): Notification {
-    // Create the NotificationChannel, but only on API 26+ because
-    // the NotificationChannel class is new and not in the support library
-    val channelId = "Foreground Service"
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val name = context.getString(R.string.channel_name_service)
-        val descriptionText = context.getString(R.string.channel_description_service)
-        val importance = NotificationManager.IMPORTANCE_MIN
-        val channel = NotificationChannel(channelId, name, importance).apply {
-            description = descriptionText
-            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
-            setShowBadge(false)
-        }
-        // Register the channel with the system
-        val notificationManager: NotificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
-    }
-
-    val intent = Intent(context, MainActivity::class.java).apply {
-        this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-    }
-    val pendingIntent: PendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
-    val text = when (state) {
-        State.Offline -> context.getText(R.string.state_offline)
-        State.Online -> context.getText(R.string.state_online)
-    }
-
-    return NotificationCompat.Builder(context, channelId)
-        .setShowWhen(false)
-        .setContentTitle(text)
-        .setSmallIcon(R.drawable.ic_mannaz_notification)
-        .setContentIntent(pendingIntent)
-        .setPriority(NotificationCompat.PRIORITY_MIN)
-        .setCategory(NotificationCompat.CATEGORY_SERVICE)
-        .build()
 }
 
 fun getLogcatLastMinutes(minutes: Long): List<String> {
@@ -455,6 +380,18 @@ fun loadRoundedAvatar(context: Context, fileName: String?, size: Int = 32, corne
         }
     }
     return null
+}
+
+fun loadRoundedBitmap(context: Context, buffer: ByteArray, size: Int = 32, corners: Int = 6): RoundedBitmapDrawable? {
+    val resources = context.resources
+    val iconSize = TypedValue.applyDimension(COMPLEX_UNIT_DIP, size.toFloat(), resources.displayMetrics).toInt()
+    val raw = BitmapFactory.decodeByteArray(buffer, 0, buffer.size) ?: return null
+    val scaled = raw.scale(iconSize, iconSize)
+
+    val drawable = RoundedBitmapDrawableFactory.create(resources, scaled).apply {
+        cornerRadius = TypedValue.applyDimension(COMPLEX_UNIT_DIP, corners.toFloat(), resources.displayMetrics)
+    }
+    return drawable
 }
 
 /* -------------------------------------------------------------- */

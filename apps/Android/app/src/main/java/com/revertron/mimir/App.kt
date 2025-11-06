@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Handler
 import android.os.StrictMode
 import android.os.StrictMode.VmPolicy
+import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.storage.SqlStorage
 import java.util.concurrent.atomic.AtomicLong
 
@@ -14,6 +15,7 @@ class App: Application() {
         lateinit var app: App
     }
 
+    var mediatorManager: MediatorManager? = null
     var online: Boolean = false
     private var networkChangedTime = AtomicLong(0L)
     lateinit var storage: SqlStorage
@@ -31,8 +33,7 @@ class App: Application() {
             )
         }
 
-        NotificationManager.createCallsNotificationChannel(this)
-        NotificationManager.createCallOngoingNotificationChannel(this)
+        NotificationHelper.createCallChannels(this)
 
         storage = SqlStorage(this)
         storage.cleanUp()

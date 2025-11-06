@@ -120,6 +120,22 @@
 
         <activity android:name=".LogActivity" android:exported="false" />
 
+        <activity android:name=".NewChatActivity" android:exported="false" android:parentActivityName=".MainActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
+        </activity>
+
+        <activity android:name=".GroupChatActivity" android:exported="false" />
+
+        <activity android:name=".InviteListActivity" android:exported="false" android:parentActivityName=".MainActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
+        </activity>
+
+        <activity android:name=".GroupInviteActivity" android:exported="false" android:parentActivityName=".InviteListActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".InviteListActivity" />
+        </activity>
+
+        <activity android:name=".ContactSelectorActivity" android:exported="false" />
+
         <service android:name=".ConnectionService"
             android:enabled="true"
             android:exported="false"

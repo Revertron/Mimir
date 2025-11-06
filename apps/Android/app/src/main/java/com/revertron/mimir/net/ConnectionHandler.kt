@@ -29,6 +29,13 @@ class ConnectionHandler(
         private const val VERSION = 1
         // We need at least a header to know the length
         private const val HEADER_SIZE = 16
+
+        // Keep-alive configuration
+        private const val PING_INTERVAL_MS = 60_000L // 60 seconds
+        private const val CONNECTION_TIMEOUT_MS = 600_000L // 10 minutes
+        private const val PING_TIMEOUT_MS = 5_000L // 5 seconds to wait for pong
+        private const val CALL_PING_INTERVAL_MS = 2_000L // 2 seconds during calls
+        private const val CALL_TIMEOUT_MS = 3_500L // 3.5 seconds during calls
     }
 
     private var peer: ByteArray? = null
@@ -105,12 +112,16 @@ class ConnectionHandler(
                     if (dis.available() >= HEADER_SIZE) {
                         val baos = ByteArrayOutputStream()
                         val dos = DataOutputStream(baos)
-                        if (processInput(dis, dos)) {
+                        val result = processInput(dis, dos)
+                        if (result != ProcessResult.Failed) {
                             val bytes = baos.toByteArray()
                             if (bytes.size > 0) {
                                 connection.write(bytes)
                             }
-                            lastActiveTime = System.currentTimeMillis()
+                            // Update lastActiveTime only for meaningful messages (not ping/pong)
+                            if (result == ProcessResult.MessageOk) {
+                                lastActiveTime = System.currentTimeMillis()
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -125,40 +136,13 @@ class ConnectionHandler(
                     break
                 }
 
-                // When we are calling someone we ping a lot :)
-                val now = System.currentTimeMillis()
-                val callingOrInCall = callStatus == CallStatus.Calling || callStatus == CallStatus.InCall
-                if (callingOrInCall && now - lastPingTime >= 2000) {
-                    if (lastPingTime > lastPongTime && now - lastActiveTime >= 3500) {
-                        Log.w(TAG, "Connection probably severed 1")
-                        break
-                    }
-                    //Log.d(TAG, "Sending ping to $address")
-                    val baos = ByteArrayOutputStream()
-                    val dos = DataOutputStream(baos)
-                    writePing(dos)
-                    try {
-                        connection.writeWithTimeout(baos.toByteArray(), 2000)
-                        //connection.write(baos.toByteArray())
-                        //Log.i(TAG, "Sent")
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        if (e.message?.contains("deadline exceeded") == true) {
-                            Log.w(TAG, "Connection probably severed 2")
-                            break
-                        }
-                    }
-                    lastPingTime = now
-                    // No need to go through all that ping logic below
-                    continue
-                }
-                // If someone is calling us, but there is no even pings in 3s then the connection is dropped
-                if (callStatus == CallStatus.Receiving && now - lastActiveTime >= 3500) {
-                    Log.w(TAG, "Connection probably severed 3")
+                // Handle keep-alive and connection timeout
+                if (!handleKeepAlive(rand.nextInt().absoluteValue % 20000)) {
                     break
                 }
 
-                if (System.currentTimeMillis() > lastActiveTime + 1000) {
+                // Sleep briefly when idle to avoid busy-waiting
+                if (System.currentTimeMillis() > lastActiveTime + CONNECTION_TIMEOUT_MS) {
                     try {
                         sleep(100)
                     } catch (_: InterruptedException) {
@@ -166,27 +150,6 @@ class ConnectionHandler(
                             val peer = Hex.toHexString(this)
                             Log.i(TAG, "Connection thread with $peer and $address interrupted")
                         }
-                        break
-                    }
-                    val now = System.currentTimeMillis()
-                    if (now - lastPingTime > 10000 && lastActiveTime < lastPingTime) {
-                        Log.w(TAG, "Connection probably severed")
-                        break
-                    }
-                    val pingTime = 180000
-                    val needPing = now > lastActiveTime + pingTime - (rand.nextInt().absoluteValue % 20000)
-                    if (needPing && now - lastPingTime > 60000) {
-                        Log.d(TAG, "Sending ping to $address")
-                        val baos = ByteArrayOutputStream()
-                        val dos = DataOutputStream(baos)
-                        writePing(dos)
-                        connection.writeWithTimeout(baos.toByteArray(), 2000)
-                        //connection.write(baos.toByteArray())
-                        lastPingTime = now
-                        //lastPongTime = 0L
-                    }
-                    if (now > lastActiveTime + 180000) {
-                        Log.i(TAG, "Connection with $address timed out")
                         break
                     }
                 }
@@ -256,23 +219,23 @@ class ConnectionHandler(
         }
     }
 
-    private fun processInput(dis: DataInputStream, dos: DataOutputStream): Boolean {
+    private fun processInput(dis: DataInputStream, dos: DataOutputStream): ProcessResult {
         try {
             val header = readHeader(dis)
             //Log.i(TAG, "Got header $header, our state $peerStatus, available data: ${dis.available()} bytes")
             when (header.type) {
                 MSG_TYPE_HELLO -> {
-                    val hello = readClientHello(dis, header.size > 80) ?: return false
+                    val hello = readClientHello(dis, header.size > 80) ?: return ProcessResult.Failed
                     if (peer == null) {
                         peer = hello.pubkey
                         if (!isMessageForMe(hello)) {
                             Log.w(TAG, "Connection for wrong number!")
-                            return false
+                            return ProcessResult.Failed
                         }
                         if (hello.address != null) {
                             /*if (!isAddressFromSubnet(socket.inetAddress, hello.address)) {
                                 Log.e(TAG, "Spoofing Yggdrasil address!\n${socket.inetAddress} and ${hello.address}")
-                                return false
+                                return ProcessResult.Failed
                             }*/
                             val oldAddress = address
                             address = Hex.toHexString(hello.address)
@@ -287,22 +250,22 @@ class ConnectionHandler(
                 }
                 MSG_TYPE_CHALLENGE -> {
                     val challenge = readChallenge(dis)
-                    val answer = getChallengeAnswer(challenge?.data ?: return false)
+                    val answer = getChallengeAnswer(challenge?.data ?: return ProcessResult.Failed)
                     writeChallengeAnswer(dos, answer)
                     peerStatus = Status.ChallengeAnswered
                 }
                 MSG_TYPE_CHALLENGE2 -> {
                     val challenge = readChallenge(dis)
-                    val answer = getChallengeAnswer(challenge?.data ?: return false)
+                    val answer = getChallengeAnswer(challenge?.data ?: return ProcessResult.Failed)
                     writeChallengeAnswer(dos, answer, type = MSG_TYPE_CHALLENGE_ANSWER2)
                     peerStatus = Status.Challenge2Answered
                 }
                 MSG_TYPE_CHALLENGE_ANSWER -> {
                     val answer = readChallengeAnswer(dis)
                     val public = Ed25519PublicKeyParameters(peer)
-                    if (!Sign.verify(public, challengeBytes!!, answer?.data ?: return false)) {
+                    if (!Sign.verify(public, challengeBytes!!, answer?.data ?: return ProcessResult.Failed)) {
                         Log.w(TAG, "Wrong challenge answer!")
-                        return false
+                        return ProcessResult.Failed
                     }
                     // Client answered challenge
                     writeOk(dos, 0)
@@ -314,9 +277,9 @@ class ConnectionHandler(
                 MSG_TYPE_CHALLENGE_ANSWER2 -> {
                     val answer = readChallengeAnswer(dis)
                     val public = Ed25519PublicKeyParameters(peer)
-                    if (!Sign.verify(public, challengeBytes!!, answer?.data ?: return false)) {
+                    if (!Sign.verify(public, challengeBytes!!, answer?.data ?: return ProcessResult.Failed)) {
                         Log.w(TAG, "Wrong challenge answer!")
-                        return false
+                        return ProcessResult.Failed
                     }
                     // Server answered challenge
                     writeOk(dos, 0)
@@ -336,7 +299,7 @@ class ConnectionHandler(
                     val info = readInfoResponse(dis)
                     if (info != null) {
                         if (peer == null) {
-                            return false
+                            return ProcessResult.Failed
                         }
                         infoProvider.updateContactInfo(peer!!, info)
                     }
@@ -364,7 +327,7 @@ class ConnectionHandler(
                     }
                 }
                 MSG_TYPE_MESSAGE_TEXT -> {
-                    val message = readMessage(dis) ?: return false
+                    val message = readMessage(dis) ?: return ProcessResult.Failed
                     Log.i(TAG, "Got message ${message.guid}, in reply to ${message.replyTo}")
                     writeOk(dos, message.guid)
                     synchronized(listener) {
@@ -372,7 +335,7 @@ class ConnectionHandler(
                     }
                 }
                 MSG_TYPE_CALL_OFFER -> {
-                    val offer = readCallOffer(dis) ?: return false
+                    val offer = readCallOffer(dis) ?: return ProcessResult.Failed
                     Log.i(TAG, "Got call offer: $offer")
                     if (callStatus == CallStatus.Idle) {
                         callStatus = CallStatus.Receiving
@@ -380,7 +343,7 @@ class ConnectionHandler(
                     }
                 }
                 MSG_TYPE_CALL_ANSWER -> {
-                    val callAnswer = readCallAnswer(dis) ?: return false
+                    val callAnswer = readCallAnswer(dis) ?: return ProcessResult.Failed
                     Log.i(TAG, "Got call answer: $callAnswer")
                     //TODO Start call on call screen through listener
                     if (callStatus == CallStatus.Calling && callAnswer.ok) {
@@ -394,7 +357,7 @@ class ConnectionHandler(
                 }
                 MSG_TYPE_CALL_PACKET -> {
                     //Log.i(TAG, "Call packet received")
-                    val packet = readCallPacket(dis) ?: return false
+                    val packet = readCallPacket(dis) ?: return ProcessResult.Failed
                     //Log.i(TAG, "Call packet size: ${packet.data.size}")
                     audioReceiver?.pushPacket(packet.data)
                 }
@@ -407,9 +370,11 @@ class ConnectionHandler(
                 MSG_TYPE_PING -> {
                     lastPingTime = System.currentTimeMillis()
                     writePong(dos)
+                    return ProcessResult.KeepAlive  // Ping/Pong is not meaningful activity
                 }
                 MSG_TYPE_PONG -> {
                     lastPongTime = System.currentTimeMillis()
+                    return ProcessResult.KeepAlive  // Ping/Pong is not meaningful activity
                 }
                 else -> {
                     Log.i(TAG, "Unknown message type: ${header.type}")
@@ -419,11 +384,11 @@ class ConnectionHandler(
                     }
                 }
             }
-            return true
+            return ProcessResult.MessageOk
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return false
+        return ProcessResult.Failed
     }
 
     private fun isMessageForMe(hello: ClientHello): Boolean {
@@ -520,6 +485,63 @@ class ConnectionHandler(
     private fun getOk(id: Long, stream: Int): Ok {
         return Ok(id)
     }
+
+    /**
+     * Handles connection keep-alive by sending pings and detecting timeouts.
+     * Returns false if the connection timed out and should be terminated.
+     */
+    private fun handleKeepAlive(jitter: Int): Boolean {
+        val now = System.currentTimeMillis()
+        val isInCall = callStatus == CallStatus.Calling || callStatus == CallStatus.InCall || callStatus == CallStatus.Receiving
+
+        // Check for connection timeout based on call status
+        val timeoutMs = if (isInCall) CALL_TIMEOUT_MS else CONNECTION_TIMEOUT_MS
+        if (now - lastActiveTime >= timeoutMs) {
+            Log.w(TAG, "Connection with $address timed out (no activity for ${timeoutMs / 1000}s)")
+            return false
+        }
+
+        // Check for ping timeout (sent ping but no pong received)
+        if (lastPingTime > lastPongTime && now - lastPingTime >= PING_TIMEOUT_MS) {
+            Log.w(TAG, "Connection with $address timed out (no pong response)")
+            return false
+        }
+
+        // Determine ping interval based on call status
+        val pingInterval = if (isInCall) CALL_PING_INTERVAL_MS else PING_INTERVAL_MS
+
+        // Send ping if interval has elapsed
+        if (now - lastPingTime >= pingInterval - jitter) {
+            return sendPing()
+        }
+
+        return true
+    }
+
+    /**
+     * Sends a ping message to the peer.
+     * Returns false if sending fails and connection should be terminated.
+     */
+    private fun sendPing(): Boolean {
+        Log.d(TAG, "Sending ping to $address")
+        val baos = ByteArrayOutputStream()
+        val dos = DataOutputStream(baos)
+        writePing(dos)
+
+        return try {
+            connection.writeWithTimeout(baos.toByteArray(), 2000)
+            lastPingTime = System.currentTimeMillis()
+            true
+        } catch (e: Exception) {
+            if (e.message?.contains("deadline exceeded") == true) {
+                Log.w(TAG, "Connection with $address timed out (ping write failed)")
+                false
+            } else {
+                Log.e(TAG, "Error sending ping to $address: ${e.message}")
+                false
+            }
+        }
+    }
 }
 
 enum class Status {
@@ -533,4 +555,10 @@ enum class Status {
     Challenge2Sent,
     Challenge2Answered,
     Auth2Done,
+}
+
+enum class ProcessResult {
+    Failed,      // Processing failed, connection should handle error
+    MessageOk,   // Meaningful message processed (update lastActiveTime)
+    KeepAlive    // Keep-alive message (ping/pong, don't update lastActiveTime)
 }

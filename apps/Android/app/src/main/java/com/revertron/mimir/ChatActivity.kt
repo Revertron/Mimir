@@ -140,7 +140,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             getImageFromUri(image)
         }
 
-        val adapter = MessageAdapter(getStorage(), contact.id, multiChat = false, "Me", contact.name, this, onClickOnReply(), onClickOnPicture())
+        val adapter = MessageAdapter(getStorage(), contact.id, groupChat = false, contact.name, this, onClickOnReply(), onClickOnPicture())
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
@@ -323,7 +323,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             if (contact.id == contactId) {
                 val recycler = findViewById<RecyclerView>(R.id.messages_list)
                 val adapter = recycler.adapter as MessageAdapter
-                adapter.addMessageId(id)
+                adapter.addMessageId(id, false)
                 recycler.smoothScrollToPosition(adapter.itemCount)
             }
         }
@@ -346,7 +346,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 Log.i(TAG, "Adding message")
                 val recycler = findViewById<RecyclerView>(R.id.messages_list)
                 val adapter = recycler.adapter as MessageAdapter
-                adapter.addMessageId(id)
+                adapter.addMessageId(id, true)
                 if (isVisible) {
                     //TODO scroll only if was already at the bottom
                     recycler.smoothScrollToPosition(adapter.itemCount)

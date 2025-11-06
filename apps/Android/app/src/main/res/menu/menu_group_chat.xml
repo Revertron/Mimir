@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/group_info"
+        android:orderInCategory="1"
+        android:title="@string/group_info"
+        android:icon="@drawable/ic_contact_info"
+        app:showAsAction="always" />
+    <item android:id="@+id/add_member"
+        android:title="@string/add_member"
+        android:icon="@drawable/ic_contact_add"
+        app:showAsAction="never" />
+    <item android:id="@+id/mute_group"
+        android:title="@string/mute_group"
+        android:icon="@drawable/ic_volume_off"
+        app:showAsAction="never" />
+    <item android:id="@+id/clear_history"
+        android:title="@string/clear_history"
+        android:icon="@drawable/ic_clean_chat_outline"
+        app:showAsAction="never" />
+    <item android:id="@+id/leave_group"
+        android:title="@string/leave_group"
+        android:icon="@drawable/ic_delete"
+        app:showAsAction="never" />
+</menu>

@@ -35,6 +35,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
 import com.revertron.mimir.storage.StorageListener
+import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
 import org.bouncycastle.util.encoders.Hex
@@ -84,8 +85,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         super.onResume()
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         if (recycler.adapter == null) {
-            val contacts = (application as App).storage.getContactList()
-            val adapter = ContactsAdapter(contacts, this, this)
+            val chatList = getChatList()
+            val adapter = ContactsAdapter(chatList, this, this)
             recycler.adapter = adapter
             recycler.layoutManager = LinearLayoutManager(this)
         } else {
@@ -119,6 +120,16 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 showAddContactDialog()
                 return true
             }
+            R.id.group_invites -> {
+                val intent = Intent(this, InviteListActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+                return true
+            }
+            R.id.create_chat -> {
+                val intent = Intent(this, NewChatActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+                return true
+            }
             android.R.id.home -> {
                 val intent = Intent(this, AccountsActivity::class.java)
                 startActivity(intent, animFromLeft.toBundle())
@@ -143,24 +154,62 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
     override fun onClick(view: View) {
         if (view.tag != null) {
-            val contact = view.tag as Contact
-            val addr = Hex.toHexString(contact.pubkey)
-            Log.i(TAG, "Clicked on $addr")
+            when (val item = view.tag as ChatListItem) {
+                is ChatListItem.ContactItem -> {
+                    val addr = Hex.toHexString(item.pubkey)
+                    Log.i(TAG, "Clicked on contact $addr")
 
-            val intent = Intent(this, ChatActivity::class.java)
-            intent.putExtra("pubkey", contact.pubkey)
-            intent.putExtra("name", contact.name)
-            startActivity(intent, animFromRight.toBundle())
+                    val intent = Intent(this, ChatActivity::class.java)
+                    intent.putExtra("pubkey", item.pubkey)
+                    intent.putExtra("name", item.name)
+                    startActivity(intent, animFromRight.toBundle())
+                }
+                is ChatListItem.GroupChatItem -> {
+                    Log.i(TAG, "Clicked on group chat ${item.chatId}")
+
+                    val intent = Intent(this, GroupChatActivity::class.java)
+                    intent.putExtra(GroupChatActivity.EXTRA_CHAT_ID, item.chatId)
+                    intent.putExtra(GroupChatActivity.EXTRA_CHAT_NAME, item.name)
+                    intent.putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, item.description)
+                    intent.putExtra(GroupChatActivity.EXTRA_MEMBER_COUNT, item.memberCount)
+                    intent.putExtra(GroupChatActivity.EXTRA_IS_OWNER, item.isOwner)
+                    intent.putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, item.mediatorAddress)
+                    startActivity(intent, animFromRight.toBundle())
+                }
+            }
         }
     }
 
     override fun onLongClick(v: View): Boolean {
-        val contact = v.tag as Contact
-        showContactPopupMenu(contact, v)
+        when (val item = v.tag as ChatListItem) {
+            is ChatListItem.ContactItem -> {
+                // Convert ChatListItem.ContactItem back to Contact for the popup menu
+                val contact = Contact(item.id, item.pubkey, item.name, item.lastMessage, item.unreadCount, item.avatar)
+                showContactPopupMenu(contact, v)
+            }
+            is ChatListItem.GroupChatItem -> {
+                // TODO: Show group chat popup menu (leave group, mute, etc.)
+                Toast.makeText(this, "Group chat options - TODO", Toast.LENGTH_SHORT).show()
+            }
+        }
         return true
     }
 
     override fun onMessageReceived(id: Long, contactId: Long): Boolean {
+        runOnUiThread {
+            refreshContacts()
+        }
+        return false
+    }
+
+    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean {
+        runOnUiThread {
+            refreshContacts()
+        }
+        return false
+    }
+
+    override fun onGroupChatChanged(chatId: Long): Boolean {
         runOnUiThread {
             refreshContacts()
         }
@@ -348,11 +397,60 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
+    private fun getChatList(): List<ChatListItem> {
+        val storage = (application as App).storage
+        val contacts = storage.getContactList()
+        val groupChats = storage.getGroupChatList()
+
+        val chatItems = mutableListOf<ChatListItem>()
+
+        // Convert contacts to ChatListItems
+        chatItems.addAll(contacts.map { contact ->
+            ChatListItem.ContactItem(
+                id = contact.id,
+                pubkey = contact.pubkey,
+                name = contact.name,
+                lastMessage = contact.lastMessage,
+                unreadCount = contact.unread,
+                avatar = contact.avatar
+            )
+        })
+
+        // Convert group chats to ChatListItems
+        chatItems.addAll(groupChats.map { groupChat ->
+            val avatar = storage.getGroupChatAvatar(groupChat.chatId)
+            // Check if current user is the owner
+            val accountInfo = storage.getAccountInfo(1, 0L)
+            val isOwner = accountInfo?.let { info ->
+                groupChat.ownerPubkey.contentEquals(info.keyPair.public.let {
+                    (it as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+                })
+            } ?: false
+
+            ChatListItem.GroupChatItem(
+                id = groupChat.chatId.toLong(),
+                chatId = groupChat.chatId,
+                name = groupChat.name,
+                description = groupChat.description ?: "",
+                mediatorAddress = groupChat.mediatorPubkey,
+                memberCount = 0, // TODO: Get actual member count from database
+                isOwner = isOwner,
+                avatar = avatar,
+                lastMessageText = null, // TODO: Get last message text
+                lastMessageTime = groupChat.lastMessageTime,
+                unreadCount = groupChat.unreadCount
+            )
+        })
+
+        // Sort by last message time (most recent first)
+        return chatItems.sortedByDescending { it.lastMessageTime }
+    }
+
     private fun refreshContacts() {
-        val contacts = (application as App).storage.getContactList()
+        val chatList = getChatList()
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         val adapter = recycler.adapter as ContactsAdapter
-        adapter.setContacts(contacts)
+        adapter.setContacts(chatList)
     }
 
     fun areNotificationsEnabled(ctx: Context): Boolean =

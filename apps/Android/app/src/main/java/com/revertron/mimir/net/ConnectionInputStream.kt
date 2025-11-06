@@ -12,25 +12,28 @@ class ConnectionInputStream(
     private var pos = 0
     private var count = 0          // valid bytes in buf
 
-    /* --------- single-byte read --------- */
     override fun read(): Int {
-        if (pos >= count) refill()
-        return if (count == 0) -1 else buf[pos++].toInt() and 0xFF
+        while (pos >= count) {
+            if (!fillBuffer()) {
+                return -1
+            }
+        }
+        return buf[pos++].toInt() and 0xFF
     }
 
-    /* --------- bulk read --------- */
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         if (len == 0) return 0
-        var remaining = len
-        var dstOff = off
-        while (remaining > 0) {
-            if (pos >= count) refill()
-            if (count == 0) break           // EOF
-            val n = minOf(remaining, count - pos)
-            System.arraycopy(buf, pos, b, dstOff, n)
-            pos += n; dstOff += n; remaining -= n
+        var written = 0
+        while (written < len) {
+            if (pos >= count && !fillBuffer()) {
+                return if (written == 0) -1 else written
+            }
+            val copy = minOf(len - written, count - pos)
+            System.arraycopy(buf, pos, b, off + written, copy)
+            pos += copy
+            written += copy
         }
-        return if (dstOff == off && count == 0) -1 else len - remaining
+        return written
     }
 
     /* --------- available() --------- */
@@ -48,14 +51,26 @@ class ConnectionInputStream(
         return count - pos
     }
 
-    /* --------- refill helper --------- */
-    private fun refill() {
-        if (pos >= count) {
-            try {
-                count = conn.readWithTimeout(buf, 200).toInt()
-                pos = 0
-            } catch (_: Exception) {
-                count = 0
+    private fun fillBuffer(): Boolean {
+        pos = 0
+        count = 0
+        while (true) {
+            val read = try {
+                conn.readWithTimeout(buf, 200).toInt()
+            } catch (e: Exception) {
+                if (e.message?.contains("deadline exceeded") == true) {
+                    continue    // no data yet; retry
+                }
+                throw e        // real error -> let caller fail
+            }
+
+            when {
+                read > 0 -> {
+                    count = read
+                    return true
+                }
+                read == 0 -> continue          // defensive: keep waiting
+                else -> return false           // negative => connection closed
             }
         }
     }
