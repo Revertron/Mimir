@@ -1176,6 +1176,30 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
+     * Gets count of members of a particular chat
+     */
+    fun getGroupChatMembersCount(chatId: Long): Int {
+        val messagesTable = "members_$chatId"
+
+        return try {
+            val cursor = readableDatabase.rawQuery(
+                "SELECT COUNT(id) FROM $messagesTable WHERE banned == 0",
+                null
+            )
+            val count = if (cursor.moveToNext() && !cursor.isNull(0)) {
+                cursor.getInt(0)
+            } else {
+                0
+            }
+            cursor.close()
+            count
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting members count for chat $chatId", e)
+            0
+        }
+    }
+
+    /**
      * Gets all unique mediator public keys from saved group chats.
      * Returns a set of mediator pubkeys (as ByteArray).
      */

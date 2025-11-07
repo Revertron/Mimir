@@ -398,7 +398,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     }
 
     private fun getChatList(): List<ChatListItem> {
-        val storage = (application as App).storage
+        val storage = getStorage()
         val contacts = storage.getContactList()
         val groupChats = storage.getGroupChatList()
 
@@ -428,12 +428,12 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             } ?: false
 
             ChatListItem.GroupChatItem(
-                id = groupChat.chatId.toLong(),
+                id = groupChat.chatId,
                 chatId = groupChat.chatId,
                 name = groupChat.name,
                 description = groupChat.description ?: "",
                 mediatorAddress = groupChat.mediatorPubkey,
-                memberCount = 0, // TODO: Get actual member count from database
+                memberCount = storage.getGroupChatMembersCount(groupChat.chatId),
                 isOwner = isOwner,
                 avatar = avatar,
                 lastMessageText = null, // TODO: Get last message text
