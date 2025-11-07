@@ -24,6 +24,7 @@ import com.revertron.mimir.net.CallStatus
 import com.revertron.mimir.net.EventListener
 import com.revertron.mimir.net.InfoProvider
 import com.revertron.mimir.net.InfoResponse
+import com.revertron.mimir.net.MediatorClient
 import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.net.MimirServer
 import com.revertron.mimir.net.PeerStatus
@@ -190,8 +191,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 Log.i(TAG, "Resending unsent messages")
                 mimirServer?.sendMessages()
 
-                // Reconnect to mediators and resubscribe to chats when coming online
-                connectAndSubscribeToAllChats(storage)
+                Thread {
+                    Thread.sleep(2000)
+                    // Reconnect to mediators and resubscribe to chats when coming online
+                    connectAndSubscribeToAllChats(storage)
+                }.start()
 
                 if (updateAfter == 0L) {
                     handler.postDelayed(1000) {
@@ -368,6 +372,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             )
             val messageId = client.sendMessage(chatId, guid, message)
             Log.i(TAG, "Message sent with ID: $messageId")
+            // Update server message id for later sync
+            storage.updateGroupMessageServerId(chatId, guid, messageId)
+
             val broadcastIntent = Intent("ACTION_MEDIATOR_MESSAGE_SENT").apply {
                 putExtra("chat_id", chatId)
                 putExtra("message_id", messageId)
@@ -406,9 +413,249 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 putExtra("chat_id", chatId)
             }
             LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
+
+            // Sync missed messages after successful subscription
+            Thread {
+                Thread.sleep(1000)
+                syncMissedMessages(chatId, client, storage)
+            }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Error subscribing to chat", e)
             broadcastMediatorError("subscribe", e.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * Parses and saves a group chat message.
+     * Handles decryption, deserialization, media attachments, deduplication, and database storage.
+     *
+     * @param chatId The group chat ID
+     * @param messageId The server message ID
+     * @param guid The message GUID (for deduplication)
+     * @param author The message author's public key
+     * @param encryptedData The encrypted message data
+     * @param storage The storage instance
+     * @param broadcast Whether to broadcast the message to activities (true for real-time, false for sync)
+     * @return Local message ID if successful, 0 if skipped/failed
+     */
+    private fun parseAndSaveGroupMessage(
+        chatId: Long,
+        messageId: Long,
+        guid: Long,
+        author: ByteArray,
+        encryptedData: ByteArray,
+        storage: SqlStorage,
+        broadcast: Boolean = true
+    ): Long {
+        try {
+            // Get chat info to retrieve shared key
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found in database")
+                return 0
+            }
+
+            // Decrypt message using shared key
+            val decryptedData = try {
+                GroupChatCrypto.decryptMessage(encryptedData, chatInfo.sharedKey)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decrypt message $messageId", e)
+                return 0
+            }
+
+            // Deserialize message using the standard readMessage function
+            val bais = ByteArrayInputStream(decryptedData)
+            val dis = DataInputStream(bais)
+
+            // Read header and message
+            val header = readHeader(dis)
+            val message = readMessage(dis)
+
+            if (message == null) {
+                Log.e(TAG, "Failed to deserialize message for chat $chatId")
+                return 0
+            }
+
+            var m = ByteArray(0)
+            // Handle different message types
+            if (message.type == 1) {
+                // Media attachment: extract file and get text from JSON
+                Log.i(TAG, "Processing media attachment for chat $chatId")
+
+                try {
+                    val fileName = randomString(16)
+                    val ext = getImageExtensionOrNull(message.data)
+                    val fullName = "$fileName.$ext"
+
+                    // Extract image file from remaining bytes after JSON
+                    try {
+                        saveFileForMessage(this@ConnectionService, fullName, message.data)
+                        Log.i(TAG, "Saved attachment file: $fullName (${message.data.size} bytes)")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error saving attachment file: ${e.message}", e)
+                    }
+                    // Reconstruct meta
+                    val json = JSONObject().apply {
+                        put("guid", message.guid)
+                        put("replyTo", message.replyTo)
+                        put("sendTime", message.sendTime)
+                        put("editTime", message.editTime)
+                        put("type", message.type)
+                    }
+                    m = json.toString().toByteArray()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing attachment: ${e.message}", e)
+                }
+            } else {
+                // Plain text message
+                m = message.data
+            }
+
+            Log.i(TAG, "Decrypted message from ${author.take(8)}: $message")
+
+            // Check if message already exists (dedup by GUID)
+            if (storage.checkGroupMessageExists(chatId, message.guid)) {
+                Log.i(TAG, "Message with guid=${message.guid} already exists, doing nothing")
+                return 0
+            }
+
+            // Save to database
+            val localId = storage.addGroupMessage(
+                chatId,
+                messageId,
+                message.guid,
+                author,
+                message.sendTime,
+                message.type,
+                false, // not a system message
+                m
+            )
+
+            // Broadcast to activities if requested
+            if (broadcast && localId > 0) {
+                val intent = Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
+                    putExtra("chat_id", chatId)
+                    putExtra("message_id", messageId)
+                    putExtra("local_id", localId)
+                    putExtra("sender", author)
+                }
+                LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(intent)
+            }
+
+            Log.i(TAG, "Message saved with local ID: $localId")
+            return localId
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing message for chat $chatId", e)
+            return 0
+        }
+    }
+
+    /**
+     * Syncs missed messages from mediator for a group chat.
+     * Fetches all messages since the last confirmed server message ID.
+     * Uses batch API for efficiency (up to 100 messages per request).
+     */
+    private fun syncMissedMessages(chatId: Long, client: MediatorClient, storage: SqlStorage) {
+        try {
+            Log.i(TAG, "Starting message sync for chat $chatId")
+
+            // Get last synced message ID from local database
+            val localLastId = storage.getMaxServerMessageId(chatId)
+            Log.d(TAG, "Local last message ID: $localLastId for chat $chatId")
+
+            // Get last message ID from server
+            val serverLastId = try {
+                client.getLastMessageId(chatId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get last message ID from server", e)
+                broadcastMediatorError("sync", "Failed to get server state: ${e.message}")
+                return
+            }
+
+            Log.i(TAG, "Server last message ID: $serverLastId for chat $chatId")
+
+            if (serverLastId <= localLastId) {
+                Log.i(TAG, "No missed messages for chat $chatId (local=$localLastId, server=$serverLastId)")
+                return
+            }
+
+            val missedCount = serverLastId - localLastId
+            Log.i(TAG, "Fetching $missedCount missed message(s) for chat $chatId")
+
+            // Get chat info for decryption
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found in storage")
+                return
+            }
+
+            // Fetch messages in batches (max 100 per request)
+            var currentId = localLastId
+            val batchSize = 100
+
+            while (currentId < serverLastId) {
+                try {
+                    val messages = client.getMessagesSince(chatId, currentId, batchSize)
+                    if (messages.isEmpty()) {
+                        Log.w(TAG, "No messages returned from server, stopping sync")
+                        break
+                    }
+
+                    Log.d(TAG, "Fetched ${messages.size} message(s) for chat $chatId")
+
+                    // Process each message
+                    for (msgPayload in messages) {
+                        try {
+                            // Use shared parsing logic with broadcast disabled (sync messages)
+                            val localId = parseAndSaveGroupMessage(
+                                chatId,
+                                msgPayload.messageId,
+                                msgPayload.guid,
+                                msgPayload.author,
+                                msgPayload.data,
+                                storage,
+                                broadcast = false
+                            )
+
+                            if (localId > 0) {
+                                Log.d(TAG, "Synced message ${msgPayload.messageId} (guid=${msgPayload.guid}) to local ID $localId")
+                            } else {
+                                Log.d(TAG, "Skipped message ${msgPayload.messageId} (may already exist or failed)")
+                            }
+
+                            currentId = msgPayload.messageId
+
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing synced message ${msgPayload.messageId}", e)
+                            currentId = msgPayload.messageId
+                        }
+                    }
+
+                    // Update currentId to highest processed message
+                    val lastProcessedId = messages.maxOfOrNull { it.messageId } ?: currentId
+                    currentId = lastProcessedId
+
+                    Log.d(TAG, "Batch sync progress: $currentId / $serverLastId for chat $chatId")
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error fetching message batch for chat $chatId", e)
+                    broadcastMediatorError("sync", "Failed to fetch messages: ${e.message}")
+                    break
+                }
+            }
+
+            Log.i(TAG, "Message sync complete for chat $chatId (synced up to ID $currentId)")
+
+            // Broadcast sync completion
+            val syncIntent = Intent("ACTION_MESSAGES_SYNCED").apply {
+                putExtra("chat_id", chatId)
+                putExtra("last_synced_id", currentId)
+            }
+            LocalBroadcastManager.getInstance(this).sendBroadcast(syncIntent)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing messages for chat $chatId", e)
+            broadcastMediatorError("sync", "Message sync failed: ${e.message}")
         }
     }
 
@@ -484,6 +731,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                                     globalMessageListener?.let {
                                         mediatorManager?.registerMessageListener(chat.chatId, it)
                                     }
+                                    Thread {
+                                        syncMissedMessages(chat.chatId, client, storage)
+                                    }.start()
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to subscribe to chat ${chat.chatId} on mediator ${mediatorHex.take(8)}", e)
                                 }
@@ -638,94 +888,16 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 Log.i(TAG, "Message received for chat $chatId: msgId=$messageId, guid=$guid")
 
                 Thread {
-                    try {
-                        // Get chat info to retrieve shared key
-                        val chatInfo = storage.getGroupChat(chatId)
-                        if (chatInfo == null) {
-                            Log.e(TAG, "Chat $chatId not found in database")
-                            return@Thread
-                        }
-
-                        // Decrypt message using shared key
-                        val decryptedData = GroupChatCrypto.decryptMessage(data, chatInfo.sharedKey)
-
-                        // Deserialize message using the standard readMessage function
-                        val bais = ByteArrayInputStream(decryptedData)
-                        val dis = DataInputStream(bais)
-
-                        // Skip the header (16 bytes: stream(4) + type(4) + size(8)) that was written by writeMessage()
-                        // readMessage() expects to start at the JSON size field, not the header
-                        val header = readHeader(dis)
-
-                        val message = readMessage(dis)
-
-                        if (message == null) {
-                            Log.e(TAG, "Failed to deserialize message for chat $chatId")
-                            return@Thread
-                        }
-
-                        var m = ByteArray(0)
-                        // Handle different message types
-                        if (message.type == 1) {
-                            // Media attachment: extract file and get text from JSON
-                            Log.i(TAG, "Processing media attachment for chat $chatId")
-
-                            try {
-                                val fileName = randomString(16)
-                                val ext = getImageExtensionOrNull(message.data)
-                                val fullName = "$fileName.$ext"
-
-                                // Extract image file from remaining bytes after JSON
-                                try {
-                                    saveFileForMessage(this@ConnectionService, fullName, message.data)
-                                    Log.i(TAG, "Saved attachment file: $fullName (${message.data.size} bytes)")
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error saving attachment file: ${e.message}", e)
-                                }
-                                // Reconstruct meta
-                                val json = JSONObject().apply {
-                                    put("guid", message.guid)
-                                    put("replyTo", message.replyTo)
-                                    put("sendTime", message.sendTime)
-                                    put("editTime", message.editTime)
-                                    put("type", message.type)
-                                }
-                                m = json.toString().toByteArray()
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error processing attachment: ${e.message}", e)
-                            }
-                        } else {
-                            // Plain text message
-                            m = message.data
-                        }
-
-                        Log.i(TAG, "Decrypted message from ${author.take(8)}: $message")
-
-                        // Save to database
-                        val localId = storage.addGroupMessage(
-                            chatId,
-                            messageId,
-                            message.guid,
-                            author,
-                            message.sendTime,
-                            message.type,
-                            false, // not a system message
-                            m
-                        )
-
-                        // Broadcast to activities
-                        val intent = Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
-                            putExtra("chat_id", chatId)
-                            putExtra("message_id", messageId)
-                            putExtra("local_id", localId)
-                            putExtra("sender", author)
-                        }
-                        LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(intent)
-
-                        Log.i(TAG, "Message saved with local ID: $localId")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error processing message for chat $chatId", e)
-                    }
+                    // Use shared parsing logic with broadcast enabled (real-time messages)
+                    parseAndSaveGroupMessage(
+                        chatId,
+                        messageId,
+                        guid,
+                        author,
+                        data,
+                        storage,
+                        broadcast = true
+                    )
                 }.start()
             }
         }

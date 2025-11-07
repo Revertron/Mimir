@@ -1,6 +1,7 @@
 package com.revertron.mimir.net
 
 import android.util.Log
+import com.revertron.mimir.App
 import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.sec.Sign
 import com.revertron.mimir.storage.SqlStorage
@@ -61,6 +62,7 @@ class MediatorClient(
         private const val CMD_GET_LAST_MESSAGE_ID: Int = 0x33
         private const val CMD_GOT_MESSAGE: Int = 0x34 // appears in response.reqId for pushes
         private const val CMD_SUBSCRIBE: Int = 0x35
+        private const val CMD_GET_MESSAGES_SINCE: Int = 0x36
         private const val CMD_SEND_INVITE: Int = 0x40
         private const val CMD_GOT_INVITE: Int = 0x41 // appears in response.reqId for invite pushes
         private const val CMD_INVITE_RESPONSE: Int = 0x42 // client accepts/rejects invite
@@ -70,7 +72,7 @@ class MediatorClient(
 
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
-        private const val READ_DEADLINE_MS: Long = 600_000 // server sets read deadline to 10 minutes per frame
+        private const val PING_DEADLINE_MS: Long = 240_000 // Ping every 4 minutes, QUIC timeout is 5 minutes
     }
 
     private val rng = SecureRandom()
@@ -83,11 +85,11 @@ class MediatorClient(
     // Request → future map
     private val pending = ConcurrentHashMap<Short, WaitBox<Response>>()
 
-    // Reader thread (uses DataInputStream-like access)
-    private lateinit var reader: Thread
-
     // Single write lock to serialize frames
     private val writeLock = Any()
+
+    // Pinging loop uses this
+    private var lastActivityTime = System.currentTimeMillis()
 
     /**
      * Initialize connection and authenticate synchronously.
@@ -113,9 +115,9 @@ class MediatorClient(
             listener.onConnected()
 
             // 3) Start background reader (this thread keeps the connection alive)
-//            reader = thread(name = "$TAG-Reader", isDaemon = true) {
-//                readerLoop()
-//            }
+            thread(name = "$TAG-Pinger", isDaemon = true) {
+                pingLoop()
+            }
 
             // Connection is ready - reader thread will keep it alive
         } catch (e: Exception) {
@@ -286,8 +288,6 @@ class MediatorClient(
                 return
             }
 
-            Log.d(TAG, "Chat shared key size: ${chatInfo.sharedKey.size}, hex: ${Hex.toHexString(chatInfo.sharedKey).take(16)}...")
-
             val lastUpdated = storage.getLatestGroupMemberUpdateTime(chatId)
             // GET_MEMBERS_INFO now returns ALL members (timestamp filters info, not members)
             val members = getMembersInfo(chatId, lastUpdated)
@@ -392,7 +392,12 @@ class MediatorClient(
         return resp.payload.readLong(0).toLong()
     }
 
-    /** Fetch a message blob by message_id for a given chat. */
+    /**
+     * Fetch a message blob by message_id for a given chat.
+     *
+     * NOTE: Requires mediator server update to include author field in response.
+     * New response format: [msgId(u64)][guid(u64)][author(32)][blobLen(u32)][blob]
+     */
     fun getMessage(chatId: Long, messageId: Long): MessagePayload {
         val payload = ByteArrayOutputStream().apply {
             writeLong(chatId)
@@ -404,9 +409,10 @@ class MediatorClient(
         var off = 0
         val id = resp.payload.readLong(off); off += 8
         val guid = resp.payload.readLong(off); off += 8
+        val author = resp.payload.copyOfRange(off, off + 32); off += 32
         val sz = resp.payload.readU32(off).toInt(); off += 4
         val data = resp.payload.copyOfRange(off, off + sz)
-        return MessagePayload(id, guid, data)
+        return MessagePayload(id, guid, author, data)
     }
 
     fun getLastMessageId(chatId: Long): Long {
@@ -414,6 +420,64 @@ class MediatorClient(
         val resp = request(CMD_GET_LAST_MESSAGE_ID, payload) ?: throw MediatorException("getLastMessageId timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getLastMessageId failed")
         return resp.payload.readLong(0)
+    }
+
+    /**
+     * Batch-fetches messages since a given message ID.
+     * More efficient than fetching one message at a time.
+     *
+     * Protocol: cmdGetMessagesSince (0x36)
+     * Request payload: [chatId(u64)][sinceMessageId(u64)][limit(u32)]
+     * Response payload: [count(u32)][[chatId(u64)][msgId(u64)][guid(u64)][author(32)][blobLen(u32)][blob]...]
+     *
+     * Note: Response format matches push message format for consistency:
+     * [chatId][msgId][guid][author][blobLen][blob]
+     *
+     * @param chatId The group chat ID
+     * @param sinceMessageId Fetch messages with ID > sinceMessageId (exclusive)
+     * @param limit Maximum number of messages to fetch (default 100, max 500)
+     * @return List of messages in ascending order by message ID
+     */
+    fun getMessagesSince(chatId: Long, sinceMessageId: Long, limit: Int = 100): List<MessagePayload> {
+        require(limit in 1..500) { "limit must be between 1 and 500" }
+
+        val payload = ByteArrayOutputStream().apply {
+            writeLong(chatId)
+            writeLong(sinceMessageId)
+            write(byteArrayOf(
+                ((limit ushr 24) and 0xFF).toByte(),
+                ((limit ushr 16) and 0xFF).toByte(),
+                ((limit ushr 8) and 0xFF).toByte(),
+                (limit and 0xFF).toByte()
+            ))
+        }.toByteArray()
+
+        val resp = request(CMD_GET_MESSAGES_SINCE, payload) ?: throw MediatorException("getMessagesSince timeout")
+        if (resp.status != STATUS_OK) throw resp.asException("getMessagesSince failed")
+
+        // Parse response: [count(u32)][[chatId(u64)][msgId(u64)][guid(u64)][author(32)][blobLen(u32)][blob]...]
+        var off = 0
+        val count = resp.payload.readU32(off).toInt(); off += 4
+
+        val messages = mutableListOf<MessagePayload>()
+        repeat(count) {
+            val responseChatId = resp.payload.readLong(off); off += 8  // For validation
+            val msgId = resp.payload.readLong(off); off += 8
+            val guid = resp.payload.readLong(off); off += 8
+            val author = resp.payload.copyOfRange(off, off + 32); off += 32
+            val blobLen = resp.payload.readU32(off).toInt(); off += 4
+            val data = if (blobLen > 0) resp.payload.copyOfRange(off, off + blobLen) else ByteArray(0); off += blobLen
+
+            // Validate chat ID matches
+            if (responseChatId != chatId) {
+                Log.w(TAG, "getMessagesSince: chatId mismatch (expected $chatId, got $responseChatId)")
+            }
+
+            messages.add(MessagePayload(msgId, guid, author, data))
+        }
+
+        Log.i(TAG, "getMessagesSince: fetched ${messages.size} message(s) for chat $chatId since $sinceMessageId")
+        return messages
     }
 
     /**
@@ -600,27 +664,36 @@ class MediatorClient(
         return running
     }
 
+    fun pingLoop() {
+        while (running) {
+            sleep(100)
+            if (!App.app.online || !running) {
+                Log.i(TAG, "We are offline, stopping client")
+                stopClient()
+                break
+            }
+            if (System.currentTimeMillis() - lastActivityTime > PING_DEADLINE_MS) {
+                Log.i(TAG, "Sending ping")
+                try {
+                    if (!sendPing()) {
+                        Log.i(TAG, "Connection broken")
+                        stopClient()
+                    }
+                } catch (e: MediatorException) {
+                    Log.i(TAG, "Connection broken: $e")
+                    stopClient()
+                }
+            }
+        }
+    }
+
     // === Internal: reader & request plumbing ===
 
     private fun readerLoop() {
         val dis = DataInputStream(ConnectionInputStream(connection))
         try {
             while (running) {
-                val start = System.currentTimeMillis()
-                while (running && dis.available() == 0) {
-                    sleep(50)
-                    if (System.currentTimeMillis() - start > 240_000) {
-                        Thread{
-                            Log.i(TAG, "Sending ping")
-                            if (!sendPing()) {
-                                Log.i(TAG, "Connection broken")
-                                stopClient()
-                            }
-                        }.start()
-                        break
-                    }
-                }
-
+                Log.i(TAG, "Reading from socket...")
                 // Response header: [status:1][reqId:2][len:4]
                 val status = dis.readUnsignedByte()
                 val reqId = dis.readShort()
@@ -628,6 +701,7 @@ class MediatorClient(
                 if (len < 0) throw MediatorException("negative payload length")
                 val payload = ByteArray(len)
                 if (len > 0) dis.readFully(payload)
+                lastActivityTime = System.currentTimeMillis()
 
                 // Push messages: status=OK, reqId=0x34
                 if (status == STATUS_OK && (reqId.toInt() and 0xFFFF) == CMD_GOT_MESSAGE) {
@@ -821,6 +895,7 @@ class MediatorClient(
     data class MessagePayload(
         val messageId: Long,
         val guid: Long,
+        val author: ByteArray,
         val data: ByteArray
     )
 

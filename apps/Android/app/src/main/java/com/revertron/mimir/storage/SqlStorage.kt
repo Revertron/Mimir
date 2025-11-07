@@ -997,7 +997,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         writableDatabase.delete("messages", "id=?", arrayOf("$messageId"))
     }
 
-    private fun generateGuid(time: Long, data: ByteArray): Long {
+    fun generateGuid(time: Long, data: ByteArray): Long {
         return (data.contentHashCode().toLong() shl 32) xor time
     }
 
@@ -1043,7 +1043,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             )
         """.trimIndent())
 
-        Log.i(TAG, "Created per-chat tables for chat $chatId")
+        // Create index on msg_id for efficient MAX() queries during sync
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_${messagesTable}_msg_id ON $messagesTable(msg_id)")
+        // Create index on guid for efficient deduplication lookups
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_${messagesTable}_guid ON $messagesTable(guid)")
+
+        Log.i(TAG, "Created per-chat tables and indexes for chat $chatId")
     }
 
     /**
@@ -1348,6 +1353,61 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             }
         }
         return id
+    }
+
+    fun checkGroupMessageExists(chatId: Long, guid: Long): Boolean {
+        val messagesTable = "messages_$chatId"
+        val cursor = readableDatabase.query(
+            messagesTable,
+            arrayOf("id"),
+            "guid = ?",
+            arrayOf(guid.toString()),
+            null, null, null,
+            "1"
+        )
+        val exists = cursor.count > 0
+        cursor.close()
+        return exists
+    }
+
+    fun updateGroupMessageServerId(chatId: Long, guid: Long, serverMsgId: Long): Boolean {
+        val messagesTable = "messages_$chatId"
+        val values = ContentValues().apply {
+            put("msg_id", serverMsgId)
+        }
+        val updated = writableDatabase.update(
+            messagesTable,
+            values,
+            "guid = ? AND msg_id IS NULL",
+            arrayOf(guid.toString())
+        )
+        return updated > 0
+    }
+
+    /**
+     * Gets the maximum server message ID for a chat.
+     * Returns 0 if no messages with server IDs exist.
+     * Uses index on msg_id for efficient querying.
+     */
+    fun getMaxServerMessageId(chatId: Long): Long {
+        val messagesTable = "messages_$chatId"
+
+        return try {
+            val cursor = readableDatabase.rawQuery(
+                "SELECT MAX(msg_id) FROM $messagesTable WHERE msg_id IS NOT NULL",
+                null
+            )
+            val maxId = if (cursor.moveToNext() && !cursor.isNull(0)) {
+                cursor.getLong(0)
+            } else {
+                0L
+            }
+            cursor.close()
+            maxId
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting max server message ID for chat $chatId", e)
+            0L
+        }
     }
 
     /**

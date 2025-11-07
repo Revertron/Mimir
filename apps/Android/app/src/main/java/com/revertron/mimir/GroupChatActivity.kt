@@ -291,8 +291,8 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     private fun sendGroupMessage(text: String) {
         Thread {
             try {
-                val guid = System.currentTimeMillis()
                 val sendTime = System.currentTimeMillis()
+                val guid = getStorage().generateGuid(sendTime, text.toByteArray())
 
                 val chatInfo = getStorage().getGroupChat(groupChat.chatId)
                 if (chatInfo == null) {

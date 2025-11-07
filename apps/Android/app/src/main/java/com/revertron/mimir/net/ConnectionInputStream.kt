@@ -3,10 +3,7 @@ package com.revertron.mimir.net
 import com.revertron.mimir.yggmobile.Connection
 import java.io.InputStream
 
-class ConnectionInputStream(
-    private val conn: Connection,
-    bufferSize: Int = 4096
-) : InputStream() {
+class ConnectionInputStream(private val conn: Connection, bufferSize: Int = 4096) : InputStream() {
 
     private val buf = ByteArray(bufferSize)
     private var pos = 0
