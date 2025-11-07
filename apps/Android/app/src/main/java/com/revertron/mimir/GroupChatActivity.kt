@@ -25,9 +25,6 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.net.Message
-import com.revertron.mimir.net.writeMessage
-import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.GroupChat
 import com.revertron.mimir.ui.MessageAdapter
@@ -36,8 +33,6 @@ import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
 
 /**
  * Group chat activity using ConnectionService for server-mediated group messaging.
@@ -61,7 +56,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         const val EXTRA_CHAT_ID = "chat_id"
         const val EXTRA_CHAT_NAME = "chat_name"
         const val EXTRA_CHAT_DESCRIPTION = "chat_description"
-        const val EXTRA_MEMBER_COUNT = "member_count"
         const val EXTRA_IS_OWNER = "is_owner"
         const val EXTRA_MEDIATOR_ADDRESS = "mediator_address"
 
@@ -153,9 +147,10 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val chatId = intent.getLongExtra(EXTRA_CHAT_ID, 0)
         val chatName = intent.getStringExtra(EXTRA_CHAT_NAME)
         val chatDescription = intent.getStringExtra(EXTRA_CHAT_DESCRIPTION) ?: ""
-        val memberCount = intent.getIntExtra(EXTRA_MEMBER_COUNT, 0)
         val isOwner = intent.getBooleanExtra(EXTRA_IS_OWNER, false)
         mediatorAddress = intent.getByteArrayExtra(EXTRA_MEDIATOR_ADDRESS)
+
+        val memberCount = getStorage().getGroupChatMembersCount(chatId)
 
         if (chatId == 0L || chatName == null || mediatorAddress == null) {
             Log.e(TAG, "Missing required extras: chat_id, chat_name, or mediator_address")
@@ -294,54 +289,22 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 val sendTime = System.currentTimeMillis()
                 val guid = getStorage().generateGuid(sendTime, text.toByteArray())
 
-                val chatInfo = getStorage().getGroupChat(groupChat.chatId)
-                if (chatInfo == null) {
-                    Log.e(TAG, "Chat ${groupChat.chatId} not found")
-                    runOnUiThread {
-                        Toast.makeText(this, getString(R.string.failed_to_send_message), Toast.LENGTH_SHORT).show()
-                    }
-                    return@Thread
-                }
-
                 // Prepare message data based on type
                 val messageType: Int
-                val messageData: ByteArray
+                val messageData: String
 
                 if (attachmentJson != null) {
-                    // Message with attachment
+                    // Message with attachment - send only JSON metadata
                     messageType = 1 // 1 = media attachment
                     attachmentJson!!.put("text", text)
-                    messageData = attachmentJson!!.toString().toByteArray()
+                    messageData = attachmentJson!!.toString()
                 } else {
                     // Plain text message
                     messageType = 0 // 0 = text message
-                    messageData = text.toByteArray()
+                    messageData = text
                 }
 
-                // Serialize message for wire transmission using writeMessage()
-                // This ensures compatibility with 1-to-1 message format for the network
-                val baos = ByteArrayOutputStream()
-                val dos = DataOutputStream(baos)
-
-                val message = Message(
-                    guid = guid,
-                    replyTo = replyTo,
-                    sendTime = sendTime,
-                    editTime = 0,
-                    type = messageType,
-                    data = messageData
-                )
-
-                // Use the standard writeMessage function to serialize for sending
-                // For attachments, pass the cacheDir so writeMessage can find the attachment file
-                val filePath = if (attachmentJson != null) cacheDir.absolutePath else ""
-                writeMessage(dos, message, filePath)
-
-                // Get the serialized message bytes for wire transmission
-                val encryptedData = GroupChatCrypto.encryptMessage(baos.toByteArray(), chatInfo.sharedKey)
-
                 // Store message locally with pending status (msgId = null until confirmed)
-                // Store only the message content (not the serialized wire format) so getText() works
                 val localId = getStorage().addGroupMessage(
                     chatId = groupChat.chatId,
                     serverMsgId = null, // Will be updated when confirmed
@@ -350,25 +313,31 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                     timestamp = sendTime,
                     type = messageType,
                     system = false,
-                    data = messageData // Store message content only (text or attachment JSON)
+                    data = messageData.toByteArray()
                 )
 
                 Log.i(TAG, "Stored message locally with ID: $localId")
 
-                // Send encrypted message via ConnectionService
+                // Send message parameters to ConnectionService
+                // ConnectionService will handle serialization, encryption, and transmission
                 val intent = Intent(this, ConnectionService::class.java)
                 intent.putExtra("command", "mediator_send")
                 intent.putExtra("chat_id", groupChat.chatId)
                 intent.putExtra("guid", guid)
-                intent.putExtra("message", encryptedData)
+                intent.putExtra("reply_to", replyTo)
+                intent.putExtra("send_time", sendTime)
+                intent.putExtra("type", messageType)
+                intent.putExtra("message", messageData)  // Just the JSON string or text
                 startService(intent)
 
-                Log.i(TAG, "Sent encrypted message to ConnectionService for chat ${groupChat.chatId}")
+                Log.i(TAG, "Sent message request to ConnectionService for chat ${groupChat.chatId}")
 
-                // Clean up attachment if sent successfully
+                // Clean up attachment UI
                 if (attachmentJson != null) {
-                    attachmentPanel.visibility = View.GONE
-                    attachmentPreview.setImageDrawable(null)
+                    runOnUiThread {
+                        attachmentPanel.visibility = View.GONE
+                        attachmentPreview.setImageDrawable(null)
+                    }
                     attachmentJson = null
                 }
 

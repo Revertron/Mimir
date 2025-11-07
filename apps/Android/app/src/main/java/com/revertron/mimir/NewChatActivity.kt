@@ -83,7 +83,6 @@ class NewChatActivity : BaseActivity() {
                     chatIntent.putExtra(GroupChatActivity.EXTRA_CHAT_ID, chatId)
                     chatIntent.putExtra(GroupChatActivity.EXTRA_CHAT_NAME, name)
                     chatIntent.putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, description)
-                    chatIntent.putExtra(GroupChatActivity.EXTRA_MEMBER_COUNT, 1)
                     chatIntent.putExtra(GroupChatActivity.EXTRA_IS_OWNER, true)
                     chatIntent.putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, mediatorAddress)
                     startActivity(chatIntent, animFromRight.toBundle())

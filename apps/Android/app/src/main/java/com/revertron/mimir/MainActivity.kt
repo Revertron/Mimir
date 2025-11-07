@@ -171,7 +171,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                     intent.putExtra(GroupChatActivity.EXTRA_CHAT_ID, item.chatId)
                     intent.putExtra(GroupChatActivity.EXTRA_CHAT_NAME, item.name)
                     intent.putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, item.description)
-                    intent.putExtra(GroupChatActivity.EXTRA_MEMBER_COUNT, item.memberCount)
                     intent.putExtra(GroupChatActivity.EXTRA_IS_OWNER, item.isOwner)
                     intent.putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, item.mediatorAddress)
                     startActivity(intent, animFromRight.toBundle())

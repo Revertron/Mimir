@@ -226,7 +226,6 @@ class GroupInviteActivity : BaseActivity() {
                         putExtra(GroupChatActivity.EXTRA_CHAT_ID, chatId)
                         putExtra(GroupChatActivity.EXTRA_CHAT_NAME, chatName)
                         putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, chatDescription ?: "")
-                        putExtra(GroupChatActivity.EXTRA_MEMBER_COUNT, 0) // Unknown at this point
                         putExtra(GroupChatActivity.EXTRA_IS_OWNER, false) // Not owner when accepting invite
                         putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, Hex.toHexString(mediatorPubkey))
                     }

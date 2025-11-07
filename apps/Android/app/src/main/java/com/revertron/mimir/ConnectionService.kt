@@ -255,10 +255,13 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             "mediator_send" -> {
                 val chatId = intent.getLongExtra("chat_id", 0)
                 val guid = intent.getLongExtra("guid", System.currentTimeMillis())
-                val message = intent.getByteArrayExtra("message")
-                if (chatId != null && message != null) {
+                val replyTo = intent.getLongExtra("reply_to", 0)
+                val sendTime = intent.getLongExtra("send_time", System.currentTimeMillis())
+                val type = intent.getIntExtra("type", 0)
+                val message = intent.getStringExtra("message")
+                if (chatId != 0L && message != null) {
                     Thread {
-                        sendGroupChatMessage(chatId, storage, guid, message)
+                        sendGroupChatMessage(chatId, storage, guid, replyTo, sendTime, type, message)
                     }.start()
                 }
             }
@@ -357,7 +360,15 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         }
     }
 
-    private fun sendGroupChatMessage(chatId: Long, storage: SqlStorage, guid: Long, message: ByteArray) {
+    private fun sendGroupChatMessage(
+        chatId: Long,
+        storage: SqlStorage,
+        guid: Long,
+        replyTo: Long,
+        sendTime: Long,
+        type: Int,
+        messageData: String
+    ) {
         try {
             val accountInfo = storage.getAccountInfo(1, 0L)
             if (accountInfo == null) {
@@ -365,13 +376,44 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 broadcastMediatorError("send", "No account found")
                 return
             }
+
+            // Get chat info for encryption
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                broadcastMediatorError("send", "Chat not found")
+                return
+            }
+
+            // Serialize message for wire transmission
+            val baos = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(baos)
+
+            val message = com.revertron.mimir.net.Message(
+                guid = guid,
+                replyTo = replyTo,
+                sendTime = sendTime,
+                editTime = 0,
+                type = type,
+                data = messageData.toByteArray()
+            )
+
+            // For attachments, writeMessage() needs the file path to read the image
+            val filePath = if (type == 1) File(filesDir, "files").absolutePath else ""
+            com.revertron.mimir.net.writeMessage(dos, message, filePath)
+
+            // Encrypt the serialized message
+            val encryptedData = GroupChatCrypto.encryptMessage(baos.toByteArray(), chatInfo.sharedKey)
+
+            // Send to mediator
             val keyPair = accountInfo.keyPair
             val client = mediatorManager!!.getOrCreateClient(
                 MediatorManager.getDefaultMediatorPubkey(),
                 keyPair
             )
-            val messageId = client.sendMessage(chatId, guid, message)
+            val messageId = client.sendMessage(chatId, guid, encryptedData)
             Log.i(TAG, "Message sent with ID: $messageId")
+
             // Update server message id for later sync
             storage.updateGroupMessageServerId(chatId, guid, messageId)
 
@@ -483,26 +525,35 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 Log.i(TAG, "Processing media attachment for chat $chatId")
 
                 try {
+                    // Parse wire format: [jsonSize(u32)][JSON][imageBytes]
+                    var offset = 0
+
+                    // Read JSON length (first 4 bytes, big-endian)
+                    val jsonSize = ((message.data[offset].toInt() and 0xFF) shl 24) or
+                            ((message.data[offset + 1].toInt() and 0xFF) shl 16) or
+                            ((message.data[offset + 2].toInt() and 0xFF) shl 8) or
+                            (message.data[offset + 3].toInt() and 0xFF)
+                    offset += 4
+
+                    // Extract original JSON metadata
+                    val originalJson = JSONObject(String(message.data, offset, jsonSize, Charsets.UTF_8))
+                    offset += jsonSize
+
+                    // Extract image bytes
+                    val imageBytes = message.data.copyOfRange(offset, message.data.size)
+
+                    // Generate new filename and save ONLY image bytes
                     val fileName = randomString(16)
-                    val ext = getImageExtensionOrNull(message.data)
+                    val ext = getImageExtensionOrNull(imageBytes)
                     val fullName = "$fileName.$ext"
 
-                    // Extract image file from remaining bytes after JSON
-                    try {
-                        saveFileForMessage(this@ConnectionService, fullName, message.data)
-                        Log.i(TAG, "Saved attachment file: $fullName (${message.data.size} bytes)")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error saving attachment file: ${e.message}", e)
-                    }
-                    // Reconstruct meta
-                    val json = JSONObject().apply {
-                        put("guid", message.guid)
-                        put("replyTo", message.replyTo)
-                        put("sendTime", message.sendTime)
-                        put("editTime", message.editTime)
-                        put("type", message.type)
-                    }
-                    m = json.toString().toByteArray()
+                    saveFileForMessage(this@ConnectionService, fullName, imageBytes)
+                    Log.i(TAG, "Saved attachment file: $fullName (${imageBytes.size} bytes)")
+
+                    // Update JSON with new filename, keep all other fields (text, size, hash)
+                    originalJson.put("name", fullName)
+                    m = originalJson.toString().toByteArray()
+
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing attachment: ${e.message}", e)
                 }
