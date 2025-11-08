@@ -360,8 +360,12 @@ fun Uri.resizeAndCompress(context: Context, target: ImageSize, quality: Int = 90
 fun loadRoundedAvatar(context: Context, fileName: String?, size: Int = 32, corners: Int = 6): RoundedBitmapDrawable? {
     if (fileName == null || fileName.isEmpty()) return null
     if (fileName.isNotEmpty()) {
-        val avatarsDir = File(context.filesDir, "avatars")
-        val f = File(avatarsDir, fileName)
+        val f = if (fileName.startsWith("/data/")) {
+            File(fileName)
+        } else {
+            val avatarsDir = File(context.filesDir, "avatars")
+            File(avatarsDir, fileName)
+        }
         val resources = context.resources
         try {
             f.inputStream().use {

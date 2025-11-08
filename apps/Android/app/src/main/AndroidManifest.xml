@@ -126,6 +126,10 @@
 
         <activity android:name=".GroupChatActivity" android:exported="false" />
 
+        <activity android:name=".GroupInfoActivity" android:exported="false" android:parentActivityName=".GroupChatActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".GroupChatActivity" />
+        </activity>
+
         <activity android:name=".InviteListActivity" android:exported="false" android:parentActivityName=".MainActivity">
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
         </activity>

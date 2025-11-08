@@ -212,9 +212,19 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
 
-        // TODO: Add click listener to open group info
+        // Click listener to open group info
         avatar.setOnClickListener {
-            Toast.makeText(this, "Group info - TODO", Toast.LENGTH_SHORT).show()
+            openGroupInfo()
+        }
+
+        // Click listener on title to open group info
+        findViewById<AppCompatTextView>(R.id.title).setOnClickListener {
+            openGroupInfo()
+        }
+
+        // Click listener on subtitle to open group info
+        findViewById<AppCompatTextView>(R.id.subtitle).setOnClickListener {
+            openGroupInfo()
         }
 
         // Setup reply panel
@@ -381,11 +391,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.group_info -> {
-                // TODO: Open group info activity
-                Toast.makeText(this, "Group info - TODO", Toast.LENGTH_SHORT).show()
-                true
-            }
             R.id.add_member -> {
                 openContactSelector()
                 true
@@ -539,6 +544,19 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val uri = it.tag as Uri
         val intent = Intent(this, PictureActivity::class.java)
         intent.data = uri
+        startActivity(intent)
+    }
+
+    // Group Info
+
+    private fun openGroupInfo() {
+        val intent = Intent(this, GroupInfoActivity::class.java).apply {
+            putExtra(GroupInfoActivity.EXTRA_CHAT_ID, groupChat.chatId)
+            putExtra(GroupInfoActivity.EXTRA_CHAT_NAME, groupChat.name)
+            putExtra(GroupInfoActivity.EXTRA_CHAT_DESCRIPTION, groupChat.description)
+            putExtra(GroupInfoActivity.EXTRA_IS_OWNER, groupChat.isOwner)
+            putExtra(GroupInfoActivity.EXTRA_MEDIATOR_ADDRESS, mediatorAddress)
+        }
         startActivity(intent)
     }
 

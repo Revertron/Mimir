@@ -60,9 +60,7 @@ class NewChatActivity : BaseActivity() {
     private var avatarBytes: ByteArray? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private val pickImageLauncher = registerForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
+    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let { handleAvatarSelection(it) }
     }
 
@@ -180,27 +178,24 @@ class NewChatActivity : BaseActivity() {
 
     private fun handleAvatarSelection(uri: Uri) {
         try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
+            val bitmap = loadSquareAvatar(this.applicationContext, uri, 256)
 
             if (bitmap == null) {
                 Toast.makeText(this, R.string.error_loading_image, Toast.LENGTH_SHORT).show()
                 return
             }
 
-            // Resize and compress image
-            val resized = resizeImage(bitmap, 512, 512)
-            val compressed = compressBitmap(resized, MAX_AVATAR_SIZE)
+            val compressed = compressBitmap(bitmap, MAX_AVATAR_SIZE)
 
             if (compressed.size > MAX_AVATAR_SIZE) {
                 Toast.makeText(this, R.string.avatar_too_large, Toast.LENGTH_SHORT).show()
                 return
             }
 
-            avatarBitmap = resized
+            avatarBitmap = bitmap
             avatarBytes = compressed
-            avatarImage.setImageBitmap(resized)
+            val rounded = loadRoundedBitmap(this, compressed, 120, 8)
+            avatarImage.setImageDrawable(rounded)
             avatarImage.setPadding(0, 0, 0, 0)
 
             Log.i(TAG, "Avatar selected: ${compressed.size} bytes")
@@ -211,21 +206,6 @@ class NewChatActivity : BaseActivity() {
         }
     }
 
-    private fun resizeImage(bitmap: Bitmap, maxWidth: Int, maxHeight: Int): Bitmap {
-        val width = bitmap.width
-        val height = bitmap.height
-
-        if (width <= maxWidth && height <= maxHeight) {
-            return bitmap
-        }
-
-        val ratio = minOf(maxWidth.toFloat() / width, maxHeight.toFloat() / height)
-        val newWidth = (width * ratio).toInt()
-        val newHeight = (height * ratio).toInt()
-
-        return bitmap.scale(newWidth, newHeight)
-    }
-
     private fun compressBitmap(bitmap: Bitmap, maxSize: Int): ByteArray {
         var quality = 90
         var compressed: ByteArray
@@ -234,8 +214,8 @@ class NewChatActivity : BaseActivity() {
             val stream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
             compressed = stream.toByteArray()
-            quality -= 10
-        } while (compressed.size > maxSize && quality > 10)
+            quality -= 5
+        } while (compressed.size > maxSize && quality > 30)
 
         return compressed
     }

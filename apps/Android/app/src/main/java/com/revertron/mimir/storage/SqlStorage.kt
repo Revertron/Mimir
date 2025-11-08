@@ -1787,10 +1787,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         if (!file.exists()) return null
 
         return try {
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-            val scaled = Bitmap.createScaledBitmap(bitmap, size, size, true)
-            if (bitmap != scaled) bitmap.recycle()
-            BitmapDrawable(this.context.resources, scaled)
+            loadRoundedAvatar(context, file.absolutePath, size, corners)
         } catch (e: Exception) {
             null
         }
