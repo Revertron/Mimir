@@ -503,7 +503,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     guid,
                     author,
                     System.currentTimeMillis(), // Use current time for system messages
-                    0, // System messages are type 0 (text-like)
+                    1000, // System messages are type 1000
                     true, // Mark as system message
                     encryptedData // This is actually unencrypted system message data
                 )

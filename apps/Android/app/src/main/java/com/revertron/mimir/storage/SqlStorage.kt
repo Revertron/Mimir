@@ -79,9 +79,6 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         context.getString(R.string.audio_call_item, text)
                     }
                     else -> {
-                        if (data.isNotEmpty() && data[0] < 32) {
-                            return "Can't display message"
-                        }
                         String(data)
                     }
                 }

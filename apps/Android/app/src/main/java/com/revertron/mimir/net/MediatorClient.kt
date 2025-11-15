@@ -83,6 +83,34 @@ class MediatorClient(
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
         private const val PING_DEADLINE_MS: Long = 240_000 // Ping every 4 minutes, QUIC timeout is 5 minutes
+
+        // TLV Tag constants (purpose-based)
+        private const val TAG_PUBKEY: Byte = 0x01.toByte()
+        private const val TAG_SIGNATURE: Byte = 0x02.toByte()
+        private const val TAG_NONCE: Byte = 0x03.toByte()
+        private const val TAG_COUNTER: Byte = 0x04.toByte()
+
+        private const val TAG_CHAT_ID: Byte = 0x10.toByte()
+        private const val TAG_MESSAGE_ID: Byte = 0x11.toByte()
+        private const val TAG_MESSAGE_GUID: Byte = 0x12.toByte()
+        private const val TAG_INVITE_ID: Byte = 0x13.toByte()
+        private const val TAG_SINCE_ID: Byte = 0x14.toByte()
+        private const val TAG_USER_PUBKEY: Byte = 0x15.toByte()
+
+        private const val TAG_CHAT_NAME: Byte = 0x20.toByte()
+        private const val TAG_CHAT_DESC: Byte = 0x21.toByte()
+        private const val TAG_CHAT_AVATAR: Byte = 0x22.toByte()
+        private const val TAG_MESSAGE_BLOB: Byte = 0x23.toByte()
+        private const val TAG_MEMBER_INFO: Byte = 0x24.toByte()
+        private const val TAG_INVITE_DATA: Byte = 0x25.toByte()
+
+        private const val TAG_LIMIT: Byte = 0x30.toByte()
+        private const val TAG_COUNT: Byte = 0x31.toByte()
+        private const val TAG_TIMESTAMP: Byte = 0x32.toByte()
+        private const val TAG_PERMS: Byte = 0x33.toByte()
+        private const val TAG_ONLINE: Byte = 0x34.toByte()
+        private const val TAG_ACCEPTED: Byte = 0x35.toByte()
+        private const val TAG_LAST_UPDATE: Byte = 0x36.toByte()
     }
 
     private val rng = SecureRandom()
@@ -111,8 +139,8 @@ class MediatorClient(
      */
     override fun start() {
         try {
-            // 1) Protocol selector byte (must be 0x00)
-            connection.write(byteArrayOf(PROTO_CLIENT))
+            // 1) Connection initialization: [version:1][protoType:1]
+            connection.write(byteArrayOf(VERSION, PROTO_CLIENT))
 
             super.start()
 
@@ -156,12 +184,12 @@ class MediatorClient(
         // GET_NONCE(pubkey) -> nonce(32)
         val nonce = getNonce(pubkey) ?: return false
 
-        // AUTH(pubkey, nonce, signature)
+        // AUTH(pubkey, nonce, signature) - Build TLV payload
         val sig = Sign.sign(keyPair.private, nonce) ?: return false
         val payload = ByteArrayOutputStream().apply {
-            write(pubkey)
-            write(nonce)
-            write(sig)
+            writeTLV(TAG_PUBKEY, pubkey)
+            writeTLV(TAG_NONCE, nonce)
+            writeTLV(TAG_SIGNATURE, sig)
         }.toByteArray()
         val resp = request(CMD_AUTH, payload) ?: return false
         if (resp.status != STATUS_OK) {
@@ -221,25 +249,34 @@ class MediatorClient(
         val counterBytes = ByteArray(4)
         System.arraycopy(msg, 32, counterBytes, 0, 4)
 
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            write(pubkey)
-            write(nonce)
-            write(counterBytes) // Or the msg
-            write(sig)
-            writeString(name)
-            writeString(description)
-            writeBlob(avatarBytes)
+            writeTLV(TAG_PUBKEY, pubkey)
+            writeTLV(TAG_NONCE, nonce)
+            writeTLV(TAG_COUNTER, counterBytes)
+            writeTLV(TAG_SIGNATURE, sig)
+            writeTLVString(TAG_CHAT_NAME, name)
+            writeTLVString(TAG_CHAT_DESC, description)
+            if (avatarBytes.isNotEmpty()) {
+                writeTLV(TAG_CHAT_AVATAR, avatarBytes)
+            }
         }.toByteArray()
 
         val resp = request(CMD_CREATE_CHAT, payload)
             ?: throw MediatorException("createChat timeout")
         if (resp.status != STATUS_OK) throw resp.asException("createChat failed: " + resp.errorString())
-        return resp.payload.readLong(0)
+
+        // Parse TLV response
+        val tlvs = resp.payload.parseTLVs()
+        return tlvs.getTLVLong(TAG_CHAT_ID)
     }
 
     /** Deletes a chat. Handler reads only chat_id(u64) (verified). */
     fun deleteChat(chatId: Long): Boolean {
-        val payload = ByteArray(8).apply { putU64BE(0, chatId) }
+        // Build TLV payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+        }.toByteArray()
         val resp = request(CMD_DELETE_CHAT, payload) ?: return false
         if (resp.status != STATUS_OK) throw resp.asException("deleteChat failed")
         // server returns 1 byte 1 on success; we tolerate OK w/empty as well
@@ -248,9 +285,10 @@ class MediatorClient(
 
     fun addUser(chatId: Long, userPubKey: ByteArray) {
         require(userPubKey.size == 32) { "userPubKey must be 32 bytes" }
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            write(userPubKey)
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLV(TAG_USER_PUBKEY, userPubKey)
         }.toByteArray()
         val resp = request(CMD_ADD_USER, payload) ?: throw MediatorException("addUser timeout")
         if (resp.status != STATUS_OK) throw resp.asException("addUser failed")
@@ -258,28 +296,35 @@ class MediatorClient(
 
     fun deleteUser(chatId: Long, userPubKey: ByteArray) {
         require(userPubKey.size == 32) { "userPubKey must be 32 bytes" }
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            write(userPubKey)
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLV(TAG_USER_PUBKEY, userPubKey)
         }.toByteArray()
         val resp = request(CMD_DELETE_USER, payload) ?: throw MediatorException("deleteUser timeout")
         if (resp.status != STATUS_OK) throw resp.asException("deleteUser failed")
     }
 
     fun leaveChat(chatId: Long) {
-        val payload = ByteArray(8).apply { putU64BE(0, chatId) }
+        // Build TLV payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+        }.toByteArray()
         val resp = request(CMD_LEAVE_CHAT, payload) ?: throw MediatorException("leaveChat timeout")
         if (resp.status != STATUS_OK) throw resp.asException("leaveChat failed")
     }
 
     fun subscribe(chatId: Long): Long {
-        val payload = ByteArray(8).apply { putU64BE(0, chatId) }
+        // Build TLV payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+        }.toByteArray()
         val resp = request(CMD_SUBSCRIBE, payload) ?: throw MediatorException("subscribe timeout")
         if (resp.status != STATUS_OK) throw resp.asException("subscribe failed")
 
-        // Parse last_message_id from response payload (u64, 8 bytes)
-        if (resp.payload.size < 8) throw MediatorException("subscribe response missing last_message_id")
-        val lastMessageId = resp.payload.readLong(0)
+        // Parse TLV response: TAG_MESSAGE_ID
+        val tlvs = resp.payload.parseTLVs()
+        val lastMessageId = tlvs.getTLVLong(TAG_MESSAGE_ID)
 
         // Fetch member list and member info after successful subscription
         thread(name = "FetchMembers-$chatId") {
@@ -387,35 +432,59 @@ class MediatorClient(
     }
 
     fun getUserChats(): LongArray {
+        // Request with empty TLV payload
         val resp = request(CMD_GET_USER_CHATS, ByteArray(0)) ?: throw MediatorException("getUserChats timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getUserChats failed")
-        val cnt = resp.payload.readU32(0).toInt()
-        val out = LongArray(cnt)
-        var off = 4
-        repeat(cnt) { i ->
-            out[i] = resp.payload.readLong(off).toLong()
-            off += 8
+
+        // Parse TLV response: TAG_COUNT + repeated TAG_CHAT_ID
+        val tlvs = resp.payload.parseTLVs()
+        val count = tlvs.getTLVUInt(TAG_COUNT).toInt()
+
+        // For repeated fields, we need to parse manually
+        val chatIds = mutableListOf<Long>()
+        var offset = 0
+        while (offset < resp.payload.size) {
+            val tag = resp.payload[offset++]
+            val (length, consumed) = resp.payload.readVarint(offset)
+            offset += consumed
+
+            if (tag == TAG_CHAT_ID && length.toInt() == 8) {
+                val chatId = resp.payload.readLong(offset)
+                chatIds.add(chatId)
+            }
+            offset += length.toInt()
         }
-        return out
+
+        return chatIds.toLongArray()
     }
 
     /** Sends a message and returns server-assigned incremental message_id. */
     fun sendMessage(chatId: Long, guid: Long, blob: ByteArray): Long {
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            writeLong(guid)
-            writeBlob(blob)
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLVLong(TAG_MESSAGE_GUID, guid)
+            writeTLV(TAG_MESSAGE_BLOB, blob)
         }.toByteArray()
         val resp = request(CMD_SEND_MESSAGE, payload) ?: throw MediatorException("sendMessage timeout")
         if (resp.status != STATUS_OK) throw resp.asException("sendMessage failed")
-        return resp.payload.readLong(0).toLong()
+
+        // Parse TLV response: TAG_MESSAGE_ID
+        val tlvs = resp.payload.parseTLVs()
+        return tlvs.getTLVLong(TAG_MESSAGE_ID)
     }
 
     fun getLastMessageId(chatId: Long): Long {
-        val payload = ByteArray(8).apply { putU64BE(0, chatId) }
+        // Build TLV payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+        }.toByteArray()
         val resp = request(CMD_GET_LAST_MESSAGE_ID, payload) ?: throw MediatorException("getLastMessageId timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getLastMessageId failed")
-        return resp.payload.readLong(0)
+
+        // Parse TLV response: TAG_MESSAGE_ID
+        val tlvs = resp.payload.parseTLVs()
+        return tlvs.getTLVLong(TAG_MESSAGE_ID)
     }
 
     /**
@@ -439,39 +508,50 @@ class MediatorClient(
 
         Log.i(TAG, "Requesting messages from chat $chatId since $sinceMessageId, limit $limit")
 
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            writeLong(sinceMessageId)
-            write(byteArrayOf(
-                ((limit ushr 24) and 0xFF).toByte(),
-                ((limit ushr 16) and 0xFF).toByte(),
-                ((limit ushr 8) and 0xFF).toByte(),
-                (limit and 0xFF).toByte()
-            ))
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLVLong(TAG_SINCE_ID, sinceMessageId)
+            writeTLVUInt(TAG_LIMIT, limit.toUInt())
         }.toByteArray()
 
         val resp = request(CMD_GET_MESSAGES_SINCE, payload) ?: throw MediatorException("getMessagesSince timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getMessagesSince failed")
 
-        // Parse response: [count(u32)][[chatId(u64)][msgId(u64)][guid(u64)][author(32)][blobLen(u32)][blob]...]
-        var off = 0
-        val count = resp.payload.readU32(off).toInt(); off += 4
-
+        // Parse TLV response: TAG_COUNT + repeated messages (each message has multiple TLVs)
         val messages = mutableListOf<MessagePayload>()
-        repeat(count) {
-            val responseChatId = resp.payload.readLong(off); off += 8  // For validation
-            val msgId = resp.payload.readLong(off); off += 8
-            val guid = resp.payload.readLong(off); off += 8
-            val author = resp.payload.copyOfRange(off, off + 32); off += 32
-            val blobLen = resp.payload.readU32(off).toInt(); off += 4
-            val data = if (blobLen > 0) resp.payload.copyOfRange(off, off + blobLen) else ByteArray(0); off += blobLen
+        var offset = 0
 
-            // Validate chat ID matches
-            if (responseChatId != chatId) {
-                Log.w(TAG, "getMessagesSince: chatId mismatch (expected $chatId, got $responseChatId)")
+        // First read count
+        var count = 0
+        var msgId = 0L
+        var guid = 0L
+        var author: ByteArray? = null
+        var blob: ByteArray? = null
+
+        while (offset < resp.payload.size) {
+            val tag = resp.payload[offset++]
+            val (length, consumed) = resp.payload.readVarint(offset)
+            offset += consumed
+            val value = resp.payload.copyOfRange(offset, offset + length.toInt())
+            offset += length.toInt()
+
+            when (tag) {
+                TAG_COUNT -> count = ByteArray(4).apply { value.copyInto(this) }.readU32(0).toInt()
+                TAG_MESSAGE_ID -> msgId = value.readLong(0)
+                TAG_MESSAGE_GUID -> guid = value.readLong(0)
+                TAG_PUBKEY -> author = value
+                TAG_MESSAGE_BLOB -> {
+                    blob = value
+                    // Message complete - add to list
+                    if (author != null) {
+                        messages.add(MessagePayload(msgId, guid, author, blob ?: ByteArray(0)))
+                        // Reset for next message
+                        author = null
+                        blob = null
+                    }
+                }
             }
-
-            messages.add(MessagePayload(msgId, guid, author, data))
         }
 
         Log.i(TAG, "getMessagesSince: fetched ${messages.size} message(s) for chat $chatId since $sinceMessageId")
@@ -490,10 +570,11 @@ class MediatorClient(
         require(toPubkey.size == 32) { "toPubkey must be 32 bytes" }
         require(encryptedData.isNotEmpty()) { "encryptedData cannot be empty" }
 
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            write(toPubkey)
-            writeBlob(encryptedData)
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLV(TAG_USER_PUBKEY, toPubkey)
+            writeTLV(TAG_INVITE_DATA, encryptedData)
         }.toByteArray()
 
         val resp = request(CMD_SEND_INVITE, payload) ?: throw MediatorException("sendInvite timeout")
@@ -515,9 +596,10 @@ class MediatorClient(
     fun respondToInvite(inviteId: Long, accepted: Int) {
         require(accepted == 0 || accepted == 1) { "accepted must be 0 (reject) or 1 (accept)" }
 
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            this.writeLong(inviteId)
-            write(byteArrayOf(accepted.toByte()))
+            writeTLVLong(TAG_INVITE_ID, inviteId)
+            writeTLVByte(TAG_ACCEPTED, accepted.toByte())
         }.toByteArray()
 
         val resp = request(CMD_INVITE_RESPONSE, payload) ?: throw MediatorException("respondToInvite timeout")
@@ -558,11 +640,11 @@ class MediatorClient(
             throw MediatorException("Failed to encrypt member info", e)
         }
 
-        // Build request payload
+        // Build TLV request payload
         val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            this.writeLong(timestamp)
-            writeBlob(encryptedBlob)
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLVLong(TAG_TIMESTAMP, timestamp.toULong().toLong())
+            writeTLV(TAG_MEMBER_INFO, encryptedBlob)
         }.toByteArray()
 
         val resp = request(CMD_UPDATE_MEMBER_INFO, payload) ?: throw MediatorException("updateMemberInfo timeout")
@@ -626,26 +708,48 @@ class MediatorClient(
      * @return List of ALL members with selective info updates
      */
     fun getMembersInfo(chatId: Long, sinceTimestamp: Long = 0): List<MemberInfo> {
+        // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            this.writeLong(sinceTimestamp)
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            if (sinceTimestamp > 0) {
+                writeTLVLong(TAG_LAST_UPDATE, sinceTimestamp.toULong().toLong())
+            }
         }.toByteArray()
 
         val resp = request(CMD_GET_MEMBERS_INFO, payload) ?: throw MediatorException("getMembersInfo timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getMembersInfo failed")
 
-        // Parse response: [count(u32)][[pubkey(32)][infoLen(u32)][encryptedInfo][timestamp(u64)]...]
-        var off = 0
-        val count = resp.payload.readU32(off).toInt(); off += 4
-
+        // Parse TLV response: TAG_COUNT + repeated members (each member has TAG_USER_PUBKEY, TAG_MEMBER_INFO, TAG_TIMESTAMP)
         val members = mutableListOf<MemberInfo>()
-        repeat(count) {
-            val pubkey = resp.payload.copyOfRange(off, off + 32); off += 32
-            val infoLen = resp.payload.readU32(off).toInt(); off += 4
-            val encryptedInfo = if (infoLen > 0) resp.payload.copyOfRange(off, off + infoLen) else null; off += infoLen
-            val timestamp = resp.payload.readLong(off).toLong(); off += 8
+        var offset = 0
+        var count = 0
+        var pubkey: ByteArray? = null
+        var encryptedInfo: ByteArray? = null
+        var timestamp = 0L
 
-            members.add(MemberInfo(pubkey, encryptedInfo, timestamp))
+        while (offset < resp.payload.size) {
+            val tag = resp.payload[offset++]
+            val (length, consumed) = resp.payload.readVarint(offset)
+            offset += consumed
+            val value = resp.payload.copyOfRange(offset, offset + length.toInt())
+            offset += length.toInt()
+
+            when (tag) {
+                TAG_COUNT -> count = ByteArray(4).apply { value.copyInto(this) }.readU32(0).toInt()
+                TAG_USER_PUBKEY -> pubkey = value
+                TAG_MEMBER_INFO -> encryptedInfo = if (value.isNotEmpty()) value else null
+                TAG_TIMESTAMP -> {
+                    timestamp = value.readLong(0)
+                    // Member record complete - add to list
+                    if (pubkey != null) {
+                        members.add(MemberInfo(pubkey, encryptedInfo, timestamp))
+                        // Reset for next member
+                        pubkey = null
+                        encryptedInfo = null
+                        timestamp = 0L
+                    }
+                }
+            }
         }
 
         Log.i(TAG, "Retrieved ${members.size} member(s) info for chat $chatId")
@@ -664,22 +768,45 @@ class MediatorClient(
      * @return List of members with permissions and online status
      */
     fun getMembers(chatId: Long): List<Member> {
-        val payload = ByteArray(8).apply { putU64BE(0, chatId) }
+        // Build TLV payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+        }.toByteArray()
 
         val resp = request(CMD_GET_MEMBERS, payload) ?: throw MediatorException("getMembers timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getMembers failed")
 
-        // Parse response: [count(u32)][[pubkey(32)][perms(1)][online(1)] repeated]
-        var off = 0
-        val count = resp.payload.readU32(off).toInt(); off += 4
-
+        // Parse TLV response: TAG_COUNT + repeated members (each member has TAG_USER_PUBKEY, TAG_PERMS, TAG_ONLINE)
         val members = mutableListOf<Member>()
-        repeat(count) {
-            val pubkey = resp.payload.copyOfRange(off, off + 32); off += 32
-            val perms = resp.payload[off].toInt() and 0xFF; off += 1
-            val online = resp.payload[off].toInt() and 0xFF; off += 1
+        var offset = 0
+        var count = 0
+        var pubkey: ByteArray? = null
+        var perms = 0
+        var online = false
 
-            members.add(Member(pubkey, perms, online == 1))
+        while (offset < resp.payload.size) {
+            val tag = resp.payload[offset++]
+            val (length, consumed) = resp.payload.readVarint(offset)
+            offset += consumed
+            val value = resp.payload.copyOfRange(offset, offset + length.toInt())
+            offset += length.toInt()
+
+            when (tag) {
+                TAG_COUNT -> count = ByteArray(4).apply { value.copyInto(this) }.readU32(0).toInt()
+                TAG_USER_PUBKEY -> pubkey = value
+                TAG_PERMS -> perms = value[0].toInt() and 0xFF
+                TAG_ONLINE -> {
+                    online = value[0].toInt() == 1
+                    // Member record complete - add to list
+                    if (pubkey != null) {
+                        members.add(Member(pubkey, perms, online))
+                        // Reset for next member
+                        pubkey = null
+                        perms = 0
+                        online = false
+                    }
+                }
+            }
         }
 
         Log.i(TAG, "Retrieved ${members.size} member(s) for chat $chatId")
@@ -737,14 +864,13 @@ class MediatorClient(
 
                 // Push messages: status=OK, reqId=0x34
                 if (status == STATUS_OK && (reqId.toInt() and 0xFFFF) == CMD_GOT_MESSAGE) {
-                    // payload: [chat_id(u64)][message_id(u64)][guid(u64)][pubkey(32)][len(u32)][blob]
-                    var off = 0
-                    val chatId = payload.readLong(off); off += 8
-                    val msgId = payload.readLong(off); off += 8
-                    val guid = payload.readLong(off); off += 8
-                    val author = payload.copyOfRange(off, off + 32); off += 32
-                    val sz = payload.readU32(off).toInt(); off += 4
-                    val data = if (sz > 0) payload.copyOfRange(off, off + sz) else ByteArray(0)
+                    // Parse TLV payload: TAG_CHAT_ID, TAG_MESSAGE_ID, TAG_MESSAGE_GUID, TAG_PUBKEY, TAG_MESSAGE_BLOB
+                    val tlvs = payload.parseTLVs()
+                    val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
+                    val msgId = tlvs.getTLVLong(TAG_MESSAGE_ID)
+                    val guid = tlvs.getTLVLong(TAG_MESSAGE_GUID)
+                    val author = tlvs.getTLVBytes(TAG_PUBKEY)
+                    val data = tlvs.getTLVBytesOrNull(TAG_MESSAGE_BLOB) ?: ByteArray(0)
 
                     // Check if this is a system message (author == mediator pubkey)
                     if (author.contentEquals(mediatorPubkey)) {
@@ -760,29 +886,20 @@ class MediatorClient(
 
                 // Push invites: status=OK, reqId=0x41
                 if (status == STATUS_OK && (reqId.toInt() and 0xFFFF) == CMD_GOT_INVITE) {
-                    // payload: [inviteId(u64)][chatId(u64)][fromPubkey(32)][timestamp(u64)]
-                    //          [nameLen(u16)][name][descLen(u16)][desc][avatarLen(u32)][avatar]
-                    //          [dataLen(u32)][encryptedData]
+                    // Parse TLV payload: TAG_INVITE_ID, TAG_CHAT_ID, TAG_PUBKEY, TAG_TIMESTAMP,
+                    //                    TAG_CHAT_NAME, TAG_CHAT_DESC, TAG_CHAT_AVATAR, TAG_INVITE_DATA
                     try {
-                        var off = 0
-                        val inviteId = payload.readLong(off); off += 8
-                        val chatId = payload.readLong(off); off += 8
-                        val fromPubkey = payload.copyOfRange(off, off + 32); off += 32
-                        val timestamp = payload.readLong(off); off += 8
+                        val tlvs = payload.parseTLVs()
+                        val inviteId = tlvs.getTLVLong(TAG_INVITE_ID)
+                        val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
+                        val fromPubkey = tlvs.getTLVBytes(TAG_PUBKEY)
+                        val timestamp = tlvs.getTLVLong(TAG_TIMESTAMP)
+                        val name = tlvs.getTLVString(TAG_CHAT_NAME)
+                        val desc = tlvs[TAG_CHAT_DESC]?.toString(Charsets.UTF_8) ?: ""
+                        val avatar = tlvs.getTLVBytesOrNull(TAG_CHAT_AVATAR)
+                        val encryptedData = tlvs.getTLVBytes(TAG_INVITE_DATA)
 
-                        val nameLen = payload.readU16(off); off += 2
-                        val name = String(payload, off, nameLen, Charsets.UTF_8); off += nameLen
-
-                        val descLen = payload.readU16(off); off += 2
-                        val desc = if (descLen > 0) String(payload, off, descLen, Charsets.UTF_8) else ""; off += descLen
-
-                        val avatarLen = payload.readU32(off).toInt(); off += 4
-                        val avatar = if (avatarLen > 0) payload.copyOfRange(off, off + avatarLen) else null; off += avatarLen
-
-                        val dataLen = payload.readU32(off).toInt(); off += 4
-                        val encryptedData = payload.copyOfRange(off, off + dataLen)
-
-                        listener.onPushInvite(inviteId, chatId, fromPubkey, timestamp.toLong(), name, desc, avatar, encryptedData)
+                        listener.onPushInvite(inviteId, chatId, fromPubkey, timestamp, name, desc, avatar, encryptedData)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error parsing invite push", e)
                     }
@@ -791,11 +908,11 @@ class MediatorClient(
 
                 // Member info request: status=OK, reqId=0x51
                 if (status == STATUS_OK && (reqId.toInt() and 0xFFFF) == CMD_REQUEST_MEMBER_INFO) {
-                    // payload: [chatId(u64)][lastUpdate(u64)]
+                    // Parse TLV payload: TAG_CHAT_ID, TAG_LAST_UPDATE
                     try {
-                        var off = 0
-                        val chatId = payload.readLong(off); off += 8
-                        val lastUpdate = payload.readLong(off).toLong()
+                        val tlvs = payload.parseTLVs()
+                        val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
+                        val lastUpdate = tlvs[TAG_LAST_UPDATE]?.readLong(0) ?: 0L
 
                         Log.i(TAG, "Mediator requests member info for chat $chatId (last update: $lastUpdate)")
 
@@ -854,9 +971,8 @@ class MediatorClient(
         val box = WaitBox<Response>()
         pending[reqId] = box
 
-        // Build request frame: [ver][cmd][reqId][len][payload]
-        val header = ByteArrayOutputStream(1 + 1 + 2 + 4 + payload.size)
-        header.write(byteArrayOf(VERSION))
+        // Build request frame: [cmd][reqId][len][payload]  (version sent once at connection init)
+        val header = ByteArrayOutputStream(1 + 2 + 4 + payload.size)
         header.write(byteArrayOf(cmd.toByte()))
         header.write(reqId.toBytesBE())
         header.write(payload.size.toBytesBE())
@@ -900,16 +1016,20 @@ class MediatorClient(
     }
 
     private fun getNonce(pubkey: ByteArray): ByteArray? {
-        val resp = request(CMD_GET_NONCE, pubkey) ?: return null
+        // Build TLV request payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLV(TAG_PUBKEY, pubkey)
+        }.toByteArray()
+
+        val resp = request(CMD_GET_NONCE, payload) ?: return null
         if (resp.status != STATUS_OK) {
             Log.w(TAG, "GET_NONCE error: ${resp.errorString()}")
             return null
         }
-        if (resp.payload.size != 32) {
-            Log.w(TAG, "GET_NONCE bad size: ${resp.payload.size}")
-            return null
-        }
-        return resp.payload
+
+        // Parse TLV response
+        val tlvs = resp.payload.parseTLVs()
+        return tlvs.getTLVBytes(TAG_NONCE)
     }
 
     private fun closeQuietly() {
@@ -1126,5 +1246,164 @@ class MediatorClient(
         this[i++] = ((v shr 16) and 0xFF).toByte()
         this[i++] = ((v shr 8) and 0xFF).toByte()
         this[i]   = ((v shr 0) and 0xFF).toByte()
+    }
+
+    // TLV and Varint helpers
+
+    /**
+     * Write a variable-length unsigned integer (varint) using Protocol Buffers encoding.
+     * Uses 7 bits per byte for data, with MSB as continuation flag.
+     * Max 4 bytes for up to 268MB values.
+     */
+    private fun ByteArrayOutputStream.writeVarint(value: UInt) {
+        var v = value
+        while (v >= 0x80u) {
+            write(((v and 0x7Fu) or 0x80u).toByte().toInt())
+            v = v shr 7
+        }
+        write((v and 0x7Fu).toByte().toInt())
+    }
+
+    /**
+     * Read a variable-length unsigned integer from byte array.
+     * Returns pair of (value, bytesConsumed).
+     */
+    private fun ByteArray.readVarint(offset: Int): Pair<UInt, Int> {
+        var result = 0u
+        var shift = 0
+        var consumed = 0
+        var i = offset
+
+        for (byteIdx in 0 until 4) {
+            if (i >= size) throw IOException("Varint: unexpected end of data")
+            val b = this[i++].toInt() and 0xFF
+            consumed++
+            result = result or ((b and 0x7F).toUInt() shl shift)
+            if ((b and 0x80) == 0) {
+                return Pair(result, consumed)
+            }
+            shift += 7
+        }
+        throw IOException("Varint overflow: more than 4 bytes")
+    }
+
+    /**
+     * Write a single TLV field to the output stream.
+     */
+    private fun ByteArrayOutputStream.writeTLV(tag: Byte, value: ByteArray) {
+        write(tag.toInt())
+        writeVarint(value.size.toUInt())
+        if (value.isNotEmpty()) write(value)
+    }
+
+    /**
+     * Write a TLV field with a long value (8 bytes big-endian).
+     */
+    private fun ByteArrayOutputStream.writeTLVLong(tag: Byte, value: Long) {
+        val bytes = ByteArray(8)
+        bytes.putU64BE(0, value)
+        writeTLV(tag, bytes)
+    }
+
+    /**
+     * Write a TLV field with a string value (UTF-8).
+     */
+    private fun ByteArrayOutputStream.writeTLVString(tag: Byte, value: String) {
+        writeTLV(tag, value.toByteArray(Charsets.UTF_8))
+    }
+
+    /**
+     * Write a TLV field with a UInt value (4 bytes big-endian).
+     */
+    private fun ByteArrayOutputStream.writeTLVUInt(tag: Byte, value: UInt) {
+        val bytes = ByteArray(4)
+        bytes.putU32BE(0, value)
+        writeTLV(tag, bytes)
+    }
+
+    /**
+     * Write a TLV field with a single byte value.
+     */
+    private fun ByteArrayOutputStream.writeTLVByte(tag: Byte, value: Byte) {
+        writeTLV(tag, byteArrayOf(value))
+    }
+
+    /**
+     * Parse all TLVs from a byte array into a map.
+     * Returns map of tag -> value.
+     */
+    private fun ByteArray.parseTLVs(): Map<Byte, ByteArray> {
+        val result = mutableMapOf<Byte, ByteArray>()
+        var offset = 0
+
+        while (offset < size) {
+            // Read tag
+            if (offset >= size) break
+            val tag = this[offset++]
+
+            // Read length (varint)
+            val (length, consumed) = readVarint(offset)
+            offset += consumed
+
+            // Read value
+            if (offset + length.toInt() > size) {
+                throw IOException("TLV tag 0x${tag.toString(16)} length $length exceeds payload bounds")
+            }
+            val value = copyOfRange(offset, offset + length.toInt())
+            offset += length.toInt()
+
+            // Store in map
+            result[tag] = value
+        }
+
+        return result
+    }
+
+    /**
+     * Get a required TLV value as ByteArray.
+     */
+    private fun Map<Byte, ByteArray>.getTLVBytes(tag: Byte): ByteArray {
+        return this[tag] ?: throw IOException("Missing required TLV tag 0x${tag.toString(16)}")
+    }
+
+    /**
+     * Get an optional TLV value as ByteArray, or null if missing.
+     */
+    private fun Map<Byte, ByteArray>.getTLVBytesOrNull(tag: Byte): ByteArray? {
+        return this[tag]
+    }
+
+    /**
+     * Get a TLV value as Long (8 bytes big-endian).
+     */
+    private fun Map<Byte, ByteArray>.getTLVLong(tag: Byte): Long {
+        val bytes = getTLVBytes(tag)
+        if (bytes.size != 8) throw IOException("TLV tag 0x${tag.toString(16)}: expected 8 bytes, got ${bytes.size}")
+        return bytes.readLong(0)
+    }
+
+    /**
+     * Get a TLV value as UInt (4 bytes big-endian).
+     */
+    private fun Map<Byte, ByteArray>.getTLVUInt(tag: Byte): UInt {
+        val bytes = getTLVBytes(tag)
+        if (bytes.size != 4) throw IOException("TLV tag 0x${tag.toString(16)}: expected 4 bytes, got ${bytes.size}")
+        return bytes.readU32(0)
+    }
+
+    /**
+     * Get a TLV value as String (UTF-8).
+     */
+    private fun Map<Byte, ByteArray>.getTLVString(tag: Byte): String {
+        return getTLVBytes(tag).toString(Charsets.UTF_8)
+    }
+
+    /**
+     * Get a TLV value as single byte.
+     */
+    private fun Map<Byte, ByteArray>.getTLVByte(tag: Byte): Byte {
+        val bytes = getTLVBytes(tag)
+        if (bytes.size != 1) throw IOException("TLV tag 0x${tag.toString(16)}: expected 1 byte, got ${bytes.size}")
+        return bytes[0]
     }
 }

@@ -93,8 +93,7 @@ class MessageAdapter(
                     holder.name.visibility = View.VISIBLE
                     holder.avatar?.setImageDrawable(user.second)
                 } else {
-                    holder.name.text = "System"
-                    holder.name.visibility = View.VISIBLE
+                    holder.name.visibility = View.GONE
                     holder.avatar?.visibility = View.GONE
                 }
             } else {
@@ -140,6 +139,11 @@ class MessageAdapter(
                 holder.message.setCompoundDrawables(icon, null, null ,null)
                 holder.message.compoundDrawablePadding = holder.itemView.context.resources.getDimensionPixelSize(R.dimen.icon_padding)
                 holder.sent.visibility = View.GONE
+                holder.picture.setImageDrawable(null)
+                holder.picturePanel.visibility = View.GONE
+            }
+            1000 -> {
+                holder.message.text = holder.name.context.getString(R.string.system_message)
                 holder.picture.setImageDrawable(null)
                 holder.picturePanel.visibility = View.GONE
             }
