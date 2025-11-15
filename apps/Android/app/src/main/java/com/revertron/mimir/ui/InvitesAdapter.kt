@@ -11,9 +11,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.loadRoundedAvatar
-import com.revertron.mimir.loadRoundedBitmap
 import com.revertron.mimir.storage.GroupInvite
-import org.bouncycastle.util.encoders.Hex
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -63,9 +61,8 @@ class InvitesAdapter(
             holder.inviteTime.text = timeFormatter.format(date)
         }
 
-        // Set from name (show first 8 chars of pubkey)
-        val fromPubkeyHex = Hex.toHexString(invite.sender)
-        holder.fromName.text = holder.itemView.context.getString(R.string.invited_by, fromPubkeyHex.take(8))
+        // Set from name
+        holder.fromName.text = holder.itemView.context.getString(R.string.invited_by, invite.senderName)
 
         // Set avatar
         if (invite.chatAvatarPath != null && invite.chatAvatarPath.isNotEmpty()) {

@@ -156,6 +156,8 @@
     <string name="connection_failed">Mediator connection failed</string>
     <string name="message_send_failed">Mediator message send failed</string>
     <string name="failed_to_leave_group">Failed to leave group on Mediator</string>
+    <string name="owner_cannot_leave_group">Owner cannot leave the group. To remove the group, you must delete it.</string>
+    <string name="confirm_leave_group">Are you sure you want to leave this group? You will need to be invited again to rejoin.</string>
     <string name="operation_failed">Mediator action failed</string>
     <string name="group_invites">Group Invites</string>
     <string name="no_invites">No pending invites</string>
@@ -177,12 +179,13 @@
     <string name="group_info">Group info</string>
     <string name="add_member">Add member</string>
     <string name="mute_group">Mute group</string>
+    <string name="unmute_group">Unmute group</string>
     <string name="leave_group">Leave group</string>
+    <string name="leave">Leave</string>
     <string name="failed_to_send_message">Failed to send message!</string>
     <string name="error_rejecting_invite">Error sending reject code: %s. Try again later.</string>
     <string name="unmute">Unmute</string>
     <string name="mute">Mute</string>
-    <string name="video_chat">Video Chat</string>
     <string name="description">Description</string>
     <string name="invite_link">Invite Link</string>
     <string name="add_members">Add Members</string>

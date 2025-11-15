@@ -442,8 +442,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 MediatorManager.getDefaultMediatorPubkey(),
                 keyPair
             )
-            client.subscribe(chatId)
-            Log.i(TAG, "Subscribed to chat $chatId")
+            val serverLastId = client.subscribe(chatId)
+            Log.i(TAG, "Subscribed to chat $chatId (server last message ID: $serverLastId)")
 
             // Register message listener for this chat
             globalMessageListener?.let {
@@ -456,10 +456,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }
             LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
 
-            // Sync missed messages after successful subscription
+            // Sync missed messages after successful subscription (pass server last ID from subscribe response)
             Thread {
                 Thread.sleep(1000)
-                syncMissedMessages(chatId, client, storage)
+                syncMissedMessages(chatId, client, storage, serverLastId)
             }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Error subscribing to chat", e)
@@ -490,6 +490,39 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         broadcast: Boolean = true
     ): Long {
         try {
+            // Check if this is a system message from the mediator (not encrypted)
+            val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
+            if (author.contentEquals(mediatorPubkey)) {
+                Log.d(TAG, "Processing system message $messageId for chat $chatId (not encrypted)")
+
+                // System messages are not encrypted, save directly to database
+                // Format: [event_code(1)][...event-specific data...]
+                val localId = storage.addGroupMessage(
+                    chatId,
+                    messageId,
+                    guid,
+                    author,
+                    System.currentTimeMillis(), // Use current time for system messages
+                    0, // System messages are type 0 (text-like)
+                    true, // Mark as system message
+                    encryptedData // This is actually unencrypted system message data
+                )
+
+                // Broadcast to activities if requested
+                if (broadcast && localId > 0) {
+                    val intent = Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
+                        putExtra("chat_id", chatId)
+                        putExtra("message_id", messageId)
+                        putExtra("local_id", localId)
+                        putExtra("sender", author)
+                    }
+                    LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(intent)
+                }
+
+                Log.i(TAG, "System message saved with local ID: $localId")
+                return localId
+            }
+
             // Get chat info to retrieve shared key
             val chatInfo = storage.getGroupChat(chatId)
             if (chatInfo == null) {
@@ -501,8 +534,33 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val decryptedData = try {
                 GroupChatCrypto.decryptMessage(encryptedData, chatInfo.sharedKey)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to decrypt message $messageId", e)
-                return 0
+                Log.e(TAG, "Failed to decrypt message $messageId (${encryptedData.size} bytes)", e)
+
+                // Save failed message to DB with error text
+                val errorMessage = "<Can't decrypt the message>".toByteArray()
+                val localId = storage.addGroupMessage(
+                    chatId,
+                    messageId,
+                    guid,
+                    author,
+                    System.currentTimeMillis(), // Use current time since we can't decrypt the real timestamp
+                    0, // Text message type
+                    false, // Not a system message
+                    errorMessage
+                )
+
+                // Broadcast to activities if requested
+                if (broadcast && localId > 0) {
+                    val intent = Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
+                        putExtra("chat_id", chatId)
+                        putExtra("message_id", messageId)
+                        putExtra("local_id", localId)
+                        putExtra("sender", author)
+                    }
+                    LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(intent)
+                }
+
+                return localId
             }
 
             // Deserialize message using the standard readMessage function
@@ -605,8 +663,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
      * Syncs missed messages from mediator for a group chat.
      * Fetches all messages since the last confirmed server message ID.
      * Uses batch API for efficiency (up to 100 messages per request).
+     *
+     * @param serverLastId Optional server last message ID (if already known from subscribe response)
      */
-    private fun syncMissedMessages(chatId: Long, client: MediatorClient, storage: SqlStorage) {
+    private fun syncMissedMessages(chatId: Long, client: MediatorClient, storage: SqlStorage, serverLastId: Long? = null) {
         try {
             Log.i(TAG, "Starting message sync for chat $chatId")
 
@@ -614,8 +674,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val localLastId = storage.getMaxServerMessageId(chatId)
             Log.d(TAG, "Local last message ID: $localLastId for chat $chatId")
 
-            // Get last message ID from server
-            val serverLastId = try {
+            // Get last message ID from server (use provided value or fetch from server)
+            val serverLastIdValue = serverLastId ?: try {
                 client.getLastMessageId(chatId)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to get last message ID from server", e)
@@ -623,14 +683,14 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 return
             }
 
-            Log.i(TAG, "Server last message ID: $serverLastId for chat $chatId")
+            Log.i(TAG, "Server last message ID: $serverLastIdValue for chat $chatId")
 
-            if (serverLastId <= localLastId) {
-                Log.i(TAG, "No missed messages for chat $chatId (local=$localLastId, server=$serverLastId)")
+            if (serverLastIdValue <= localLastId) {
+                Log.i(TAG, "No missed messages for chat $chatId (local=$localLastId, server=$serverLastIdValue)")
                 return
             }
 
-            val missedCount = serverLastId - localLastId
+            val missedCount = serverLastIdValue - localLastId
             Log.i(TAG, "Fetching $missedCount missed message(s) for chat $chatId")
 
             // Get chat info for decryption
@@ -644,7 +704,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             var currentId = localLastId
             val batchSize = 100
 
-            while (currentId < serverLastId) {
+            while (currentId < serverLastIdValue) {
                 try {
                     val messages = client.getMessagesSince(chatId, currentId, batchSize)
                     if (messages.isEmpty()) {
@@ -775,15 +835,15 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                             // Subscribe to all chats on this mediator
                             for (chat in chatsOnThisMediator) {
                                 try {
-                                    client.subscribe(chat.chatId)
-                                    Log.i(TAG, "Subscribed to chat ${chat.chatId} (${chat.name}) on mediator ${mediatorHex.take(8)}")
+                                    val serverLastId = client.subscribe(chat.chatId)
+                                    Log.i(TAG, "Subscribed to chat ${chat.chatId} (${chat.name}) on mediator ${mediatorHex.take(8)} (server last ID: $serverLastId)")
 
                                     // Register message listener for this chat
                                     globalMessageListener?.let {
                                         mediatorManager?.registerMessageListener(chat.chatId, it)
                                     }
                                     Thread {
-                                        syncMissedMessages(chat.chatId, client, storage)
+                                        syncMissedMessages(chat.chatId, client, storage, serverLastId)
                                     }.start()
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to subscribe to chat ${chat.chatId} on mediator ${mediatorHex.take(8)}", e)
@@ -924,7 +984,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     timestamp,
                     chatName,
                     chatDescription,
-                    chatAvatar,
+                    avatarPath,
                     encryptedData
                 )
             }

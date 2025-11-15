@@ -1,6 +1,7 @@
 package com.revertron.mimir.net
 
 import android.util.Log
+import com.revertron.mimir.App
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
@@ -8,6 +9,7 @@ import org.bouncycastle.util.encoders.Hex
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
+import kotlin.concurrent.thread
 import kotlin.concurrent.write
 
 /**
@@ -50,6 +52,9 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
     // Map: mediator address -> connection status
     private val connectionStatus = ConcurrentHashMap<String, ConnectionState>()
 
+    // Map: mediator address -> reconnection info
+    private val reconnectionInfo = ConcurrentHashMap<String, ReconnectionInfo>()
+
     // Map: chatId -> Set of message listeners
     private val chatListeners = ConcurrentHashMap<Long, MutableSet<ChatMessageListener>>()
 
@@ -63,6 +68,47 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
         CONNECTING,
         CONNECTED,
         FAILED
+    }
+
+    /**
+     * Tracks reconnection state for a mediator.
+     * Uses exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (max)
+     */
+    private data class ReconnectionInfo(
+        var attemptCount: Int = 0,
+        var lastAttemptTime: Long = 0,
+        var keyPair: AsymmetricCipherKeyPair? = null,
+        var reconnectThread: Thread? = null
+    ) {
+        companion object {
+            private const val BASE_DELAY_MS = 1000L // 1 second
+            private const val MAX_DELAY_MS = 60000L // 60 seconds
+            private const val MAX_ATTEMPTS = 10 // After 10 attempts, stop and wait for manual reconnect
+        }
+
+        fun getNextDelay(): Long {
+            val delay = minOf(BASE_DELAY_MS * (1 shl attemptCount), MAX_DELAY_MS)
+            return delay
+        }
+
+        fun shouldAttemptReconnect(): Boolean {
+            return attemptCount < MAX_ATTEMPTS
+        }
+
+        fun incrementAttempt() {
+            attemptCount++
+            lastAttemptTime = System.currentTimeMillis()
+        }
+
+        fun reset() {
+            attemptCount = 0
+            lastAttemptTime = 0
+        }
+
+        fun cancelReconnect() {
+            reconnectThread?.interrupt()
+            reconnectThread = null
+        }
     }
 
     /**
@@ -86,6 +132,13 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
 
         Log.i(TAG, "Creating new connection to mediator $pubkeyHex")
         connectionStatus[pubkeyHex] = ConnectionState.CONNECTING
+
+        // Store keypair for potential reconnection
+        reconnectionInfo.getOrPut(pubkeyHex) {
+            ReconnectionInfo(keyPair = keyPair)
+        }.apply {
+            this.keyPair = keyPair
+        }
 
         try {
             val connection = messenger.connect(mediatorPubkey)
@@ -208,12 +261,127 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
     }
 
     /**
+     * Schedules a reconnection attempt for a mediator with exponential backoff.
+     * Only attempts reconnection if we're online and haven't exceeded max attempts.
+     *
+     * @param mediatorPubkey The mediator public key to reconnect to
+     * @param keyPair The user's key pair for authentication
+     */
+    private fun scheduleReconnect(mediatorPubkey: ByteArray, keyPair: AsymmetricCipherKeyPair) {
+        val pubkeyHex = Hex.toHexString(mediatorPubkey)
+
+        // Check if we're online
+        if (!App.app.online) {
+            Log.i(TAG, "Not attempting reconnect to $pubkeyHex - we're offline")
+            return
+        }
+
+        // Get or create reconnection info
+        val info = reconnectionInfo.getOrPut(pubkeyHex) {
+            ReconnectionInfo(keyPair = keyPair)
+        }
+
+        // Store keypair for future reconnection attempts
+        info.keyPair = keyPair
+
+        // Check if we should attempt reconnect
+        if (!info.shouldAttemptReconnect()) {
+            Log.w(TAG, "Max reconnection attempts reached for $pubkeyHex, stopping automatic reconnection")
+            return
+        }
+
+        // Cancel any existing reconnect thread
+        info.cancelReconnect()
+
+        // Calculate delay with exponential backoff
+        val delay = info.getNextDelay()
+        Log.i(TAG, "Scheduling reconnect to $pubkeyHex in ${delay}ms (attempt ${info.attemptCount + 1})")
+
+        // Schedule reconnection attempt
+        info.reconnectThread = thread(name = "MediatorReconnect-$pubkeyHex") {
+            try {
+                Thread.sleep(delay)
+
+                // Check again if we're still online before attempting
+                if (!App.app.online) {
+                    Log.i(TAG, "Aborting reconnect to $pubkeyHex - went offline during delay")
+                    return@thread
+                }
+
+                info.incrementAttempt()
+                Log.i(TAG, "Attempting reconnect to $pubkeyHex (attempt ${info.attemptCount})")
+
+                try {
+                    // Attempt to reconnect
+                    val client = getOrCreateClient(mediatorPubkey, keyPair)
+
+                    // Reset reconnection state on success
+                    info.reset()
+                    Log.i(TAG, "Successfully reconnected to $pubkeyHex")
+
+                    // Resubscribe to all chats on this mediator
+                    resubscribeToChatsOnMediator(mediatorPubkey, client)
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Reconnection attempt ${info.attemptCount} failed for $pubkeyHex", e)
+
+                    // Schedule next attempt if we haven't exceeded max attempts
+                    if (info.shouldAttemptReconnect()) {
+                        scheduleReconnect(mediatorPubkey, keyPair)
+                    } else {
+                        Log.w(TAG, "Max reconnection attempts reached for $pubkeyHex")
+                    }
+                }
+            } catch (e: InterruptedException) {
+                Log.i(TAG, "Reconnect thread for $pubkeyHex was interrupted")
+            }
+        }
+    }
+
+    /**
+     * Resubscribes to all chats on a specific mediator after reconnection.
+     * This ensures we continue receiving messages after a disconnection.
+     */
+    private fun resubscribeToChatsOnMediator(mediatorPubkey: ByteArray, client: MediatorClient) {
+        thread(name = "ResubscribeChats") {
+            try {
+                // Get all chats on this mediator
+                val allChats = storage.getGroupChatList()
+                val chatsOnMediator = allChats.filter { it.mediatorPubkey.contentEquals(mediatorPubkey) }
+
+                Log.i(TAG, "Resubscribing to ${chatsOnMediator.size} chats after reconnection")
+
+                for (chat in chatsOnMediator) {
+                    try {
+                        val serverLastId = client.subscribe(chat.chatId)
+                        Log.i(TAG, "Resubscribed to chat ${chat.chatId} (${chat.name}), server last ID: $serverLastId")
+
+                        // Note: Message listeners are already registered from initial connection,
+                        // so we don't need to re-register them
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to resubscribe to chat ${chat.chatId}", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resubscribing to chats", e)
+            }
+        }
+    }
+
+    /**
      * Creates a global listener that routes messages to per-chat listeners.
      */
     private fun createGlobalListener(address: String) = object : MediatorClient.MediatorListener {
         override fun onConnected() {
             Log.i(TAG, "Connected to mediator: $address")
             connectionStatus[address] = ConnectionState.CONNECTED
+
+            // Reset reconnection state on successful connection
+            reconnectionInfo[address]?.let { info ->
+                info.reset()
+                info.cancelReconnect()
+                Log.i(TAG, "Reset reconnection state for $address")
+            }
         }
 
         override fun onPushMessage(chatId: Long, messageId: Long, guid: Long, author: ByteArray, data: ByteArray) {
@@ -227,6 +395,15 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
                     Log.e(TAG, "Error in chat listener for chat $chatId", e)
                 }
             }
+        }
+
+        override fun onSystemMessage(chatId: Long, messageId: Long, guid: Long, body: ByteArray) {
+            if (body.isEmpty()) {
+                Log.w(TAG, "Got empty system message!")
+                return
+            }
+            val systemMessage = body[0]
+            Log.i(TAG, "Got system message: $systemMessage")
         }
 
         override fun onPushInvite(
@@ -276,8 +453,29 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
                 clients.remove(address)
             }
 
-            // TODO: Implement reconnection logic
-            // For now, listeners need to handle reconnection themselves
+            // Trigger automatic reconnection if we're online
+            if (App.app.online) {
+                Log.i(TAG, "We're online, scheduling reconnection to $address")
+
+                // Get keypair from reconnection info or storage
+                val keyPair = reconnectionInfo[address]?.keyPair
+                if (keyPair != null) {
+                    // Convert hex address back to byte array for reconnection
+                    val mediatorPubkey = try {
+                        Hex.decode(address)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to decode mediator pubkey: $address", e)
+                        return
+                    }
+
+                    // Schedule reconnection with exponential backoff
+                    scheduleReconnect(mediatorPubkey, keyPair)
+                } else {
+                    Log.w(TAG, "No keypair found for $address, cannot schedule reconnection")
+                }
+            } else {
+                Log.i(TAG, "We're offline, not scheduling reconnection to $address")
+            }
         }
     }
 

@@ -41,7 +41,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 9
+        const val DATABASE_VERSION = 10
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
@@ -79,6 +79,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         context.getString(R.string.audio_call_item, text)
                     }
                     else -> {
+                        if (data.isNotEmpty() && data[0] < 32) {
+                            return "Can't display message"
+                        }
                         String(data)
                     }
                 }
@@ -169,6 +172,10 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         if (newVersion > oldVersion && newVersion == 9) {
             migrateGroupMessageIncomingColumn(db)
         }
+
+        if (newVersion > oldVersion && newVersion == 10) {
+            addOnlineColumnToMembersTables(db)
+        }
     }
 
     private fun migrateGroupMessageIncomingColumn(db: SQLiteDatabase) {
@@ -207,6 +214,24 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             while (info.moveToNext()) if (info.getString(1) == column) return true
             false
         }
+
+    private fun addOnlineColumnToMembersTables(db: SQLiteDatabase) {
+        db.query("group_chats", arrayOf("chat_id"), null, null, null, null, null).use { chats ->
+            while (chats.moveToNext()) {
+                val chatId = chats.getLong(0)
+                val membersTable = "members_$chatId"
+
+                if (!hasColumn(db, membersTable, "online")) {
+                    try {
+                        db.execSQL("ALTER TABLE $membersTable ADD COLUMN online BOOL DEFAULT 0")
+                        Log.i(TAG, "Added 'online' column to $membersTable")
+                    } catch (e: SQLiteException) {
+                        Log.w(TAG, "Failed to add 'online' column to $membersTable", e)
+                    }
+                }
+            }
+        }
+    }
 
     private fun migrateAccountsToBlob(db: SQLiteDatabase) {
         // Changing pubkey in "contacts" from TEXT to BLOB
@@ -795,6 +820,24 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         return name
     }
 
+    /**
+     * Gets contact name by public key.
+     * Returns empty string if contact is not found.
+     */
+    fun getContactNameByPubkey(pubkey: ByteArray): String {
+        return try {
+            val contactId = getContactId(pubkey)
+            if (contactId > 0) {
+                getContactName(contactId)
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting contact name by pubkey", e)
+            ""
+        }
+    }
+
     fun getContactAvatar(id: Long, size: Int = 32, corners: Int = 6): Drawable? {
         val db = this.readableDatabase
         val cursor = db.query("contacts", arrayOf("avatar"), "id = ?", arrayOf(id.toString()), null, null, null)
@@ -973,23 +1016,75 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     fun removeContactAndChat(id: Long) {
-        // Firstly, we delete avatar file
-        val cursor = this.readableDatabase.query("contacts", arrayOf("avatar"), "id = ?", arrayOf("$id"), null, null, null)
-        if (cursor.moveToNext()) {
-            val fileName = cursor.getString(0)
-            if (fileName != null && fileName.isNotEmpty()) {
-                val avatarsDir = File(this.context.filesDir, "avatars")
-                val file = File(avatarsDir, fileName)
-                file.delete()
-            }
-        }
-        cursor.close()
-
-        // TODO remove all files belonging to messages
         val db = writableDatabase
-        if (db.delete("contacts", "id = ?", arrayOf("$id")) > 0) {
-            db.delete("messages", "contact = ?", arrayOf("$id"))
-            db.delete("ips", "id = ?", arrayOf("$id"))
+        db.beginTransaction()
+        try {
+            // 1. Get contact avatar filename BEFORE deletion
+            val avatarPath = db.query("contacts", arrayOf("avatar"),
+                "id = ?", arrayOf("$id"), null, null, null).use {
+                if (it.moveToNext()) it.getStringOrNull(0) else null
+            }
+
+            // 2. Get message attachment filenames BEFORE deletion
+            val attachmentFiles = mutableListOf<String>()
+            db.query("messages", arrayOf("message"),
+                "contact = ? AND type = 1", arrayOf("$id"), null, null, null).use {
+                while (it.moveToNext()) {
+                    try {
+                        val data = it.getBlob(0)
+                        val json = JSONObject(String(data, Charsets.UTF_8))
+                        if (json.has("name")) {
+                            attachmentFiles.add(json.getString("name"))
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to parse message attachment: ${e.message}")
+                    }
+                }
+            }
+
+            // 3. Delete from database
+            if (db.delete("contacts", "id = ?", arrayOf("$id")) > 0) {
+                db.delete("messages", "contact = ?", arrayOf("$id"))
+                db.delete("ips", "id = ?", arrayOf("$id"))
+            }
+
+            db.setTransactionSuccessful()
+
+            // 4. Delete files (AFTER transaction succeeds)
+            deleteContactChatFiles(avatarPath, attachmentFiles)
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /**
+     * Deletes all files associated with a contact's chat.
+     * Called after successful database deletion.
+     */
+    private fun deleteContactChatFiles(
+        avatarPath: String?,
+        attachmentFiles: List<String>
+    ) {
+        try {
+            // Delete contact avatar
+            if (avatarPath != null && avatarPath.isNotEmpty()) {
+                val avatarsDir = File(context.filesDir, "avatars")
+                File(avatarsDir, avatarPath).delete()
+            }
+
+            // Delete message attachments
+            if (attachmentFiles.isNotEmpty()) {
+                val filesDir = File(context.filesDir, "files")
+                val cacheDir = File(context.cacheDir, "files")
+                for (fileName in attachmentFiles) {
+                    File(filesDir, fileName).delete()
+                    File(cacheDir, fileName).delete() // Delete cached thumbnails too
+                }
+            }
+
+            Log.i(TAG, "Deleted ${attachmentFiles.size} attachments and avatar for contact chat")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting contact chat files", e)
         }
     }
 
@@ -1022,7 +1117,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 permissions INTEGER NOT NULL DEFAULT 16,
                 joined_at INTEGER NOT NULL,
                 updated INTEGER NOT NULL DEFAULT 0,
-                banned BOOL DEFAULT 0                
+                banned BOOL DEFAULT 0,
+                online BOOL DEFAULT 0
             )
         """.trimIndent())
 
@@ -1200,6 +1296,33 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
+     * Sets the muted status for a group chat
+     */
+    fun setGroupChatMuted(chatId: Long, muted: Boolean): Boolean {
+        return try {
+            val values = ContentValues().apply {
+                put("muted", if (muted) 1 else 0)
+            }
+            val rowsUpdated = writableDatabase.update(
+                "group_chats",
+                values,
+                "chat_id = ?",
+                arrayOf(chatId.toString())
+            )
+            if (rowsUpdated > 0) {
+                Log.d(TAG, "Group chat $chatId muted status updated to $muted")
+                true
+            } else {
+                Log.w(TAG, "Failed to update muted status for group chat $chatId")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating muted status for group chat $chatId", e)
+            false
+        }
+    }
+
+    /**
      * Gets all unique mediator public keys from saved group chats.
      * Returns a set of mediator pubkeys (as ByteArray).
      */
@@ -1313,13 +1436,58 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         val db = writableDatabase
         db.beginTransaction()
         try {
-            // Drop per-chat tables
+            // 1. Get chat avatar filename BEFORE deletion
+            val chatAvatarPath = db.query("group_chats", arrayOf("avatar"),
+                "chat_id = ?", arrayOf(chatId.toString()), null, null, null).use {
+                if (it.moveToNext()) it.getStringOrNull(0) else null
+            }
+
+            // 2. Get invite avatar filenames BEFORE deletion
+            val inviteAvatarPaths = mutableListOf<String>()
+            db.query("group_invites", arrayOf("chat_avatar"),
+                "chat_id = ?", arrayOf(chatId.toString()), null, null, null).use {
+                while (it.moveToNext()) {
+                    it.getStringOrNull(0)?.let { path -> inviteAvatarPaths.add(path) }
+                }
+            }
+
+            // 3. Get message attachment filenames BEFORE dropping table
+            val messagesTable = "messages_$chatId"
+            val attachmentFiles = mutableListOf<String>()
+            try {
+                db.query(messagesTable, arrayOf("data"),
+                    "type = 1", null, null, null, null).use {
+                    while (it.moveToNext()) {
+                        try {
+                            val data = it.getBlob(0)
+                            val json = JSONObject(String(data, Charsets.UTF_8))
+                            if (json.has("name")) {
+                                attachmentFiles.add(json.getString("name"))
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to parse message attachment: ${e.message}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to retrieve attachments for chat $chatId: ${e.message}")
+            }
+
+            // 4. Drop per-chat tables
             dropGroupChatTables(db, chatId)
 
-            // Delete from main table
-            val result = db.delete("group_chats", "chat_id = ?", arrayOf(chatId.toLong().toString())) > 0
+            // 5. Delete from group_chats table
+            val result = db.delete("group_chats", "chat_id = ?",
+                arrayOf(chatId.toString())) > 0
+
+            // 6. Delete from group_invites table
+            db.delete("group_invites", "chat_id = ?", arrayOf(chatId.toString()))
 
             db.setTransactionSuccessful()
+
+            // 7. Delete files (AFTER transaction succeeds)
+            deleteGroupChatFiles(chatId, chatAvatarPath, inviteAvatarPaths, attachmentFiles)
+
             return result
         } finally {
             db.endTransaction()
@@ -1327,25 +1495,91 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
+     * Deletes all files associated with a group chat.
+     * Called after successful database deletion.
+     */
+    private fun deleteGroupChatFiles(
+        chatId: Long,
+        chatAvatarPath: String?,
+        inviteAvatarPaths: List<String>,
+        attachmentFiles: List<String>
+    ) {
+        try {
+            // Delete chat avatar
+            if (chatAvatarPath != null && chatAvatarPath.isNotEmpty()) {
+                val avatarsDir = File(context.filesDir, "avatars")
+                File(avatarsDir, chatAvatarPath).delete()
+            }
+
+            // Delete invite avatars
+            if (inviteAvatarPaths.isNotEmpty()) {
+                val avatarsDir = File(context.filesDir, "avatars")
+                for (path in inviteAvatarPaths) {
+                    if (path.isNotEmpty()) {
+                        File(avatarsDir, path).delete()
+                    }
+                }
+            }
+
+            // Delete member avatars directory
+            val memberAvatarsDir = File(context.filesDir, "avatars_$chatId")
+            if (memberAvatarsDir.exists()) {
+                memberAvatarsDir.deleteRecursively()
+            }
+
+            // Delete message attachments
+            if (attachmentFiles.isNotEmpty()) {
+                val filesDir = File(context.filesDir, "files")
+                val cacheDir = File(context.cacheDir, "files")
+                for (fileName in attachmentFiles) {
+                    File(filesDir, fileName).delete()
+                    File(cacheDir, fileName).delete() // Delete cached thumbnails too
+                }
+            }
+
+            Log.i(TAG, "Deleted ${attachmentFiles.size} attachments, " +
+                    "${inviteAvatarPaths.size} invite avatars, " +
+                    "chat avatar, and member avatars for chat $chatId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting files for chat $chatId", e)
+        }
+    }
+
+    /**
      * Adds a message to a group chat.
      */
     fun addGroupMessage(chatId: Long, serverMsgId: Long?, guid: Long, author: ByteArray, timestamp: Long, type: Int, system: Boolean, data: ByteArray): Long {
-        val membersTable = "members_$chatId"
-        val cursor = readableDatabase.query(
-            membersTable,
-            arrayOf("id"),
-            "pubkey = ?", arrayOf(author.toHexString()), null, null,
-            "id DESC",
-            "1"
-        )
-        val senderId = if (cursor.moveToNext()) {
-            cursor.getLong(0)
-        } else {
-            Log.w(TAG, "Error getting id of sender id!")
-            cursor.close()
+        // Get chat info to retrieve mediator's pubkey
+        val chatInfo = getGroupChat(chatId)
+        if (chatInfo == null) {
+            Log.e(TAG, "Chat $chatId not found, cannot save message")
             return -1
         }
-        cursor.close()
+
+        // Check if author is the mediator (system message)
+        val senderId = if (author.contentEquals(chatInfo.mediatorPubkey)) {
+            // System message from mediator - use special senderId
+            -1L
+        } else {
+            // Regular user message - lookup sender in members table
+            val membersTable = "members_$chatId"
+            val cursor = readableDatabase.query(
+                membersTable,
+                arrayOf("id"),
+                "pubkey = ?", arrayOf(author.toHexString()), null, null,
+                "id DESC",
+                "1"
+            )
+            val id = if (cursor.moveToNext()) {
+                cursor.getLong(0)
+            } else {
+                Log.w(TAG, "Error getting id of sender! Author not found in members table.")
+                cursor.close()
+                return -1
+            }
+            cursor.close()
+            id
+        }
 
         val incoming = !author.contentEquals(myPublicKey)
 
@@ -1371,9 +1605,18 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             }
             writableDatabase.update("group_chats", updateValues, "chat_id = ?", arrayOf(chatId.toLong().toString()))
 
-            // Notify listeners
-            for (listener in listeners) {
-                listener.onGroupMessageReceived(chatId, id, senderId)
+            // Don't notify or show notifications for system messages (senderId == -1)
+            if (senderId != -1L) {
+                // Notify listeners - track if any listener processed it
+                var processed = false
+                for (listener in listeners) {
+                    processed = processed or listener.onGroupMessageReceived(chatId, id, senderId)
+                }
+
+                // Only show notification if not processed by any listener (i.e., chat not open)
+                if (!processed) {
+                    notificationManager.onGroupMessageReceived(chatId, id, senderId)
+                }
             }
         }
         return id
@@ -1508,7 +1751,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
-     * Gets pending group invites.
+     * Gets pending group invites with sender names populated.
      */
     fun getPendingGroupInvites(): List<GroupInvite> {
         val list = mutableListOf<GroupInvite>()
@@ -1521,10 +1764,18 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         )
 
         while (cursor.moveToNext()) {
+            val senderPubkey = cursor.getBlob(2)
+
+            // Try to get contact name, fall back to hex string if not found
+            val senderName = getContactNameByPubkey(senderPubkey).ifEmpty {
+                Hex.toHexString(senderPubkey).take(8)
+            }
+
             list.add(GroupInvite(
                 id = cursor.getLong(0),
                 chatId = cursor.getLong(1),
-                sender = cursor.getBlob(2),
+                sender = senderPubkey,
+                senderName = senderName,
                 timestamp = cursor.getLong(3),
                 chatName = cursor.getString(4),
                 chatDescription = cursor.getStringOrNull(5),
@@ -1685,6 +1936,45 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         } catch (e: Exception) {
             Log.e(TAG, "Error getting latest member update time for chat $chatId", e)
             0L
+        }
+    }
+
+    /**
+     * Bulk updates permissions and online status for members from mediator response.
+     * Uses the Member data class from MediatorClient.
+     */
+    fun updateGroupMembersPermissionsAndOnline(chatId: Long, members: List<com.revertron.mimir.net.MediatorClient.Member>) {
+        val membersTable = "members_$chatId"
+
+        writableDatabase.beginTransaction()
+        try {
+            for (member in members) {
+                require(member.pubkey.size == 32) { "pubkey must be 32 bytes" }
+
+                val values = ContentValues().apply {
+                    put("permissions", member.permissions)
+                    put("online", if (member.online) 1 else 0)
+                }
+
+                val updated = writableDatabase.update(
+                    membersTable,
+                    values,
+                    "pubkey = ?",
+                    arrayOf(member.pubkey.toHexString())
+                )
+
+                // If member doesn't exist in local table yet, log a warning
+                if (updated == 0) {
+                    Log.w(TAG, "Member ${member.pubkey.toHexString().substring(0, 16)}... not found in $membersTable")
+                }
+            }
+
+            writableDatabase.setTransactionSuccessful()
+            Log.i(TAG, "Updated permissions and online status for ${members.size} members in chat $chatId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating members permissions and online status for chat $chatId", e)
+        } finally {
+            writableDatabase.endTransaction()
         }
     }
 
@@ -1860,6 +2150,7 @@ data class GroupInvite(
     val id: Long,
     val chatId: Long,
     val sender: ByteArray,
+    val senderName: String,
     val timestamp: Long,
     val chatName: String,
     val chatDescription: String?,
@@ -1875,7 +2166,8 @@ data class GroupMemberInfo(
     val avatarPath: String?,
     val permissions: Int,
     val joinedAt: Long,
-    val banned: Boolean
+    val banned: Boolean,
+    val online: Boolean = false
 )
 
 data class AccountInfo(val name: String, val info: String, val avatar: String, val updated: Long, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)

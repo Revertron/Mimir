@@ -42,7 +42,7 @@ class MessageAdapter(
     }
 
     // Cached nicknames and avatars
-    private val users: HashMap<Long, Pair<String, Drawable?>> = HashMap()
+    private val users: HashMap<Long, Pair<String, Drawable?>?> = HashMap()
 
     class ViewHolder(view: View, hasAvatar: Boolean): RecyclerView.ViewHolder(view) {
         val avatar: AppCompatImageView? = if (hasAvatar) view.findViewById(R.id.avatar) else null
@@ -86,11 +86,17 @@ class MessageAdapter(
             if (message.incoming) {
                 val user = users.getOrPut(message.contact, {
                     // TODO make default values
-                    storage.getMemberInfo(message.contact, chatId, 48, 6)!!
+                    storage.getMemberInfo(message.contact, chatId, 48, 6)
                 })
-                holder.name.text = user.first
-                holder.name.visibility = View.VISIBLE
-                holder.avatar?.setImageDrawable(user.second)
+                if (user != null) {
+                    holder.name.text = user.first
+                    holder.name.visibility = View.VISIBLE
+                    holder.avatar?.setImageDrawable(user.second)
+                } else {
+                    holder.name.text = "System"
+                    holder.name.visibility = View.VISIBLE
+                    holder.avatar?.visibility = View.GONE
+                }
             } else {
                 holder.name.visibility = View.GONE
             }

@@ -386,7 +386,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
          * @param timestamp Invite timestamp
          * @param chatName Group chat name
          * @param chatDescription Group chat description
-         * @param chatAvatar Group chat avatar (optional)
+         * @param chatAvatarPath Group chat avatar file path (optional)
          * @param encryptedData Encrypted invitation data
          */
         fun showGroupInviteNotification(
@@ -397,7 +397,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
             timestamp: Long,
             chatName: String,
             chatDescription: String,
-            chatAvatar: ByteArray?,
+            chatAvatarPath: String?,
             encryptedData: ByteArray
         ) {
             createGroupInvitesChannel(context)
@@ -409,7 +409,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
                 putExtra("from_pubkey", fromPubkey)
                 putExtra("chat_name", chatName)
                 putExtra("chat_description", chatDescription)
-                putExtra("chat_avatar", chatAvatar)
+                putExtra("chat_avatar_path", chatAvatarPath)
                 putExtra("encrypted_data", encryptedData)
                 putExtra("timestamp", timestamp)
             }
@@ -421,9 +421,15 @@ class NotificationHelper(private val context: Context) : StorageListener {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Display first 8 characters of inviter's public key
-            val fromPubkeyHex = Hex.toHexString(fromPubkey).take(8)
-            val contentText = context.getString(R.string.invited_by, fromPubkeyHex)
+            // Try to get contact name, fall back to hex string if not found
+            val storage = App.app.storage
+            val contactName = storage.getContactNameByPubkey(fromPubkey)
+            val senderDisplay = if (contactName.isNotEmpty()) {
+                contactName
+            } else {
+                Hex.toHexString(fromPubkey).take(8)
+            }
+            val contentText = context.getString(R.string.invited_by, senderDisplay)
 
             val notification = NotificationCompat.Builder(context, CHANNEL_GROUP_INVITES)
                 .setSmallIcon(R.drawable.ic_mannaz_notification)
@@ -875,6 +881,12 @@ class NotificationHelper(private val context: Context) : StorageListener {
         val groupChat = App.app.storage.getGroupChat(chatId)
         if (groupChat == null) {
             Log.w(TAG, "Group chat $chatId not found for notification")
+            return false
+        }
+
+        // Skip notification if group chat is muted
+        if (groupChat.muted) {
+            Log.d(TAG, "Skipping notification for muted group chat $chatId")
             return false
         }
 

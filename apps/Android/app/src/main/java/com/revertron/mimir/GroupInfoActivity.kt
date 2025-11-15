@@ -1,11 +1,13 @@
 package com.revertron.mimir
 
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.PorterDuff
 import android.os.Bundle
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
@@ -166,13 +168,14 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         }
 
         findViewById<LinearLayoutCompat>(R.id.btn_mute).setOnClickListener {
-            // TODO: Implement mute/unmute functionality
-            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+            toggleMute()
         }
 
-        findViewById<LinearLayoutCompat>(R.id.btn_video_chat).setOnClickListener {
-            // TODO: Implement video chat functionality
-            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+        // Set initial mute button state
+        updateMuteButton()
+
+        findViewById<LinearLayoutCompat>(R.id.btn_leave_chat).setOnClickListener {
+            leaveGroup()
         }
 
         findViewById<LinearLayoutCompat>(R.id.invite_link_section).setOnClickListener {
@@ -341,5 +344,72 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         super.finish()
         @Suppress("DEPRECATION")
         overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+    }
+
+    // TODO remove duplication
+    private fun leaveGroup() {
+        // Check if user is the owner - owners cannot leave, they must delete the group instead
+        if (isOwner) {
+            Toast.makeText(
+                this,
+                getString(R.string.owner_cannot_leave_group),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        // Show confirmation dialog
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.leave_group)
+            .setMessage(R.string.confirm_leave_group)
+            .setPositiveButton(R.string.leave) { _, _ ->
+                // Send intent to ConnectionService to leave the chat
+                val intent = Intent(this, ConnectionService::class.java)
+                intent.putExtra("command", "mediator_leave")
+                intent.putExtra("chat_id", chatId)
+                startService(intent)
+
+                Log.i(GroupChatActivity.Companion.TAG, "Sent leave chat request to ConnectionService for chat ${chatId}")
+
+                // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun toggleMute() {
+        val currentlyMuted = getStorage().getGroupChat(chatId)?.muted ?: false
+        val newMutedStatus = !currentlyMuted
+
+        if (getStorage().setGroupChatMuted(chatId, newMutedStatus)) {
+            val message = if (newMutedStatus) {
+                getString(R.string.mute_group)
+            } else {
+                getString(R.string.unmute_group)
+            }
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+            // Update the button UI
+            updateMuteButton()
+        } else {
+            Toast.makeText(this, "Failed to update mute status", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateMuteButton() {
+        val currentlyMuted = getStorage().getGroupChat(chatId)?.muted ?: false
+        val muteIcon = findViewById<AppCompatImageView>(R.id.mute_icon)
+        val muteText = findViewById<AppCompatTextView>(R.id.mute_text)
+
+        if (currentlyMuted) {
+            // Show unmute state
+            muteIcon.setImageResource(R.drawable.ic_volume_high)
+            muteText.text = getString(R.string.unmute)
+        } else {
+            // Show mute state
+            muteIcon.setImageResource(R.drawable.ic_volume_off)
+            muteText.text = getString(R.string.mute)
+        }
     }
 }

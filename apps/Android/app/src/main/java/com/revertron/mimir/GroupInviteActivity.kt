@@ -123,11 +123,15 @@ class GroupInviteActivity : BaseActivity() {
             descriptionView.visibility = View.GONE
         }
 
-        // Set from info
-        // TODO later try to get Contact with this pubkey and get their name
-        val fromPubkeyHex = Hex.toHexString(fromPubkey)
+        // Set from info - try to get contact name, fall back to hex string
+        val contactName = getStorage().getContactNameByPubkey(fromPubkey)
+        val senderDisplay = if (contactName.isNotEmpty()) {
+            contactName
+        } else {
+            Hex.toHexString(fromPubkey).take(16)
+        }
         findViewById<AppCompatTextView>(R.id.from_info).text =
-            getString(R.string.invited_by, fromPubkeyHex.take(16))
+            getString(R.string.invited_by, senderDisplay)
 
         // Set button listeners
         findViewById<Button>(R.id.button_accept).setOnClickListener {
@@ -227,7 +231,7 @@ class GroupInviteActivity : BaseActivity() {
                         putExtra(GroupChatActivity.EXTRA_CHAT_NAME, chatName)
                         putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, chatDescription ?: "")
                         putExtra(GroupChatActivity.EXTRA_IS_OWNER, false) // Not owner when accepting invite
-                        putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, Hex.toHexString(mediatorPubkey))
+                        putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, mediatorPubkey)
                     }
                     startActivity(chatIntent)
                     finish()

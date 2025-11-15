@@ -71,7 +71,7 @@ class NewChatActivity : BaseActivity() {
                     val chatId = intent.getLongExtra("chat_id", 0)
                     val name = intent.getStringExtra("name")
                     val description = intent.getStringExtra("description")
-                    val mediatorAddress = intent.getStringExtra("mediator_address")
+                    val mediatorAddress = intent.getByteArrayExtra("mediator_address")
 
                     showProgress(false)
                     Toast.makeText(this@NewChatActivity, R.string.chat_created_successfully, Toast.LENGTH_SHORT).show()

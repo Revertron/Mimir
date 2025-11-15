@@ -46,6 +46,16 @@ class MediatorClient(
         private const val STATUS_OK: Int = 0x00
         private const val STATUS_ERR: Int = 0x01
 
+        // System event codes (mediator-generated system messages)
+        // TODO implement reaction to these messages
+        const val SYS_USER_ADDED: Byte = 0x01
+        const val SYS_USER_ENTERED: Byte = 0x02  // reserved
+        const val SYS_USER_LEFT: Byte = 0x03
+        const val SYS_USER_BANNED: Byte = 0x04
+        const val SYS_CHAT_DELETED: Byte = 0x05
+        const val SYS_CHAT_INFO_CHANGE: Byte = 0x06
+        const val SYS_PERMS_CHANGED: Byte = 0x07
+
         // Command codes (verified in mediator.go)
         private const val CMD_GET_NONCE: Int = 0x01
         private const val CMD_AUTH: Int = 0x02
@@ -58,9 +68,8 @@ class MediatorClient(
         private const val CMD_GET_USER_CHATS: Int = 0x23
         private const val CMD_SEND_MESSAGE: Int = 0x30
         private const val CMD_DELETE_MESSAGE: Int = 0x31
-        private const val CMD_GET_MESSAGE: Int = 0x32
+        private const val CMD_GOT_MESSAGE: Int = 0x32 // appears in response.reqId for pushes
         private const val CMD_GET_LAST_MESSAGE_ID: Int = 0x33
-        private const val CMD_GOT_MESSAGE: Int = 0x34 // appears in response.reqId for pushes
         private const val CMD_SUBSCRIBE: Int = 0x35
         private const val CMD_GET_MESSAGES_SINCE: Int = 0x36
         private const val CMD_SEND_INVITE: Int = 0x40
@@ -69,6 +78,7 @@ class MediatorClient(
         private const val CMD_UPDATE_MEMBER_INFO: Int = 0x50
         private const val CMD_REQUEST_MEMBER_INFO: Int = 0x51 // mediator asks for member info
         private const val CMD_GET_MEMBERS_INFO: Int = 0x52 // client requests all members info and membership
+        private const val CMD_GET_MEMBERS: Int = 0x53 // client requests all member pubkeys with permissions and online status
 
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
@@ -78,6 +88,9 @@ class MediatorClient(
     private val rng = SecureRandom()
     private val pubkey: ByteArray =
         (keyPair.public as Ed25519PublicKeyParameters).encoded
+
+    // Mediator's public key (extracted from connection)
+    private val mediatorPubkey: ByteArray = connection.publicKey()
 
     @Volatile
     private var running = true
@@ -259,15 +272,21 @@ class MediatorClient(
         if (resp.status != STATUS_OK) throw resp.asException("leaveChat failed")
     }
 
-    fun subscribe(chatId: Long) {
+    fun subscribe(chatId: Long): Long {
         val payload = ByteArray(8).apply { putU64BE(0, chatId) }
         val resp = request(CMD_SUBSCRIBE, payload) ?: throw MediatorException("subscribe timeout")
         if (resp.status != STATUS_OK) throw resp.asException("subscribe failed")
+
+        // Parse last_message_id from response payload (u64, 8 bytes)
+        if (resp.payload.size < 8) throw MediatorException("subscribe response missing last_message_id")
+        val lastMessageId = resp.payload.readLong(0)
 
         // Fetch member list and member info after successful subscription
         thread(name = "FetchMembers-$chatId") {
             fetchAndSaveMembers(chatId)
         }
+
+        return lastMessageId
     }
 
     /**
@@ -298,14 +317,14 @@ class MediatorClient(
                 try {
                     // If member has encrypted info, decrypt and save full profile
                     if (member.encryptedInfo != null && member.encryptedInfo.isNotEmpty()) {
-                        Log.d(TAG, "Decrypting member info: pubkey=${Hex.toHexString(member.pubkey).take(8)}..., encrypted size=${member.encryptedInfo.size}")
+                        //Log.d(TAG, "Decrypting member info: pubkey=${Hex.toHexString(member.pubkey).take(8)}..., encrypted size=${member.encryptedInfo.size}")
 
                         val decryptedBlob = GroupChatCrypto.decryptMessage(
                             member.encryptedInfo,
                             chatInfo.sharedKey
                         )
 
-                        Log.d(TAG, "Decrypted blob size: ${decryptedBlob.size}, first 32 bytes: ${Hex.toHexString(decryptedBlob.copyOfRange(0, minOf(32, decryptedBlob.size)))}")
+                        //Log.d(TAG, "Decrypted blob size: ${decryptedBlob.size}, first 32 bytes: ${Hex.toHexString(decryptedBlob.copyOfRange(0, minOf(32, decryptedBlob.size)))}")
 
                         // Parse decrypted blob: [nicknameLen(u16)][nickname][infoLen(u16)][info][avatarLen(u32)][avatar?]
                         var offset = 0
@@ -392,29 +411,6 @@ class MediatorClient(
         return resp.payload.readLong(0).toLong()
     }
 
-    /**
-     * Fetch a message blob by message_id for a given chat.
-     *
-     * NOTE: Requires mediator server update to include author field in response.
-     * New response format: [msgId(u64)][guid(u64)][author(32)][blobLen(u32)][blob]
-     */
-    fun getMessage(chatId: Long, messageId: Long): MessagePayload {
-        val payload = ByteArrayOutputStream().apply {
-            writeLong(chatId)
-            writeLong(messageId)
-        }.toByteArray()
-        val resp = request(CMD_GET_MESSAGE, payload) ?: throw MediatorException("getMessage timeout")
-        if (resp.status != STATUS_OK) throw resp.asException("getMessage failed")
-
-        var off = 0
-        val id = resp.payload.readLong(off); off += 8
-        val guid = resp.payload.readLong(off); off += 8
-        val author = resp.payload.copyOfRange(off, off + 32); off += 32
-        val sz = resp.payload.readU32(off).toInt(); off += 4
-        val data = resp.payload.copyOfRange(off, off + sz)
-        return MessagePayload(id, guid, author, data)
-    }
-
     fun getLastMessageId(chatId: Long): Long {
         val payload = ByteArray(8).apply { putU64BE(0, chatId) }
         val resp = request(CMD_GET_LAST_MESSAGE_ID, payload) ?: throw MediatorException("getLastMessageId timeout")
@@ -440,6 +436,8 @@ class MediatorClient(
      */
     fun getMessagesSince(chatId: Long, sinceMessageId: Long, limit: Int = 100): List<MessagePayload> {
         require(limit in 1..500) { "limit must be between 1 and 500" }
+
+        Log.i(TAG, "Requesting messages from chat $chatId since $sinceMessageId, limit $limit")
 
         val payload = ByteArrayOutputStream().apply {
             writeLong(chatId)
@@ -654,6 +652,40 @@ class MediatorClient(
         return members
     }
 
+    /**
+     * Gets all members from the mediator with their permissions and online status.
+     * This is a lightweight call that returns pubkey, permissions, and online state.
+     *
+     * Protocol: cmdGetMembers (0x53)
+     * Request payload: [chatId(u64)]
+     * Response payload: [count(u32)][[pubkey(32)][perms(1)][online(1)] repeated]
+     *
+     * @param chatId The group chat ID
+     * @return List of members with permissions and online status
+     */
+    fun getMembers(chatId: Long): List<Member> {
+        val payload = ByteArray(8).apply { putU64BE(0, chatId) }
+
+        val resp = request(CMD_GET_MEMBERS, payload) ?: throw MediatorException("getMembers timeout")
+        if (resp.status != STATUS_OK) throw resp.asException("getMembers failed")
+
+        // Parse response: [count(u32)][[pubkey(32)][perms(1)][online(1)] repeated]
+        var off = 0
+        val count = resp.payload.readU32(off).toInt(); off += 4
+
+        val members = mutableListOf<Member>()
+        repeat(count) {
+            val pubkey = resp.payload.copyOfRange(off, off + 32); off += 32
+            val perms = resp.payload[off].toInt() and 0xFF; off += 1
+            val online = resp.payload[off].toInt() and 0xFF; off += 1
+
+            members.add(Member(pubkey, perms, online == 1))
+        }
+
+        Log.i(TAG, "Retrieved ${members.size} member(s) for chat $chatId")
+        return members
+    }
+
     fun stopClient() {
         running = false
         closeQuietly()
@@ -714,7 +746,15 @@ class MediatorClient(
                     val sz = payload.readU32(off).toInt(); off += 4
                     val data = if (sz > 0) payload.copyOfRange(off, off + sz) else ByteArray(0)
 
-                    listener.onPushMessage(chatId, msgId, guid, author, data)
+                    // Check if this is a system message (author == mediator pubkey)
+                    if (author.contentEquals(mediatorPubkey)) {
+                        // System message: unencrypted, format is [event_code(1)][...event data...]
+                        Log.d(TAG, "Received system message for chat $chatId: event_code=${if (data.isNotEmpty()) data[0].toInt() and 0xFF else 0}")
+                        listener.onSystemMessage(chatId, msgId, guid, data)
+                    } else {
+                        // Regular user message
+                        listener.onPushMessage(chatId, msgId, guid, author, data)
+                    }
                     continue
                 }
 
@@ -909,6 +949,27 @@ class MediatorClient(
         fun onPushMessage(chatId: Long, messageId: Long, guid: Long, author: ByteArray, data: ByteArray)
 
         /**
+         * Server push with system message (mediator-generated events).
+         * System messages are NOT encrypted and have the mediator's public key as author.
+         *
+         * Format: [event_code(1)][...event-specific data...]
+         *
+         * Event codes:
+         * - SYS_USER_ADDED (0x01): [target_user(32)][actor(32)][random(32)]
+         * - SYS_USER_LEFT (0x03): [user(32)][random(32)]
+         * - SYS_USER_BANNED (0x04): [target_user(32)][actor(32)][random(32)]
+         * - SYS_CHAT_DELETED (0x05): [actor(32)][random(32)]
+         * - SYS_CHAT_INFO_CHANGE (0x06): [actor(32)][random(32)]
+         * - SYS_PERMS_CHANGED (0x07): [target_user(32)][actor(32)][random(32)]
+         *
+         * @param chatId The group chat ID
+         * @param messageId Server-assigned message ID
+         * @param guid Message GUID
+         * @param body Unencrypted system message body
+         */
+        fun onSystemMessage(chatId: Long, messageId: Long, guid: Long, body: ByteArray)
+
+        /**
          * Server push with new invite.
          */
         fun onPushInvite(
@@ -956,6 +1017,17 @@ class MediatorClient(
         val pubkey: ByteArray,          // 32-byte public key
         val encryptedInfo: ByteArray?,  // Encrypted blob (null if no info set)
         val timestamp: Long             // Last update timestamp
+    )
+
+    /**
+     * Member data retrieved from mediator with permissions and online status.
+     * This is a lightweight representation used for membership lists.
+     */
+    @Suppress("ArrayInDataClass")
+    data class Member(
+        val pubkey: ByteArray,          // 32-byte public key
+        val permissions: Int,           // Permission flags (owner, admin, mod, user, read-only, banned)
+        val online: Boolean             // Online status (true if subscribed to chat)
     )
 
     class MediatorException(message: String, cause: Throwable? = null) : Exception(message, cause)

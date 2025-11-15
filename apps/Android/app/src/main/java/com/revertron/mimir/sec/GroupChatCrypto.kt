@@ -257,7 +257,6 @@ object GroupChatCrypto {
     private fun encryptChaCha20Poly1305(plaintext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
         require(key.size == 32) { "Key must be 32 bytes" }
         require(nonce.size == NONCE_SIZE) { "Nonce must be $NONCE_SIZE bytes" }
-        Log.d(TAG, "Encrypting with key: ${Hex.toHexString(key).take(16)}...")
 
         // According to RFC 8439, the Poly1305 key is derived from the first 32 bytes
         // of the ChaCha20 keystream (counter=0), BEFORE encrypting the plaintext.
@@ -296,7 +295,6 @@ object GroupChatCrypto {
         require(key.size == 32) { "Key must be 32 bytes" }
         require(nonce.size == NONCE_SIZE) { "Nonce must be $NONCE_SIZE bytes" }
         require(ciphertextWithTag.size >= MAC_SIZE) { "Ciphertext too short" }
-        Log.d(TAG, "Decrypting with key: ${Hex.toHexString(key).take(16)}...")
 
         val ciphertext = ciphertextWithTag.copyOfRange(0, ciphertextWithTag.size - MAC_SIZE)
         val receivedTag = ciphertextWithTag.copyOfRange(ciphertextWithTag.size - MAC_SIZE, ciphertextWithTag.size)

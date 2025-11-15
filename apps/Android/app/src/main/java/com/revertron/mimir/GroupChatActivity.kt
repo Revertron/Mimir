@@ -1,5 +1,6 @@
 package com.revertron.mimir
 
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -76,6 +78,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     private lateinit var publicKey: ByteArray
     private var replyTo = 0L
     private var attachmentJson: JSONObject? = null
+    private var isVisible: Boolean = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val mediatorReceiver = object : BroadcastReceiver() {
@@ -374,6 +377,25 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         // Hide owner-only options if not owner
         if (!groupChat.isOwner) {
             menu.findItem(R.id.add_member)?.isVisible = false
+        } else {
+            // Hide leave group option for owners (they must delete the group instead)
+            menu.findItem(R.id.leave_group)?.isVisible = false
+        }
+
+        return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        super.onPrepareOptionsMenu(menu)
+
+        // Update mute/unmute menu item title based on current muted status
+        val muteItem = menu.findItem(R.id.mute_group)
+        val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+
+        muteItem?.title = if (currentlyMuted) {
+            getString(R.string.unmute_group)
+        } else {
+            getString(R.string.mute_group)
         }
 
         return true
@@ -396,8 +418,22 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 true
             }
             R.id.mute_group -> {
-                // TODO: Toggle mute status
-                Toast.makeText(this, "Mute group - TODO", Toast.LENGTH_SHORT).show()
+                val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+                val newMutedStatus = !currentlyMuted
+
+                if (getStorage().setGroupChatMuted(groupChat.chatId, newMutedStatus)) {
+                    val message = if (newMutedStatus) {
+                        getString(R.string.mute_group)
+                    } else {
+                        getString(R.string.unmute_group)
+                    }
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+                    // Update the menu item title
+                    invalidateOptionsMenu()
+                } else {
+                    Toast.makeText(this, "Failed to update mute status", Toast.LENGTH_SHORT).show()
+                }
                 true
             }
             R.id.clear_history -> {
@@ -414,15 +450,34 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     }
 
     private fun leaveGroup() {
-        // Send intent to ConnectionService to leave the chat
-        val intent = Intent(this, ConnectionService::class.java)
-        intent.putExtra("command", "mediator_leave")
-        intent.putExtra("chat_id", groupChat.chatId)
-        startService(intent)
+        // Check if user is the owner - owners cannot leave, they must delete the group instead
+        if (groupChat.isOwner) {
+            Toast.makeText(
+                this,
+                getString(R.string.owner_cannot_leave_group),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
 
-        Log.i(TAG, "Sent leave chat request to ConnectionService for chat ${groupChat.chatId}")
+        // Show confirmation dialog
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.leave_group)
+            .setMessage(R.string.confirm_leave_group)
+            .setPositiveButton(R.string.leave) { _, _ ->
+                // Send intent to ConnectionService to leave the chat
+                val intent = Intent(this, ConnectionService::class.java)
+                intent.putExtra("command", "mediator_leave")
+                intent.putExtra("chat_id", groupChat.chatId)
+                startService(intent)
 
-        // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+                Log.i(TAG, "Sent leave chat request to ConnectionService for chat ${groupChat.chatId}")
+
+                // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     // StorageListener implementation
@@ -433,7 +488,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 adapter.notifyDataSetChanged()
                 recyclerView.scrollToPosition(adapter.itemCount - 1)
             }
-            return true
+            return isVisible
         }
         return false
     }
@@ -561,6 +616,16 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     }
 
     // Lifecycle
+
+    override fun onStart() {
+        super.onStart()
+        isVisible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isVisible = false
+    }
 
     override fun onDestroy() {
         super.onDestroy()
