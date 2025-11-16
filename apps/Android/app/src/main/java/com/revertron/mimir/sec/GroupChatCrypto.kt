@@ -190,7 +190,8 @@ object GroupChatCrypto {
         // We need to recover the Montgomery u-coordinate: u = (1+y) / (1-y) mod p
         // where p = 2^255 - 19
         val p = BigInteger("57896044618658097711785492504343953926634992332820282019728792003956564819949")
-        val y_bytes = ed25519Pubkey
+        val y_bytes = ed25519Pubkey.copyOf()
+        y_bytes[31] = (y_bytes[31].toInt() and 0x7F).toByte()
 
         // Decode y (little-endian, with sign bit)
         var y = BigInteger(1, y_bytes.reversedArray())

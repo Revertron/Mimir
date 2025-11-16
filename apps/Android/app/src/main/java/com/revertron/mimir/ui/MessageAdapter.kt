@@ -9,7 +9,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
-import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
@@ -77,7 +76,7 @@ class MessageAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val message = if (groupChat) {
-            storage.getMessage(chatId, messageIds[position].first)
+            storage.getGroupMessage(chatId, messageIds[position].first)
         } else {
             storage.getMessage(messageIds[position].first)
         } ?: return
@@ -156,12 +155,32 @@ class MessageAdapter(
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered
 
+        //Log.i("MessageAdapter", "Reply to = ${message.replyTo}")
         if (message.replyTo != 0L) {
-            val replyToMessage = storage.getMessage(message.replyTo, true)
+            val replyToMessage = if (groupChat) {
+                storage.getGroupMessage(chatId, message.replyTo, true)
+            } else {
+                storage.getMessage(message.replyTo, true)
+            }
             if (replyToMessage != null) {
                 holder.replyToPanel.visibility = View.VISIBLE
                 holder.replyToPanel.tag = replyToMessage.id
-                holder.replyToName.text = contactName
+
+                val unknown = holder.message.context.getString(R.string.unknown_nickname)
+
+                // For group chats, show the actual author's name
+                if (groupChat) {
+                    val authorName = if (replyToMessage.incoming) {
+                        val user = storage.getMemberInfo(replyToMessage.contact, chatId, 48, 6)
+                        user?.first ?: unknown
+                    } else {
+                        unknown
+                    }
+                    holder.replyToName.text = authorName
+                } else {
+                    holder.replyToName.text = contactName
+                }
+
                 holder.replyToText.text = replyToMessage.getText(holder.itemView.context)
             } else {
                 // Message may be deleted

@@ -870,7 +870,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
      * @return True to allow other listeners to process, false to stop propagation
      */
     override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean {
-        val message = App.app.storage.getMessage(chatId, id)
+        val message = App.app.storage.getGroupMessage(chatId, id)
 
         // Skip notification for empty messages or type 2 messages
         if (message?.data == null || message.type == 2) {

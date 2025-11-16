@@ -7,9 +7,6 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteDoneException
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteOpenHelper
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.provider.Settings
 import android.util.Log
@@ -41,7 +38,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 10
+        const val DATABASE_VERSION = 11
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
@@ -160,7 +157,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             db.execSQL("ALTER TABLE messages ADD COLUMN edit INTEGER DEFAULT 0")
         }
 
-        if (newVersion > oldVersion && newVersion == 8) {
+        if (newVersion > oldVersion && oldVersion == 7) {
             // Add group chat support
             db.execSQL(CREATE_GROUP_CHATS)
             db.execSQL(CREATE_GROUP_INVITES)
@@ -172,6 +169,10 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         if (newVersion > oldVersion && newVersion == 10) {
             addOnlineColumnToMembersTables(db)
+        }
+
+        if (newVersion > oldVersion && newVersion > 10) {
+            migrateGroupMessageReplyToColumn(db)
         }
     }
 
@@ -200,6 +201,26 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         if (myMemberId != null) {
                             db.execSQL("UPDATE $messagesTable SET incoming = 0 WHERE senderId = $myMemberId")
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun migrateGroupMessageReplyToColumn(db: SQLiteDatabase) {
+        val myPubkeyHex = db.query("accounts", arrayOf("pubkey"), null, null, null, null, "id", "1")
+            .use { if (it.moveToFirst()) Hex.toHexString(it.getBlob(0)) else null }
+
+        db.query("group_chats", arrayOf("chat_id"), null, null, null, null, null).use { chats ->
+            while (chats.moveToNext()) {
+                val chatId = chats.getLong(0)
+                val messagesTable = "messages_$chatId"
+
+                if (!hasColumn(db, messagesTable, "replyTo")) {
+                    try {
+                        db.execSQL("ALTER TABLE $messagesTable ADD COLUMN replyTo INTEGER DEFAULT 0")
+                    } catch (ignored: SQLiteException) {
+                        continue        // column already there or table missing
                     }
                 }
             }
@@ -678,34 +699,42 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
      * Gets a group message from messages_* table and converts it to Message format.
      * Used by MessageAdapter for group chats.
      */
-    fun getMessage(chatId: Long, messageId: Long): Message? {
+    fun getGroupMessage(chatId: Long, messageId: Long, byGuid: Boolean = false): Message? {
         val messagesTable = "messages_$chatId"
         var result: Message? = null
+
+        val selection = if (byGuid) {
+            "guid = ?"
+        } else {
+            "id = ?"
+        }
 
         try {
             val cursor = readableDatabase.query(
                 messagesTable,
-                arrayOf("guid", "senderId", "incoming", "timestamp", "type", "data", "delivered", "read"),
-                "id = ?",
+                arrayOf("id", "guid", "senderId", "incoming", "timestamp", "type", "data", "delivered", "read", "replyTo"),
+                selection,
                 arrayOf("$messageId"),
                 null, null, null, "1"
             )
 
             if (cursor.moveToNext()) {
-                val guid = cursor.getLong(0)
-                val senderId = cursor.getLong(1)
-                val incoming = cursor.getInt(2) != 0
-                val timestamp = cursor.getLong(3)
-                val type = cursor.getInt(4)
-                val data = cursor.getBlobOrNull(5)
-                val delivered = cursor.getInt(6) != 0
-                val read = cursor.getInt(7) != 0
+                val id = cursor.getLong(0)
+                val guid = cursor.getLong(1)
+                val senderId = cursor.getLong(2)
+                val incoming = cursor.getInt(3) != 0
+                val timestamp = cursor.getLong(4)
+                val type = cursor.getInt(5)
+                val data = cursor.getBlobOrNull(6)
+                val delivered = cursor.getInt(7) != 0
+                val read = cursor.getInt(8) != 0
+                val replyTo = cursor.getLong(9)
 
                 result = Message(
-                    id = messageId,
+                    id = id,
                     contact = senderId,
                     guid = guid,
-                    replyTo = 0L, // TODO: support replies
+                    replyTo = replyTo,
                     incoming = incoming,
                     delivered = delivered,
                     read = read,
@@ -721,6 +750,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
 
         return result
+    }
+
+    fun deleteGroupMessage(chatId: Long, messageId: Long): Boolean {
+        val messagesTable = "messages_$chatId"
+        return this.writableDatabase.delete(messagesTable, "id = ?", arrayOf(messageId.toString())) > 0
     }
 
     private fun getMessageIdByGuid(guid: Long): Long {
@@ -795,6 +829,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             val pubkeyHex = cursor.getString(0)
             Hex.decode(pubkeyHex) to cursor.getString(1)
         } else {
+            cursor.close()
             return null
         }
         cursor.close()
@@ -942,6 +977,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     fun getAccountInfo(id: Int, ifUpdatedSince: Long): AccountInfo? {
         val db = this.readableDatabase
         val columns = arrayOf("name", "info", "avatar", "privkey", "pubkey", "client", "updated")
+        Log.d(TAG, "getAccountInfo: Querying for id=$id, ifUpdatedSince=$ifUpdatedSince")
         val cursor = db.query("accounts", columns, "id = ? AND updated > ?", arrayOf(id.toString(), ifUpdatedSince.toString()), null, null, null)
         if (cursor.moveToNext()) {
             val name = cursor.getString(0)
@@ -956,11 +992,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             val pub = Ed25519PublicKeyParameters(pubkey)
             cursor.close()
             myPublicKey = pubkey
-            Log.i(TAG, "Found account $name with pubkey ${Hex.toHexString(pubkey)}")
+            Log.i(TAG, "getAccountInfo: Found account '$name' with pubkey ${Hex.toHexString(pubkey).take(8)}..., updated=$updated")
             return AccountInfo(name, info, avatar, updated, clientId, AsymmetricCipherKeyPair(pub, priv))
         }
         cursor.close()
-        Log.w(TAG, "Didn't find account info $id, or it didn't change since ${Date(ifUpdatedSince * 1000)}")
+        Log.w(TAG, "getAccountInfo: Didn't find account info $id, or it didn't change since ${Date(ifUpdatedSince * 1000)} (query: id=$id AND updated > $ifUpdatedSince)")
         return null
     }
 
@@ -1132,7 +1168,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 system BOOL DEFAULT 0,
                 data BLOB,
                 delivered BOOL DEFAULT 0,
-                read BOOL DEFAULT 0
+                read BOOL DEFAULT 0,
+                replyTo INTEGER DEFAULT 0
             )
         """.trimIndent())
 
@@ -1545,7 +1582,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     /**
      * Adds a message to a group chat.
      */
-    fun addGroupMessage(chatId: Long, serverMsgId: Long?, guid: Long, author: ByteArray, timestamp: Long, type: Int, system: Boolean, data: ByteArray): Long {
+    fun addGroupMessage(chatId: Long, serverMsgId: Long?, guid: Long, author: ByteArray, timestamp: Long, type: Int, system: Boolean, data: ByteArray, replyTo: Long = 0L): Long {
         // Get chat info to retrieve mediator's pubkey
         val chatInfo = getGroupChat(chatId)
         if (chatInfo == null) {
@@ -1592,6 +1629,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("data", data)
             put("delivered", true) // Group messages are delivered via mediator
             put("read", false)
+            put("replyTo", replyTo)
         }
 
         val id = writableDatabase.insert(messagesTable, null, values)
@@ -1684,7 +1722,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         try {
             val cursor = readableDatabase.query(
                 messagesTable,
-                arrayOf("id", "msg_id", "guid", "senderId", "timestamp", "type", "data", "delivered", "read"),
+                arrayOf("id", "msg_id", "guid", "senderId", "timestamp", "type", "data", "delivered", "read", "replyTo"),
                 null, null, null, null,
                 "id DESC",
                 limit.toString()
@@ -1700,7 +1738,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     type = cursor.getInt(5),
                     data = cursor.getBlobOrNull(6),
                     delivered = cursor.getInt(7) != 0,
-                    read = cursor.getInt(8) != 0
+                    read = cursor.getInt(8) != 0,
+                    replyTo = cursor.getLong(9)
                 ))
             }
             cursor.close()
@@ -2140,7 +2179,8 @@ data class GroupMessage(
     val type: Int,
     val data: ByteArray?,
     val delivered: Boolean,
-    val read: Boolean
+    val read: Boolean,
+    val replyTo: Long = 0L
 )
 
 data class GroupInvite(

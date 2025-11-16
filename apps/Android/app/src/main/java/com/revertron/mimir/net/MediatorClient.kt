@@ -79,6 +79,7 @@ class MediatorClient(
         private const val CMD_REQUEST_MEMBER_INFO: Int = 0x51 // mediator asks for member info
         private const val CMD_GET_MEMBERS_INFO: Int = 0x52 // client requests all members info and membership
         private const val CMD_GET_MEMBERS: Int = 0x53 // client requests all member pubkeys with permissions and online status
+        private const val CMD_GOT_MEMBER_INFO: Int = 0x54 // mediator push: member info updated
 
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
@@ -337,9 +338,10 @@ class MediatorClient(
     /**
      * Fetches ALL members for a chat from mediator and saves to local storage.
      * Uses GET_MEMBERS_INFO which returns all members in one call:
-     * - Members with updated info get full encrypted profiles
-     * - Members without updates get just pubkey with null info (infoLen=0)
-     * This provides a consistent snapshot of membership + selective info updates.
+     * - Always fetches with timestamp=0 to get fresh member info on subscription
+     * - Members with info get full encrypted profiles
+     * - Members without info get just pubkey with null profile
+     * This provides a consistent snapshot of membership + all available member info.
      */
     private fun fetchAndSaveMembers(chatId: Long) {
         try {
@@ -352,9 +354,9 @@ class MediatorClient(
                 return
             }
 
-            val lastUpdated = storage.getLatestGroupMemberUpdateTime(chatId)
-            // GET_MEMBERS_INFO now returns ALL members (timestamp filters info, not members)
-            val members = getMembersInfo(chatId, lastUpdated)
+            // Always fetch all member info when subscribing (timestamp=0)
+            // This ensures we get fresh data when entering a chat
+            val members = getMembersInfo(chatId, sinceTimestamp = 0)
             Log.i(TAG, "Received ${members.size} member(s) for chat $chatId")
 
             // Process each member
@@ -708,6 +710,8 @@ class MediatorClient(
      * @return List of ALL members with selective info updates
      */
     fun getMembersInfo(chatId: Long, sinceTimestamp: Long = 0): List<MemberInfo> {
+        Log.i(TAG, "getMembersInfo: chatId=$chatId, sinceTimestamp=$sinceTimestamp")
+
         // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
             writeTLVLong(TAG_CHAT_ID, chatId)
@@ -719,6 +723,8 @@ class MediatorClient(
         val resp = request(CMD_GET_MEMBERS_INFO, payload) ?: throw MediatorException("getMembersInfo timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getMembersInfo failed")
 
+        Log.d(TAG, "getMembersInfo response payload size: ${resp.payload.size} bytes")
+
         // Parse TLV response: TAG_COUNT + repeated members (each member has TAG_USER_PUBKEY, TAG_MEMBER_INFO, TAG_TIMESTAMP)
         val members = mutableListOf<MemberInfo>()
         var offset = 0
@@ -726,6 +732,7 @@ class MediatorClient(
         var pubkey: ByteArray? = null
         var encryptedInfo: ByteArray? = null
         var timestamp = 0L
+        var memberIndex = 0
 
         while (offset < resp.payload.size) {
             val tag = resp.payload[offset++]
@@ -735,14 +742,26 @@ class MediatorClient(
             offset += length.toInt()
 
             when (tag) {
-                TAG_COUNT -> count = ByteArray(4).apply { value.copyInto(this) }.readU32(0).toInt()
-                TAG_USER_PUBKEY -> pubkey = value
-                TAG_MEMBER_INFO -> encryptedInfo = if (value.isNotEmpty()) value else null
+                TAG_COUNT -> {
+                    count = ByteArray(4).apply { value.copyInto(this) }.readU32(0).toInt()
+                    Log.d(TAG, "  Member count: $count")
+                }
+                TAG_USER_PUBKEY -> {
+                    pubkey = value
+                    Log.d(TAG, "  Member #${memberIndex}: pubkey=${Hex.toHexString(value).take(8)}...")
+                }
+                TAG_MEMBER_INFO -> {
+                    encryptedInfo = if (value.isNotEmpty()) value else null
+                    Log.d(TAG, "    TAG_MEMBER_INFO: length=${length}, hasData=${value.isNotEmpty()}")
+                }
                 TAG_TIMESTAMP -> {
                     timestamp = value.readLong(0)
+                    Log.d(TAG, "    TAG_TIMESTAMP: $timestamp")
                     // Member record complete - add to list
                     if (pubkey != null) {
                         members.add(MemberInfo(pubkey, encryptedInfo, timestamp))
+                        Log.d(TAG, "    Added member with encryptedInfo=${encryptedInfo != null}, size=${encryptedInfo?.size ?: 0}")
+                        memberIndex++
                         // Reset for next member
                         pubkey = null
                         encryptedInfo = null
@@ -752,7 +771,7 @@ class MediatorClient(
             }
         }
 
-        Log.i(TAG, "Retrieved ${members.size} member(s) info for chat $chatId")
+        Log.i(TAG, "Retrieved ${members.size} member(s) info for chat $chatId, ${members.count { it.encryptedInfo != null }} with encrypted info")
         return members
     }
 
@@ -910,6 +929,7 @@ class MediatorClient(
                 if (status == STATUS_OK && (reqId.toInt() and 0xFFFF) == CMD_REQUEST_MEMBER_INFO) {
                     // Parse TLV payload: TAG_CHAT_ID, TAG_LAST_UPDATE
                     try {
+                        Log.d(TAG, "Member info request payload size: ${payload.size}, first bytes: ${payload.take(20).joinToString(" ") { "0x%02X".format(it) }}")
                         val tlvs = payload.parseTLVs()
                         val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
                         val lastUpdate = tlvs[TAG_LAST_UPDATE]?.readLong(0) ?: 0L
@@ -940,6 +960,28 @@ class MediatorClient(
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error handling member info request", e)
+                    }
+                    continue
+                }
+
+                // Member info push: status=OK, reqId=0x54
+                if (status == STATUS_OK && (reqId.toInt() and 0xFFFF) == CMD_GOT_MEMBER_INFO) {
+                    // Parse TLV payload: TAG_CHAT_ID, TAG_COUNT, TAG_USER_PUBKEY, TAG_MEMBER_INFO, TAG_TIMESTAMP
+                    try {
+                        Log.d(TAG, "Received member info broadcast, payload size: ${payload.size}")
+                        val tlvs = payload.parseTLVs()
+                        val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
+                        val count = tlvs.getTLVUInt(TAG_COUNT).toInt()
+                        val memberPubkey = tlvs.getTLVBytes(TAG_USER_PUBKEY)
+                        val encryptedInfo = tlvs.getTLVBytesOrNull(TAG_MEMBER_INFO)
+                        val timestamp = tlvs.getTLVLong(TAG_TIMESTAMP)
+
+                        Log.i(TAG, "Received member info for ${Hex.toHexString(memberPubkey).take(8)}... in chat $chatId, timestamp=$timestamp, hasInfo=${encryptedInfo != null}")
+
+                        // Notify listener with chatId
+                        listener.onMemberInfoUpdate(chatId, memberPubkey, encryptedInfo, timestamp)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error handling member info broadcast", e)
                     }
                     continue
                 }
@@ -1112,6 +1154,16 @@ class MediatorClient(
          * @return Member info response, or null to skip update
          */
         fun onMemberInfoRequest(chatId: Long, lastUpdate: Long): MemberInfoResponse?
+
+        /**
+         * Mediator broadcasts that a member's info has been updated.
+         *
+         * @param chatId The chat ID where this member exists
+         * @param memberPubkey The public key of the member whose info was updated
+         * @param encryptedInfo The encrypted member info blob, or null if no info
+         * @param timestamp The update timestamp
+         */
+        fun onMemberInfoUpdate(chatId: Long, memberPubkey: ByteArray, encryptedInfo: ByteArray?, timestamp: Long)
 
         /** Connection ended or failed. */
         fun onDisconnected(error: Exception)
@@ -1347,7 +1399,7 @@ class MediatorClient(
 
             // Read value
             if (offset + length.toInt() > size) {
-                throw IOException("TLV tag 0x${tag.toString(16)} length $length exceeds payload bounds")
+                throw IOException("TLV tag 0x${tag.toString(16)} length $length exceeds payload bounds (offset=$offset, size=$size, needed=${offset + length.toInt()})")
             }
             val value = copyOfRange(offset, offset + length.toInt())
             offset += length.toInt()

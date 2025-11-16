@@ -2,6 +2,7 @@ package com.revertron.mimir.net
 
 import android.util.Log
 import com.revertron.mimir.App
+import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
@@ -439,9 +440,81 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
             }
         }
 
+        override fun onMemberInfoUpdate(chatId: Long, memberPubkey: ByteArray, encryptedInfo: ByteArray?, timestamp: Long) {
+            Log.i(TAG, "Member info update for ${Hex.toHexString(memberPubkey).take(8)}... in chat $chatId, timestamp=$timestamp")
+
+            try {
+                // Get chat info to retrieve shared key
+                val chatInfo = storage.getGroupChat(chatId)
+                if (chatInfo == null) {
+                    Log.e(TAG, "Cannot update member info: chat $chatId not found")
+                    return
+                }
+
+                // If no encrypted info provided, skip update
+                if (encryptedInfo == null) {
+                    Log.d(TAG, "Member info update has no encrypted data, skipping")
+                    return
+                }
+
+                // Decrypt member info blob using chat's shared key
+                val plaintext = try {
+                    GroupChatCrypto.decryptMessage(encryptedInfo, chatInfo.sharedKey)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decrypt member info for chat $chatId", e)
+                    return
+                }
+
+                // Parse member info blob: [nicknameLen(u16)][nickname][infoLen(u16)][info][avatarLen(u32)][avatar]
+                val buffer = java.nio.ByteBuffer.wrap(plaintext)
+
+                // Read nickname
+                val nicknameLen = buffer.getShort().toInt() and 0xFFFF
+                val nicknameBytes = ByteArray(nicknameLen)
+                buffer.get(nicknameBytes)
+                val nickname = String(nicknameBytes, Charsets.UTF_8)
+
+                // Read info text
+                val infoLen = buffer.getShort().toInt() and 0xFFFF
+                val infoBytes = ByteArray(infoLen)
+                buffer.get(infoBytes)
+                val info = String(infoBytes, Charsets.UTF_8)
+
+                // Read avatar
+                val avatarLen = buffer.getInt()
+                val avatar = if (avatarLen > 0) {
+                    ByteArray(avatarLen).also { buffer.get(it) }
+                } else {
+                    null
+                }
+
+                Log.i(TAG, "Parsed member info: nickname='$nickname', infoLen=${info.length}, avatarLen=$avatarLen")
+
+                // Update storage
+                storage.updateGroupMemberInfo(chatId, memberPubkey, nickname, info, avatar)
+                Log.i(TAG, "Updated member info in storage for chat $chatId")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing member info update for chat $chatId", e)
+            }
+        }
+
         override fun onMemberInfoRequest(chatId: Long, lastUpdate: Long): MediatorClient.MemberInfoResponse? {
-            val info = infoProvider.getMyInfo(lastUpdate) ?: return null
-            val chatInfo = storage.getGroupChat(chatId) ?: return null
+            Log.i(TAG, "onMemberInfoRequest: chatId=$chatId, lastUpdate=$lastUpdate")
+            val info = infoProvider.getMyInfo(lastUpdate)
+            if (info == null) {
+                Log.w(TAG, "onMemberInfoRequest: infoProvider.getMyInfo returned null for lastUpdate=$lastUpdate")
+                return null
+            }
+            Log.d(TAG, "onMemberInfoRequest: Got info - nickname=${info.nickname}, time=${info.time}, hasAvatar=${info.avatar != null}")
+
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "onMemberInfoRequest: Chat $chatId not found in storage!")
+                return null
+            }
+
+            Log.i(TAG, "onMemberInfoRequest: Returning member info for chat $chatId")
             return MediatorClient.MemberInfoResponse(info.nickname, info.info, info.avatar, chatInfo.sharedKey, info.time)
         }
 

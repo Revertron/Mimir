@@ -17,4 +17,8 @@
         android:title="@string/leave_group"
         android:icon="@drawable/ic_delete"
         app:showAsAction="never" />
+    <item android:id="@+id/delete_group"
+        android:title="@string/delete_group"
+        android:icon="@drawable/ic_delete"
+        app:showAsAction="never" />
 </menu>

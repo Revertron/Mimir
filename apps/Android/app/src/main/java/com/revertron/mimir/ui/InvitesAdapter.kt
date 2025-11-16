@@ -53,7 +53,7 @@ class InvitesAdapter(
         }
 
         // Set timestamp
-        val date = Date(invite.timestamp)
+        val date = Date(invite.timestamp * 1000L)
         val diff = Date().time - date.time
         if (diff > 86400 * 1000) {
             holder.inviteTime.text = dateFormatter.format(date)

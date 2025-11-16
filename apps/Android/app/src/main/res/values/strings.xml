@@ -158,6 +158,9 @@
     <string name="failed_to_leave_group">Failed to leave group</string>
     <string name="owner_cannot_leave_group">Owner cannot leave the group. To leave the group, you must delete it.</string>
     <string name="confirm_leave_group">Are you sure you want to leave this group? You will need to be invited again to rejoin.</string>
+    <string name="delete_group">Delete Group</string>
+    <string name="confirm_delete_group">Are you sure you want to delete this group? This action cannot be undone and all members will be removed.</string>
+    <string name="failed_to_delete_group">Failed to delete group</string>
     <string name="operation_failed">Mediator action failed</string>
     <string name="group_invites">Group Invites</string>
     <string name="no_invites">No pending invites</string>

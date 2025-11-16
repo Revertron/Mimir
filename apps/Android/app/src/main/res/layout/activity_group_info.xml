@@ -193,11 +193,13 @@
                     android:background="@drawable/button_rounded">
 
                     <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/leave_icon"
                         android:layout_width="24dp"
                         android:layout_height="24dp"
                         android:src="@drawable/ic_location_exit" />
 
                     <androidx.appcompat.widget.AppCompatTextView
+                        android:id="@+id/leave_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"

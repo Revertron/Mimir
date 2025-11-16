@@ -174,8 +174,27 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         // Set initial mute button state
         updateMuteButton()
 
-        findViewById<LinearLayoutCompat>(R.id.btn_leave_chat).setOnClickListener {
-            leaveGroup()
+        // Setup leave/delete button based on owner status
+        val leaveButton = findViewById<LinearLayoutCompat>(R.id.btn_leave_chat)
+        val leaveIcon = leaveButton.findViewById<AppCompatImageView>(R.id.leave_icon)
+        val leaveText = leaveButton.findViewById<AppCompatTextView>(R.id.leave_text)
+
+        if (isOwner) {
+            // Show "Delete" for owners
+            leaveIcon?.setImageResource(R.drawable.ic_delete)
+            leaveText?.text = getString(R.string.delete_group)
+        } else {
+            // Show "Leave" for non-owners
+            leaveIcon?.setImageResource(R.drawable.ic_location_exit)
+            leaveText?.text = getString(R.string.leave_group)
+        }
+
+        leaveButton.setOnClickListener {
+            if (isOwner) {
+                deleteGroup()
+            } else {
+                leaveGroup()
+            }
         }
 
         findViewById<LinearLayoutCompat>(R.id.invite_link_section).setOnClickListener {
@@ -219,7 +238,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         Thread {
             val members = getStorage().getGroupMembers(chatId).toMutableList()
 
-            if (BuildConfig.DEBUG) {
+            /*if (BuildConfig.DEBUG) {
                 // Add 20 fake members for testing scroll
                 val fakeNames = listOf(
                     "Alice Johnson", "Bob Smith", "Charlie Brown", "Diana Prince",
@@ -243,7 +262,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
                         )
                     )
                 }
-            }
+            }*/
 
             // Sort members: owner first, then admins, then regular members
             val sortedMembers = members.sortedWith(compareBy(
@@ -373,6 +392,29 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
                 Log.i(GroupChatActivity.Companion.TAG, "Sent leave chat request to ConnectionService for chat ${chatId}")
 
                 // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun deleteGroup() {
+        // Show confirmation dialog
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.delete_group)
+            .setMessage(R.string.confirm_delete_group)
+            .setPositiveButton(R.string.menu_delete) { _, _ ->
+                // Send intent to ConnectionService to delete the chat
+                val intent = Intent(this, ConnectionService::class.java)
+                intent.putExtra("command", "mediator_delete")
+                intent.putExtra("chat_id", chatId)
+                startService(intent)
+
+                Log.i(TAG, "Sent delete chat request to ConnectionService for chat $chatId")
+
+                // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+                // (same broadcast as leaving, as both result in the chat being removed)
+                finish()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()

@@ -26,10 +26,12 @@ import com.revertron.mimir.net.InfoProvider
 import com.revertron.mimir.net.InfoResponse
 import com.revertron.mimir.net.MediatorClient
 import com.revertron.mimir.net.MediatorManager
+import com.revertron.mimir.net.Message
 import com.revertron.mimir.net.MimirServer
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.net.readHeader
 import com.revertron.mimir.net.readMessage
+import com.revertron.mimir.net.writeMessage
 import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.storage.SqlStorage
@@ -273,6 +275,14 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }.start()
                 }
             }
+            "mediator_delete" -> {
+                val chatId = intent.getLongExtra("chat_id", 0)
+                if (chatId != 0L) {
+                    Thread {
+                        deleteGroupChat(chatId, storage)
+                    }.start()
+                }
+            }
             "mediator_send_invite" -> {
                 val chatId = intent.getLongExtra("chat_id", 0)
                 val recipientPubkey = intent.getByteArrayExtra("recipient_pubkey")
@@ -360,6 +370,42 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         }
     }
 
+    private fun deleteGroupChat(chatId: Long, storage: SqlStorage) {
+        try {
+            val accountInfo = storage.getAccountInfo(1, 0L)
+            if (accountInfo == null) {
+                Log.e(TAG, "No account found")
+                broadcastMediatorError("delete", "No account found")
+                return
+            }
+            val keyPair = accountInfo.keyPair
+            val client = mediatorManager!!.getOrCreateClient(
+                MediatorManager.getDefaultMediatorPubkey(),
+                keyPair
+            )
+            // Delete chat on mediator first
+            val success = client.deleteChat(chatId)
+            if (success) {
+                Log.i(TAG, "Deleted chat $chatId on mediator")
+                // Only delete from storage after successful deletion on mediator
+                storage.deleteGroupChat(chatId)
+                Log.i(TAG, "Deleted chat $chatId from local storage")
+
+                // Broadcast success using same intent as leave (both result in chat removal)
+                val broadcastIntent = Intent("ACTION_MEDIATOR_LEFT_CHAT").apply {
+                    putExtra("chat_id", chatId)
+                }
+                LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
+            } else {
+                Log.e(TAG, "Failed to delete chat $chatId on mediator")
+                broadcastMediatorError("delete", "Failed to delete chat on mediator")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting chat", e)
+            broadcastMediatorError("delete", e.message ?: "Unknown error")
+        }
+    }
+
     private fun sendGroupChatMessage(
         chatId: Long,
         storage: SqlStorage,
@@ -389,7 +435,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val baos = java.io.ByteArrayOutputStream()
             val dos = java.io.DataOutputStream(baos)
 
-            val message = com.revertron.mimir.net.Message(
+            val message = Message(
                 guid = guid,
                 replyTo = replyTo,
                 sendTime = sendTime,
@@ -400,7 +446,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
             // For attachments, writeMessage() needs the file path to read the image
             val filePath = if (type == 1) File(filesDir, "files").absolutePath else ""
-            com.revertron.mimir.net.writeMessage(dos, message, filePath)
+            writeMessage(dos, message, filePath)
 
             // Encrypt the serialized message
             val encryptedData = GroupChatCrypto.encryptMessage(baos.toByteArray(), chatInfo.sharedKey)
@@ -1109,12 +1155,23 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun getMyInfo(ifUpdatedSince: Long): InfoResponse? {
         //TODO refactor for multi account
-        val info = (application as App).storage.getAccountInfo(1, ifUpdatedSince) ?: return null
+        Log.d(TAG, "getMyInfo called with ifUpdatedSince=$ifUpdatedSince")
+        val info = (application as App).storage.getAccountInfo(1, ifUpdatedSince)
+        if (info == null) {
+            Log.w(TAG, "getMyInfo: getAccountInfo returned null for ifUpdatedSince=$ifUpdatedSince")
+            return null
+        }
+        Log.d(TAG, "getMyInfo: Got account info - name=${info.name}, updated=${info.updated}")
         var avatar: ByteArray? = null
         if (info.avatar.isNotEmpty()) {
             val avatarsDir = File(filesDir, "avatars")
             val f = File(avatarsDir, info.avatar)
-            avatar = f.readBytes()
+            if (f.exists()) {
+                avatar = f.readBytes()
+                Log.d(TAG, "getMyInfo: Loaded avatar from ${f.path}, size=${avatar.size}")
+            } else {
+                Log.w(TAG, "getMyInfo: Avatar file not found: ${f.path}")
+            }
         }
         return InfoResponse(info.updated, info.name, info.info, avatar)
     }

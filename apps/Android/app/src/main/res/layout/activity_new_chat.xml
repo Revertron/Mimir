@@ -182,7 +182,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:orientation="vertical"
-            android:background="@drawable/button_rounded_white"
+            android:background="@drawable/dialog_frame"
             android:padding="24dp"
             android:gravity="center">
 
@@ -197,7 +197,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/creating_chat"
-                android:textSize="16sp" />
+                android:textSize="18sp" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 

@@ -2,6 +2,8 @@ package com.revertron.mimir
 
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -12,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.ContextThemeWrapper
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -21,6 +24,7 @@ import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.LinearLayoutCompat
+import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -129,6 +133,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                             "subscribe" -> getString(R.string.connection_failed)
                             "send" -> getString(R.string.message_send_failed)
                             "leave" -> getString(R.string.failed_to_leave_group)
+                            "delete" -> getString(R.string.failed_to_delete_group)
                             else -> error ?: getString(R.string.operation_failed)
                         }
                         Toast.makeText(this@GroupChatActivity, message, Toast.LENGTH_LONG).show()
@@ -326,7 +331,8 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                     timestamp = sendTime,
                     type = messageType,
                     system = false,
-                    data = messageData.toByteArray()
+                    data = messageData.toByteArray(),
+                    replyTo = replyTo
                 )
 
                 Log.i(TAG, "Stored message locally with ID: $localId")
@@ -377,6 +383,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         // Hide owner-only options if not owner
         if (!groupChat.isOwner) {
             menu.findItem(R.id.add_member)?.isVisible = false
+            menu.findItem(R.id.delete_group)?.isVisible = false
         } else {
             // Hide leave group option for owners (they must delete the group instead)
             menu.findItem(R.id.leave_group)?.isVisible = false
@@ -445,6 +452,10 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 leaveGroup()
                 true
             }
+            R.id.delete_group -> {
+                deleteGroup()
+                true
+            }
             else -> false
         }
     }
@@ -475,6 +486,28 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 Log.i(TAG, "Sent leave chat request to ConnectionService for chat ${groupChat.chatId}")
 
                 // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun deleteGroup() {
+        // Show confirmation dialog
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.delete_group)
+            .setMessage(R.string.confirm_delete_group)
+            .setPositiveButton(R.string.menu_delete) { _, _ ->
+                // Send intent to ConnectionService to delete the chat
+                val intent = Intent(this, ConnectionService::class.java)
+                intent.putExtra("command", "mediator_delete")
+                intent.putExtra("chat_id", groupChat.chatId)
+                startService(intent)
+
+                Log.i(TAG, "Sent delete chat request to ConnectionService for chat ${groupChat.chatId}")
+
+                // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+                // (same broadcast as leaving, as both result in the chat being removed)
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -582,9 +615,20 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
 
     // Click handlers
 
-    override fun onClick(v: View?) {
-        // Handle message item click
-        // TODO: Implement message actions (copy, delete, reply, etc.)
+    override fun onClick(view: View) {
+        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.END)
+        popup.inflate(R.menu.menu_context_message) // Same menu resource
+        popup.setForceShowIcon(true)
+        popup.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.menu_copy -> handleCopy(view)
+                R.id.menu_reply -> handleReply(view)
+                R.id.menu_forward -> handleForward(view)
+                R.id.menu_delete -> handleDelete(view)
+                else -> false
+            }
+        }
+        popup.show()
     }
 
     private fun onClickOnReply() = fun(it: View) {
@@ -600,6 +644,63 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val intent = Intent(this, PictureActivity::class.java)
         intent.data = uri
         startActivity(intent)
+    }
+
+    private fun handleReply(view: View): Boolean {
+        val messageId = view.tag as Long
+        val message = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return false
+
+        // Get the author's name from the message
+        val authorName = if (message.incoming) {
+            // For incoming messages, get the sender's name
+            val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
+            user?.first ?: getString(R.string.unknown_nickname)
+        } else {
+            getString(R.string.unknown_nickname)
+        }
+
+        replyName.text = authorName // NOT groupChat.name!
+        replyText.text = message.getText(this)
+        replyPanel.visibility = View.VISIBLE
+        replyTo = message.guid
+
+        return false
+    }
+
+    private fun handleCopy(view: View): Boolean {
+        val textview = view.findViewById<AppCompatTextView>(R.id.text)
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Mimir message", textview.text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+        return true
+    }
+
+    private fun handleForward(view: View): Boolean {
+        // TODO: Implement forward functionality
+        Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+        return false
+    }
+
+    private fun handleDelete(view: View): Boolean {
+        showDeleteMessageConfirmDialog(view.tag as Long)
+        return true
+    }
+
+    private fun showDeleteMessageConfirmDialog(messageId: Long) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(getString(R.string.delete_message_dialog_title))
+            .setMessage(R.string.delete_message_dialog_text)
+            .setIcon(R.drawable.ic_delete)
+            .setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
+                getStorage().deleteGroupMessage(groupChat.chatId, messageId)
+                adapter.deleteMessageId(messageId)
+            }
+            .setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
+                dialog.cancel()
+            }
+            .show()
     }
 
     // Group Info
