@@ -86,7 +86,12 @@ class ContactsAdapter(
         holder.groupChatIcon.visibility = View.GONE
 
         // Set last message
-        holder.lastMessage.text = contact.lastMessage?.getText(holder.avatar.context) ?: ""
+        val lastMessageText = if (contact.lastMessage?.type == 1) {
+            "\uD83D\uDDBC\uFE0F " + contact.lastMessage.getText(holder.avatar.context)
+        } else {
+            contact.lastMessage?.getText(holder.avatar.context)
+        }
+        holder.lastMessage.text = lastMessageText
 
         // Set delivered icon (only for contacts, not group chats)
         if (contact.unreadCount == 0 && contact.lastMessage?.delivered != null) {

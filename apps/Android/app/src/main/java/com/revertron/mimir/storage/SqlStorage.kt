@@ -68,7 +68,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 when (type) {
                     1 -> {
                         val json = JSONObject(String(data))
-                        json.getString("text")
+                        val text = json.getString("text")
+                        if (text.isEmpty()) {
+                            json.getString("name")
+                        } else {
+                            text
+                        }
                     }
                     2 -> {
                         val callDuration = edit - time

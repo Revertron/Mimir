@@ -429,7 +429,11 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
             // Get last message for the group chat
             val lastMessage = storage.getLastGroupMessage(groupChat.chatId)
-            val lastMessageText = lastMessage?.getText(this)
+            val lastMessageText = if (lastMessage?.type == 1) {
+                "\uD83D\uDDBC\uFE0F " + lastMessage.getText(this)
+            } else {
+                lastMessage?.getText(this)
+            }
 
             ChatListItem.GroupChatItem(
                 id = groupChat.chatId,
