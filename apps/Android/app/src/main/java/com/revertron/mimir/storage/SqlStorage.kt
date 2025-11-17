@@ -895,7 +895,6 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
     fun getMemberInfo(id: Long, chatId: Long, size: Int = 48, corners: Int = 6): Pair<String, Drawable?>? {
         val membersTable = "members_$chatId"
-        val list = mutableListOf<GroupMemberInfo>()
 
         val cursor = readableDatabase.query(
             membersTable,
@@ -1056,7 +1055,6 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     fun getAccountInfo(id: Int, ifUpdatedSince: Long): AccountInfo? {
         val db = this.readableDatabase
         val columns = arrayOf("name", "info", "avatar", "privkey", "pubkey", "client", "updated")
-        Log.d(TAG, "getAccountInfo: Querying for id=$id, ifUpdatedSince=$ifUpdatedSince")
         val cursor = db.query("accounts", columns, "id = ? AND updated > ?", arrayOf(id.toString(), ifUpdatedSince.toString()), null, null, null)
         if (cursor.moveToNext()) {
             val name = cursor.getString(0)
@@ -2212,7 +2210,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         val cursor = readableDatabase.query(
             membersTable,
-            arrayOf("pubkey", "nickname", "info", "avatar", "permissions", "joined_at", "banned"),
+            arrayOf("pubkey", "nickname", "info", "avatar", "permissions", "joined_at", "banned", "online"),
             null, null, null, null,
             "joined_at ASC"
         )
@@ -2226,7 +2224,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 avatarPath = cursor.getStringOrNull(3),
                 permissions = cursor.getInt(4),
                 joinedAt = cursor.getLong(5),
-                banned = cursor.getInt(6) != 0
+                banned = cursor.getInt(6) != 0,
+                online = cursor.getInt(7) != 0
             ))
         }
         cursor.close()

@@ -252,7 +252,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             val text = editText.text.toString().trim()
             if (text.isNotEmpty() || attachmentJson != null) {
                 editText.text?.clear()
-                sendGroupMessage(text)
+                sendGroupMessage(text, replyTo)
                 replyPanel.visibility = View.GONE
                 replyText.text = ""
                 replyTo = 0L
@@ -301,7 +301,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         getStorage().listeners.add(this)
     }
 
-    private fun sendGroupMessage(text: String) {
+    private fun sendGroupMessage(text: String, replyTo: Long) {
         Thread {
             try {
                 val sendTime = System.currentTimeMillis()
@@ -335,7 +335,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                     replyTo = replyTo
                 )
 
-                Log.i(TAG, "Stored message locally with ID: $localId")
+                Log.i(TAG, "Stored message locally with ID: $localId, replyTo = $replyTo")
 
                 // Send message parameters to ConnectionService
                 // ConnectionService will handle serialization, encryption, and transmission

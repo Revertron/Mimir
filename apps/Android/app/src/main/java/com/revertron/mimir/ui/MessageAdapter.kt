@@ -1,5 +1,6 @@
 package com.revertron.mimir.ui
 
+import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.util.Log
@@ -13,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
+import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.storage.SqlStorage
 import org.json.JSONObject
 import java.io.File
@@ -90,13 +92,26 @@ class MessageAdapter(
                 if (user != null) {
                     holder.name.text = user.first
                     holder.name.visibility = View.VISIBLE
-                    holder.avatar?.setImageDrawable(user.second)
+
+                    if (user.second != null) {
+                        holder.avatar?.clearColorFilter()
+                        holder.avatar?.setImageDrawable(user.second)
+                    } else {
+                        // Use default avatar with color based on pubkey
+                        holder.avatar?.setImageResource(R.drawable.button_rounded_white)
+                        val pubKey = storage.getMemberPubkey(message.contact, chatId)
+                        pubKey?.let {
+                            val avatarColor = getAvatarColor(pubKey)
+                            holder.avatar?.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
+                        }
+                    }
                 } else {
                     holder.name.visibility = View.GONE
                     holder.avatar?.visibility = View.GONE
                 }
             } else {
                 holder.name.visibility = View.GONE
+                holder.name.text = ""
             }
         } else {
             holder.name.visibility = View.GONE
@@ -155,7 +170,6 @@ class MessageAdapter(
         holder.itemView.tag = message.id
         holder.sent.tag = message.delivered
 
-        //Log.i("MessageAdapter", "Reply to = ${message.replyTo}")
         if (message.replyTo != 0L) {
             val replyToMessage = if (groupChat) {
                 storage.getGroupMessage(chatId, message.replyTo, true)
@@ -169,21 +183,20 @@ class MessageAdapter(
                 val unknown = holder.message.context.getString(R.string.unknown_nickname)
 
                 // For group chats, show the actual author's name
-                if (groupChat) {
-                    val authorName = if (replyToMessage.incoming) {
-                        val user = storage.getMemberInfo(replyToMessage.contact, chatId, 48, 6)
-                        user?.first ?: unknown
-                    } else {
-                        unknown
-                    }
-                    holder.replyToName.text = authorName
+                val authorName = if (groupChat) {
+                    val user = storage.getMemberInfo(replyToMessage.contact, chatId, 48, 6)
+                    user?.first ?: unknown
                 } else {
-                    holder.replyToName.text = contactName
+                    contactName
                 }
 
-                holder.replyToText.text = replyToMessage.getText(holder.itemView.context)
+                val replyText = replyToMessage.getText(holder.itemView.context)
+
+                holder.replyToName.text = authorName
+                holder.replyToText.text = replyText
             } else {
-                // Message may be deleted
+                // Message may be deleted or GUID mismatch
+                Log.w("MessageAdapter", "Reply lookup FAILED for GUID ${message.replyTo} - original message not found in database")
                 holder.replyToPanel.visibility = View.GONE
                 holder.replyToName.text = ""
                 holder.replyToText.text = ""
@@ -205,7 +218,6 @@ class MessageAdapter(
         } else {
             layoutParams.updateMargins(top = 0)
         }
-        //TODO somehow propagate this event to notification manager to cancel notification if it exists
         if (!groupChat) {
             storage.setMessageRead(chatId, message.id, true)
         } else {

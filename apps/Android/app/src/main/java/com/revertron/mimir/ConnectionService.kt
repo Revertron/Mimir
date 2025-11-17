@@ -458,7 +458,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 keyPair
             )
             val messageId = client.sendMessage(chatId, guid, encryptedData)
-            Log.i(TAG, "Message sent with ID: $messageId")
+            Log.i(TAG, "Message sent with ID: $messageId, guid = $guid, replyTo = $replyTo")
 
             // Update server message id for later sync
             storage.updateGroupMessageServerId(chatId, guid, messageId)
@@ -622,6 +622,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 return 0
             }
 
+            Log.d(TAG, "Got message for chat $chatId: guid = ${message.guid}, replyTo = ${message.replyTo}")
+
             var m = ByteArray(0)
             // Handle different message types
             if (message.type == 1) {
@@ -666,7 +668,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 m = message.data
             }
 
-            Log.i(TAG, "Decrypted message from ${author.take(8)}: $message")
+            //Log.i(TAG, "Decrypted message from ${author.take(8)}: $message")
 
             // Check if message already exists (dedup by GUID)
             if (storage.checkGroupMessageExists(chatId, message.guid)) {
@@ -683,7 +685,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 message.sendTime,
                 message.type,
                 false, // not a system message
-                m
+                m,
+                message.replyTo
             )
 
             // Broadcast to activities if requested

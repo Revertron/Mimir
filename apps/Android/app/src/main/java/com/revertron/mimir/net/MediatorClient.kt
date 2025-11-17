@@ -383,7 +383,6 @@ class MediatorClient(
                         val nicknameLen = ((decryptedBlob[offset].toInt() and 0xFF) shl 8) or
                                          (decryptedBlob[offset + 1].toInt() and 0xFF)
                         offset += 2
-                        Log.d(TAG, "Parsed nicknameLen=$nicknameLen, offset after=$offset, remaining=${decryptedBlob.size - offset}")
                         val nickname = if (nicknameLen > 0) {
                             String(decryptedBlob, offset, nicknameLen, Charsets.UTF_8)
                         } else {
@@ -416,11 +415,9 @@ class MediatorClient(
 
                         // Save full profile to storage
                         storage.updateGroupMemberInfo(chatId, member.pubkey, nickname, info, avatar)
-                        Log.d(TAG, "Saved member info for ${Hex.toHexString(member.pubkey).take(8)}... in chat $chatId")
                     } else {
                         // Member exists but no info update - save with null profile
                         storage.updateGroupMemberInfo(chatId, member.pubkey, null, null, null)
-                        Log.d(TAG, "Saved member ${Hex.toHexString(member.pubkey).take(8)}... (no info) in chat $chatId")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing member ${Hex.toHexString(member.pubkey).take(8)}... for chat $chatId", e)
@@ -744,23 +741,18 @@ class MediatorClient(
             when (tag) {
                 TAG_COUNT -> {
                     count = ByteArray(4).apply { value.copyInto(this) }.readU32(0).toInt()
-                    Log.d(TAG, "  Member count: $count")
                 }
                 TAG_USER_PUBKEY -> {
                     pubkey = value
-                    Log.d(TAG, "  Member #${memberIndex}: pubkey=${Hex.toHexString(value).take(8)}...")
                 }
                 TAG_MEMBER_INFO -> {
                     encryptedInfo = if (value.isNotEmpty()) value else null
-                    Log.d(TAG, "    TAG_MEMBER_INFO: length=${length}, hasData=${value.isNotEmpty()}")
                 }
                 TAG_TIMESTAMP -> {
                     timestamp = value.readLong(0)
-                    Log.d(TAG, "    TAG_TIMESTAMP: $timestamp")
                     // Member record complete - add to list
                     if (pubkey != null) {
                         members.add(MemberInfo(pubkey, encryptedInfo, timestamp))
-                        Log.d(TAG, "    Added member with encryptedInfo=${encryptedInfo != null}, size=${encryptedInfo?.size ?: 0}")
                         memberIndex++
                         // Reset for next member
                         pubkey = null
@@ -770,8 +762,7 @@ class MediatorClient(
                 }
             }
         }
-
-        Log.i(TAG, "Retrieved ${members.size} member(s) info for chat $chatId, ${members.count { it.encryptedInfo != null }} with encrypted info")
+        Log.i(TAG, "Retrieved ${members.size} member(s) info for chat $chatId, ${members.count { it.encryptedInfo != null }}")
         return members
     }
 
@@ -871,7 +862,7 @@ class MediatorClient(
         val dis = DataInputStream(ConnectionInputStream(connection))
         try {
             while (running) {
-                Log.i(TAG, "Reading from socket...")
+                //Log.i(TAG, "Reading from socket...")
                 // Response header: [status:1][reqId:2][len:4]
                 val status = dis.readUnsignedByte()
                 val reqId = dis.readShort()
