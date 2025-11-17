@@ -38,6 +38,7 @@ import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 
 
@@ -422,9 +423,13 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             val accountInfo = storage.getAccountInfo(1, 0L)
             val isOwner = accountInfo?.let { info ->
                 groupChat.ownerPubkey.contentEquals(info.keyPair.public.let {
-                    (it as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+                    (it as Ed25519PublicKeyParameters).encoded
                 })
             } ?: false
+
+            // Get last message for the group chat
+            val lastMessage = storage.getLastGroupMessage(groupChat.chatId)
+            val lastMessageText = lastMessage?.getText(this)
 
             ChatListItem.GroupChatItem(
                 id = groupChat.chatId,
@@ -435,7 +440,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 memberCount = storage.getGroupChatMembersCount(groupChat.chatId),
                 isOwner = isOwner,
                 avatar = avatar,
-                lastMessageText = null, // TODO: Get last message text
+                lastMessageText = lastMessageText,
                 lastMessageTime = groupChat.lastMessageTime,
                 unreadCount = groupChat.unreadCount
             )

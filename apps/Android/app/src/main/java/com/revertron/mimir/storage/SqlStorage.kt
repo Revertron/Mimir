@@ -542,11 +542,38 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
     fun setGroupMessageRead(chatId: Long, id: Long, read: Boolean) {
         val messagesTable = "messages_$chatId"
+
+        // Check if message was previously unread
+        val wasUnread = try {
+            val cursor = readableDatabase.query(
+                messagesTable,
+                arrayOf("read", "incoming"),
+                "id = ?",
+                arrayOf("$id"),
+                null, null, null
+            )
+            val result = if (cursor.moveToNext()) {
+                val currentlyRead = cursor.getInt(0) != 0
+                val isIncoming = cursor.getInt(1) != 0
+                !currentlyRead && isIncoming
+            } else {
+                false
+            }
+            cursor.close()
+            result
+        } catch (e: Exception) {
+            false
+        }
+
         val values = ContentValues().apply {
             put("read", read)
         }
         if (this.writableDatabase.update(messagesTable, values, "id = ?", arrayOf("$id")) > 0) {
             if (read) {
+                // Decrement unread count if marking as read and it was previously unread
+                if (wasUnread) {
+                    decrementGroupUnreadCount(chatId)
+                }
                 notificationManager.onGroupMessageRead(chatId, id)
             }
         }
@@ -661,6 +688,53 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             result = Message(id, contactId, guid, replyTo, incoming, delivered, read, time, edit, type, message)
         }
         cursor.close()
+        return result
+    }
+
+    fun getLastGroupMessage(chatId: Long): Message? {
+        val messagesTable = "messages_$chatId"
+        var result: Message? = null
+
+        try {
+            val cursor = readableDatabase.query(
+                messagesTable,
+                arrayOf("id", "guid", "senderId", "incoming", "timestamp", "type", "data", "delivered", "read", "replyTo"),
+                "system = 0", null, null, null,
+                "id DESC",
+                "1"
+            )
+
+            if (cursor.moveToNext()) {
+                val id = cursor.getLong(0)
+                val guid = cursor.getLong(1)
+                val senderId = cursor.getLong(2)
+                val incoming = cursor.getInt(3) != 0
+                val timestamp = cursor.getLong(4)
+                val type = cursor.getInt(5)
+                val data = cursor.getBlobOrNull(6)
+                val delivered = cursor.getInt(7) != 0
+                val read = cursor.getInt(8) != 0
+                val replyTo = cursor.getLong(9)
+
+                result = Message(
+                    id = id,
+                    contact = senderId,
+                    guid = guid,
+                    replyTo = replyTo,
+                    incoming = incoming,
+                    delivered = delivered,
+                    read = read,
+                    time = timestamp,
+                    edit = 0L,
+                    type = type,
+                    data = data
+                )
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting last message for chat $chatId", e)
+        }
+
         return result
     }
 
@@ -1357,6 +1431,55 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
+     * Increments the unread message count for a group chat.
+     */
+    private fun incrementGroupUnreadCount(chatId: Long) {
+        try {
+            writableDatabase.execSQL(
+                "UPDATE group_chats SET unread_count = unread_count + 1 WHERE chat_id = ?",
+                arrayOf(chatId.toString())
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error incrementing unread count for chat $chatId", e)
+        }
+    }
+
+    /**
+     * Decrements the unread message count for a group chat.
+     * Ensures count doesn't go below 0.
+     */
+    private fun decrementGroupUnreadCount(chatId: Long) {
+        try {
+            writableDatabase.execSQL(
+                "UPDATE group_chats SET unread_count = MAX(0, unread_count - 1) WHERE chat_id = ?",
+                arrayOf(chatId.toString())
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error decrementing unread count for chat $chatId", e)
+        }
+    }
+
+    /**
+     * Resets the unread message count for a group chat to 0.
+     */
+    fun resetGroupUnreadCount(chatId: Long) {
+        try {
+            val values = ContentValues().apply {
+                put("unread_count", 0)
+            }
+            writableDatabase.update(
+                "group_chats",
+                values,
+                "chat_id = ?",
+                arrayOf(chatId.toString())
+            )
+            Log.d(TAG, "Reset unread count for chat $chatId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting unread count for chat $chatId", e)
+        }
+    }
+
+    /**
      * Gets all unique mediator public keys from saved group chats.
      * Returns a set of mediator pubkeys (as ByteArray).
      */
@@ -1642,6 +1765,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
             // Don't notify or show notifications for system messages (senderId == -1)
             if (senderId != -1L) {
+                // Increment unread count for incoming messages
+                if (incoming) {
+                    incrementGroupUnreadCount(chatId)
+                }
+
                 // Notify listeners - track if any listener processed it
                 var processed = false
                 for (listener in listeners) {
