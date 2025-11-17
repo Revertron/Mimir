@@ -31,6 +31,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.GroupChat
 import com.revertron.mimir.ui.MessageAdapter
@@ -54,8 +55,7 @@ import org.json.JSONObject
  * follows the same pattern as NewChatActivity by delegating all mediator operations to
  * ConnectionService and receiving responses via LocalBroadcast.
  */
-class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener,
-    View.OnClickListener {
+class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
 
     companion object {
         const val TAG = "GroupChatActivity"
@@ -157,6 +157,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val chatDescription = intent.getStringExtra(EXTRA_CHAT_DESCRIPTION) ?: ""
         val isOwner = intent.getBooleanExtra(EXTRA_IS_OWNER, false)
         mediatorAddress = intent.getByteArrayExtra(EXTRA_MEDIATOR_ADDRESS)
+            ?: MediatorManager.getDefaultMediatorPubkey()
 
         val memberCount = getStorage().getGroupChatMembersCount(chatId)
 
@@ -411,11 +412,39 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> {
+                // Use navigateUpFromSameTask to ensure MainActivity is shown
                 onBackPressed()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // Check if we should navigate up to parent activity
+        // This handles the case where activity was launched from notification
+        if (shouldNavigateUpToParent()) {
+            val upIntent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra("no_service", true)
+            }
+            startActivity(upIntent)
+            finish()
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
+    }
+
+    /*
+     * Determines if we need to manually navigate to parent activity.
+     * Returns true if the activity has no parent in the back stack.
+     */
+    private fun shouldNavigateUpToParent(): Boolean {
+        // Check if this activity was launched in a way that has no back stack
+        // (e.g., from a notification)
+        return isTaskRoot
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
@@ -732,5 +761,11 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         super.onDestroy()
         getStorage().listeners.remove(this)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
+    }
+
+    override fun finish() {
+        super.finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 }

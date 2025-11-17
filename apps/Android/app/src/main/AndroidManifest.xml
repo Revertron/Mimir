@@ -62,7 +62,7 @@
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
         </activity>
 
-        <activity android:name=".SendContentActivity" android:exported="true"  android:parentActivityName=".MainActivity">
+        <activity android:name=".SendContentActivity" android:exported="true" android:parentActivityName=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <!-- for now <action android:name="android.intent.action.SEND_MULTIPLE" />-->
@@ -70,9 +70,7 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
             <!-- meta-data is required for API 16–30 support -->
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value=".MainActivity" />
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
         </activity>
 
         <activity android:name=".AboutActivity" android:exported="false" android:parentActivityName=".SettingsActivity">
@@ -124,7 +122,9 @@
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
         </activity>
 
-        <activity android:name=".GroupChatActivity" android:exported="false" />
+        <activity android:name=".GroupChatActivity" android:exported="false" android:parentActivityName=".MainActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
+        </activity>
 
         <activity android:name=".GroupInfoActivity" android:exported="false" android:parentActivityName=".GroupChatActivity">
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".GroupChatActivity" />
