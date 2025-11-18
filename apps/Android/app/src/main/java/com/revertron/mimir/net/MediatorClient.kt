@@ -354,9 +354,8 @@ class MediatorClient(
                 return
             }
 
-            // Always fetch all member info when subscribing (timestamp=0)
-            // This ensures we get fresh data when entering a chat
-            val members = getMembersInfo(chatId, sinceTimestamp = 0)
+            val lastUpdated = storage.getLatestGroupMemberUpdateTime(chatId)
+            val members = getMembersInfo(chatId, sinceTimestamp = lastUpdated)
             Log.i(TAG, "Received ${members.size} member(s) for chat $chatId")
 
             // Process each member

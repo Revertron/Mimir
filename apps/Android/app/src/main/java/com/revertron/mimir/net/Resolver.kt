@@ -15,6 +15,9 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.util.Random
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class Resolver(private val messenger: Messenger, trackersList: List<String>) {
 
@@ -66,7 +69,7 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
 
     private fun incTime(tracker: ByteArray) {
         synchronized(trackers) {
-            for (i in 0..trackers.size - 1) {
+            for (i in 0..< trackers.size) {
                 val tr = trackers.get(i)
                 if (tr.first.contentEquals(tracker)) {
                     trackers[i] = tr.first to (tr.second + 25)
@@ -76,8 +79,11 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
         }
     }
 
-    fun resolveAddrs(pubkey: ByteArray, receiver: ResolverReceiver) {
-        //Log.i(TAG, "Resolving...")
+    /**
+     * Queries a single tracker for peer addresses.
+     * Throws exception if tracker is unavailable or returns no results.
+     */
+    private fun queryTracker(tracker: ByteArray, pubkey: ByteArray): List<Peer> {
         val baos = ByteArrayOutputStream()
         val dos = DataOutputStream(baos)
         dos.writeByte(CONN_TYPE)
@@ -87,29 +93,105 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
         dos.writeByte(CMD_GET_ADDRS)
         dos.write(pubkey)
         val request = baos.toByteArray()
+
         var socket: Connection? = null
-        val tracker = getBestTracker()
-        synchronized(lock) {
-            try {
-                val start = System.currentTimeMillis()
-                socket = messenger.connect(tracker)
-                //Log.i(TAG, "Created socket")
-                socket?.write(request)
-                //Log.i(TAG, "Packet sent")
-                val buf = ByteArray(1024)
-                val length = socket!!.readWithTimeout(buf, 2500)
-                //Log.i(TAG, "Read $length bytes")
-                setTime(tracker, (System.currentTimeMillis() - start).toInt())
-                process(buf.copyOfRange(0, length.toInt()), pubkey, receiver)
-                //startTimeoutThread(nonce, receiver)
-            } catch (e: Exception) {
-                //e.printStackTrace()
-                Log.w(TAG, "Error resolving: $e")
-                incTime(tracker)
-                receiver.onError(pubkey)
-            } finally {
-                socket?.close()
+        try {
+            val start = System.currentTimeMillis()
+            socket = messenger.connect(tracker)
+            socket?.write(request)
+
+            val buf = ByteArray(1024)
+            val length = socket!!.readWithTimeout(buf, 2500)
+            setTime(tracker, (System.currentTimeMillis() - start).toInt())
+
+            val results = parseGetAddrsResponse(buf.copyOfRange(0, length.toInt()), pubkey)
+            if (results.isEmpty()) {
+                throw Exception("Tracker returned no addresses")
             }
+            return results
+        } catch (e: Exception) {
+            incTime(tracker)
+            if (BuildConfig.DEBUG) {
+                val hex = Hex.toHexString(tracker)
+                Log.d(TAG, "Tracker $hex failed: $e")
+            }
+            throw e
+        } finally {
+            socket?.close()
+        }
+    }
+
+    /**
+     * Parses the GET_ADDRS response and returns list of peers.
+     * Returns empty list if no addresses found.
+     */
+    private fun parseGetAddrsResponse(message: ByteArray, pubkey: ByteArray): List<Peer> {
+        val time = getUtcTime()
+        val bais = ByteArrayInputStream(message, 0, message.size)
+        val dis = DataInputStream(bais)
+        val nonce = dis.readInt()
+        val command = dis.readByte()
+
+        if (command.toInt() != CMD_GET_ADDRS) {
+            throw IllegalArgumentException("Expected CMD_GET_ADDRS, got ${command.toInt()}")
+        }
+
+        val count = dis.readByte()
+        if (count <= 0) {
+            return emptyList()
+        }
+
+        Log.i(TAG, "Got $count addresses")
+        val results = mutableListOf<Peer>()
+        val addrBuf = ByteArray(32)
+        val sigBuf = ByteArray(64)
+        for (r in 1..count) {
+            dis.readFully(addrBuf)
+            dis.readFully(sigBuf)
+            val priority = dis.readByte()
+            val clientId = dis.readInt()
+            val ttl = dis.readLong()
+            val addr = Hex.toHexString(addrBuf)
+            Log.i(TAG, "Got addr $addr with TTL $ttl")
+            val public = Ed25519PublicKeyParameters(pubkey)
+            if (!Sign.verify(public, addrBuf, sigBuf)) {
+                Log.w(TAG, "Wrong addr signature!")
+                continue
+            }
+            results.add(Peer(addr, clientId, priority.toInt(), time + ttl))
+        }
+        return results
+    }
+
+    /**
+     * Resolves peer addresses by querying all trackers concurrently.
+     * Returns the first successful result and cancels remaining queries.
+     */
+    fun resolveAddrs(pubkey: ByteArray, receiver: ResolverReceiver) {
+        if (BuildConfig.DEBUG) {
+            Log.i(TAG, "Resolving addresses concurrently from ${trackers.size} trackers...")
+        }
+
+        val executor = Executors.newFixedThreadPool(trackers.size)
+
+        // Create a Callable for each tracker
+        val tasks = synchronized(trackers) {
+            trackers.map { (trackerAddr, _) ->
+                Callable<List<Peer>> {
+                    queryTracker(trackerAddr, pubkey)
+                }
+            }
+        }
+
+        try {
+            // invokeAny() returns first successful result and cancels others
+            val result = executor.invokeAny(tasks, 3, TimeUnit.SECONDS)
+            receiver.onResolveResponse(pubkey, result)
+        } catch (e: Exception) {
+            Log.w(TAG, "All trackers failed to resolve addresses: $e")
+            receiver.onError(pubkey)
+        } finally {
+            executor.shutdown()
         }
     }
 
@@ -158,7 +240,6 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
     }
 
     private fun process(message: ByteArray, pubkey: ByteArray, receiver: ResolverReceiver) {
-        val time = getUtcTime()
         val bais = ByteArrayInputStream(message, 0, message.size)
         val dis = DataInputStream(bais)
         val nonce = dis.readInt()
@@ -171,33 +252,12 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
             }
 
             CMD_GET_ADDRS -> {
-                val count = dis.readByte()
-                if (count <= 0) {
+                val results = parseGetAddrsResponse(message, pubkey)
+                if (results.isEmpty()) {
                     receiver.onError(pubkey)
-                    return
+                } else {
+                    receiver.onResolveResponse(pubkey, results)
                 }
-                Log.i(TAG, "Got $count addresses")
-                val results = mutableListOf<Peer>()
-                val addrBuf = ByteArray(32)
-                val sigBuf = ByteArray(64)
-                for (r in 1..count) {
-                    //Log.i(TAG, "Reading address $r")
-                    dis.readFully(addrBuf)
-                    dis.readFully(sigBuf)
-                    val priority = dis.readByte()
-                    val clientId = dis.readInt()
-                    val ttl = dis.readLong()
-                    val addr = Hex.toHexString(addrBuf)
-                    Log.i(TAG, "Got addr $addr with TTL $ttl")
-                    val public = Ed25519PublicKeyParameters(pubkey)
-                    if (!Sign.verify(public, addrBuf, sigBuf)) {
-                        Log.w(TAG, "Wrong addr signature!")
-                        continue
-                    }
-                    results.add(Peer(addr, clientId, priority.toInt(), time + ttl))
-                }
-                //Log.i(TAG, "Resolved $results for $nonce")
-                receiver.onResolveResponse(pubkey, results)
             }
         }
     }

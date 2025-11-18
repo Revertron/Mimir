@@ -61,6 +61,7 @@ class ConnectionHandler(
         val dis = DataInputStream(ConnectionInputStream(connection))
         val startTime = System.currentTimeMillis()
         val rand = Random.Default
+        var deadPeer = false
         try {
             while (!this.isInterrupted) {
                 when (peerStatus) {
@@ -99,7 +100,8 @@ class ConnectionHandler(
                     }
                     Status.HelloSent -> {
                         if (System.currentTimeMillis() - startTime >= 5000) {
-                            Log.i(TAG, "Connection with $address timed out")
+                            deadPeer = true
+                            Log.i(TAG, "Connection with $address timed out, dead peer")
                             break
                         }
                     }
@@ -164,7 +166,7 @@ class ConnectionHandler(
             if (callStatus != CallStatus.Idle) {
                 listener.onCallStatusChanged(CallStatus.Hangup, it)
             }
-            listener.onConnectionClosed(it, address)
+            listener.onConnectionClosed(it, address, deadPeer)
         }
     }
 
