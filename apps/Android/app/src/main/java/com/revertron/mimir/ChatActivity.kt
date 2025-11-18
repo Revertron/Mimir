@@ -14,6 +14,7 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.view.*
 import android.widget.Toast
@@ -21,6 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.*
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -33,14 +35,16 @@ import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
+import java.io.File
 import java.lang.Thread.sleep
 
 
-class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
+class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener {
 
     companion object {
         const val TAG = "ChatActivity"
         const val PICK_IMAGE_REQUEST_CODE = 123
+        private const val TAKE_PHOTO_REQUEST_CODE = 125
     }
 
     lateinit var contact: Contact
@@ -49,8 +53,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     private lateinit var replyText: AppCompatTextView
     private lateinit var attachmentPanel: ConstraintLayout
     private lateinit var attachmentPreview: AppCompatImageView
+    private lateinit var adapter: MessageAdapter
     private var attachmentJson: JSONObject? = null
     private var isVisible: Boolean = false
+    private var currentPhotoUri: Uri? = null
     var replyTo = 0L
 
     private val peerStatusReceiver = object : BroadcastReceiver() {
@@ -60,6 +66,26 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 val from = intent.getStringExtra("contact")
                 if (from != null && contact.pubkey.contentEquals(Hex.decode(from))) {
                     showOnlineState(status)
+                }
+            }
+        }
+    }
+
+    private val reactionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            if (intent.action == "ACTION_REACTION_UPDATED") {
+                val messageGuid = intent.getLongExtra("messageGuid", 0L)
+                if (messageGuid != 0L) {
+                    // Find the message in adapter and refresh it
+                    val messageId = getStorage().getMessageIdByGuid(messageGuid)
+                    if (messageId != null) {
+                        val position = adapter.getMessageIdPosition(messageId)
+                        if (position >= 0) {
+                            runOnUiThread {
+                                adapter.notifyItemChanged(position)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -140,7 +166,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             getImageFromUri(image)
         }
 
-        val adapter = MessageAdapter(getStorage(), contact.id, groupChat = false, contact.name, this, onClickOnReply(), onClickOnPicture())
+        adapter = MessageAdapter(getStorage(), contact.id, groupChat = false, contact.name, onLongClickMessage(), onClickOnReply(), onClickOnPicture())
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
@@ -148,6 +174,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
         showOnlineState(PeerStatus.Connecting)
         LocalBroadcastManager.getInstance(this).registerReceiver(peerStatusReceiver, IntentFilter("ACTION_PEER_STATUS"))
+        LocalBroadcastManager.getInstance(this).registerReceiver(reactionReceiver, IntentFilter("ACTION_REACTION_UPDATED"))
         fetchStatus(this, contact.pubkey)
 
         Thread {
@@ -235,6 +262,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     override fun onDestroy() {
         getStorage().listeners.remove(this)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(reactionReceiver)
         super.onDestroy()
     }
 
@@ -251,13 +279,27 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PICK_IMAGE_REQUEST_CODE && resultCode == RESULT_OK) {
-            if (data == null || data.data == null) {
-                Log.e(TAG, "Error getting picture")
-                return
+        when (requestCode) {
+            PICK_IMAGE_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    if (data == null || data.data == null) {
+                        Log.e(TAG, "Error getting picture from gallery")
+                        return
+                    }
+                    val selectedPictureUri = data.data!!
+                    getImageFromUri(selectedPictureUri)
+                }
             }
-            val selectedPictureUri = data.data!!
-            getImageFromUri(selectedPictureUri)
+            TAKE_PHOTO_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    currentPhotoUri?.let { uri ->
+                        getImageFromUri(uri)
+                    } ?: run {
+                        Log.e(TAG, "Error: photo URI is null")
+                        Toast.makeText(this, R.string.error_taking_photo, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 
@@ -312,6 +354,69 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     }
 
     private fun selectAndSendPicture() {
+        showImageSourceDialog()
+    }
+
+    private fun showImageSourceDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.choose_image_source)
+            .setItems(arrayOf(
+                getString(R.string.take_photo),
+                getString(R.string.choose_from_gallery)
+            )) { _, which ->
+                when (which) {
+                    0 -> checkCameraPermissionAndTakePhoto()
+                    1 -> pickImageFromGallery()
+                }
+            }
+            .show()
+    }
+
+    private fun checkCameraPermissionAndTakePhoto() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+                takePhoto()
+            }
+            else -> {
+                requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private val requestCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                takePhoto()
+            } else {
+                Toast.makeText(this, R.string.toast_no_permission, Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private fun takePhoto() {
+        try {
+            val cameraDir = File(cacheDir, "camera")
+            if (!cameraDir.exists()) {
+                cameraDir.mkdirs()
+            }
+
+            val photoFile = File(cameraDir, "photo_${System.currentTimeMillis()}.jpg")
+            currentPhotoUri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.file_provider",
+                photoFile
+            )
+
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, currentPhotoUri)
+            startActivityForResult(intent, TAKE_PHOTO_REQUEST_CODE)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating camera intent", e)
+            Toast.makeText(this, R.string.error_taking_photo, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun pickImageFromGallery() {
         val intent = Intent(Intent.ACTION_PICK)
         intent.type = "image/*"
         startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
@@ -357,42 +462,127 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         return false
     }
 
-    override fun onClick(view: View) {
-        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.END)
-        popup.inflate(R.menu.menu_context_message)
-        popup.setForceShowIcon(true)
-        popup.setOnMenuItemClickListener {
-            when (it.itemId) {
-                R.id.menu_copy -> {
-                    val textview = view.findViewById<AppCompatTextView>(R.id.text)
-                    val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("Mimir message", textview.text)
-                    clipboard.setPrimaryClip(clip)
-                    Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
-                    true
+    private fun onLongClickMessage() = View.OnLongClickListener { view ->
+        // Show combined reactions and context menu
+        showCombinedContextMenu(view)
+        true
+    }
+
+    private var contextMenuWindow: android.widget.PopupWindow? = null
+
+    private fun showCombinedContextMenu(messageView: View) {
+        // Dismiss existing window if any
+        contextMenuWindow?.dismiss()
+
+        val messageId = messageView.tag as? Long ?: return
+        val message = getStorage().getMessage(messageId) ?: return
+
+        // Inflate combined menu (reactions + actions)
+        val menuView = layoutInflater.inflate(R.layout.message_context_menu, null)
+
+        val reactions = mapOf(
+            R.id.reaction_thumbsup to "👍",
+            R.id.reaction_thumbsdown to "👎",
+            R.id.reaction_fire to "🔥",
+            R.id.reaction_laugh to "😂",
+            R.id.reaction_sad to "😢"
+        )
+
+        // Get current user pubkey for reaction handling
+        val currentUserPubkey = getStorage().getAccountInfo(1, 0L)?.let {
+            (it.keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+        }
+
+        // Setup reaction buttons
+        for ((viewId, emoji) in reactions) {
+            menuView.findViewById<View>(viewId)?.setOnClickListener {
+                if (currentUserPubkey != null) {
+                    // Check if user has an existing reaction
+                    val existingReaction = getStorage().getUserCurrentReaction(message.guid, null, currentUserPubkey)
+
+                    // Toggle the reaction locally
+                    val added = getStorage().toggleReaction(message.guid, null, currentUserPubkey, emoji)
+                    adapter.notifyDataSetChanged()
+
+                    // If user had a different reaction, send removal first
+                    if (existingReaction != null && existingReaction != emoji) {
+                        val removeIntent = Intent(this, ConnectionService::class.java)
+                        removeIntent.putExtra("command", "ACTION_SEND_REACTION")
+                        removeIntent.putExtra("messageGuid", message.guid)
+                        removeIntent.putExtra("emoji", existingReaction)
+                        removeIntent.putExtra("add", false)
+                        removeIntent.putExtra("contactPubkey", contact.pubkey)
+                        startService(removeIntent)
+                    }
+
+                    // Send the new reaction
+                    val intent = Intent(this, ConnectionService::class.java)
+                    intent.putExtra("command", "ACTION_SEND_REACTION")
+                    intent.putExtra("messageGuid", message.guid)
+                    intent.putExtra("emoji", emoji)
+                    intent.putExtra("add", added)
+                    intent.putExtra("contactPubkey", contact.pubkey)
+                    startService(intent)
                 }
-                R.id.menu_reply -> {
-                    val id = (view.tag as Long)
-                    val message = getStorage().getMessage(id)
-                    replyName.text = contact.name
-                    replyText.text = message?.getText(this)
-                    replyPanel.visibility = View.VISIBLE
-                    replyTo = message?.guid ?: 0L
-                    Log.i(TAG, "Replying to guid $replyTo")
-                    false
-                }
-                R.id.menu_forward -> { false }
-                R.id.menu_delete -> {
-                    showDeleteMessageConfirmDialog(view.tag as Long)
-                    true
-                }
-                else -> {
-                    Log.w(TAG, "Not implemented handler for menu item ${it.itemId}")
-                    false
-                }
+
+                contextMenuWindow?.dismiss()
             }
         }
-        popup.show()
+
+        // Setup action menu items
+        menuView.findViewById<View>(R.id.menu_reply)?.setOnClickListener {
+            replyName.text = contact.name
+            replyText.text = message.getText(this)
+            replyPanel.visibility = View.VISIBLE
+            replyTo = message.guid
+            Log.i(TAG, "Replying to guid $replyTo")
+            contextMenuWindow?.dismiss()
+        }
+
+        menuView.findViewById<View>(R.id.menu_copy)?.setOnClickListener {
+            val textview = messageView.findViewById<AppCompatTextView>(R.id.text)
+            val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Mimir message", textview.text)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(applicationContext, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+            contextMenuWindow?.dismiss()
+        }
+
+        menuView.findViewById<View>(R.id.menu_forward)?.setOnClickListener {
+            // Forward functionality not implemented yet
+            contextMenuWindow?.dismiss()
+        }
+
+        menuView.findViewById<View>(R.id.menu_delete)?.setOnClickListener {
+            showDeleteMessageConfirmDialog(messageId)
+            contextMenuWindow?.dismiss()
+        }
+
+        // Create popup window
+        val popupWindow = android.widget.PopupWindow(
+            menuView,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        )
+        popupWindow.isOutsideTouchable = true
+        popupWindow.isFocusable = true
+
+        // Calculate position above the message
+        val location = IntArray(2)
+        messageView.getLocationOnScreen(location)
+
+        // Measure the popup
+        menuView.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        val popupHeight = menuView.measuredHeight
+        val popupWidth = menuView.measuredWidth
+
+        // Position above the message, centered
+        val xOffset = (messageView.width - popupWidth) / 2
+        val yOffset = -(popupHeight + 10)  // 10dp above message
+
+        popupWindow.showAsDropDown(messageView, xOffset, yOffset)
+        contextMenuWindow = popupWindow
     }
 
     private fun showDeleteMessageConfirmDialog(messageId: Long) {

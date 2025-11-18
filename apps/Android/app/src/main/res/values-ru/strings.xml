@@ -80,7 +80,7 @@
     <string name="peer_url_hint">tcp://1.2.3.4:1234 или tls://example.com:443</string>
     <string name="add_to_power_exceptions">Включена оптимизация батареи. Вы должны внести это приложение в исключения, чтобы оно работало без перебоев.</string>
     <string name="allow">Разрешить</string>
-    <string name="allow_notifications_snack">У прилоения запрещены уведомления. Пожалуйста, разрешите их чтобы получать сообщения и звонки.</string>
+    <string name="allow_notifications_snack">У приложения запрещены уведомления. Пожалуйста, разрешите их чтобы получать сообщения и звонки.</string>
     <string name="select_contact_to_share">Выберите контакт</string>
     <string name="add_custom_peer">Добавить свой узел</string>
     <string name="add_button">Добавить</string>
@@ -197,4 +197,12 @@
     <string name="message_text_size_label">Размер текста сообщений:</string>
     <string name="font_size_preview_label">Предпросмотр:</string>
     <string name="font_size_preview_text">Это предпросмотр того, как будут выглядеть ваши сообщения с выбранным размером шрифта.</string>
+    <string name="choose_image_source">Выберите источник изображения</string>
+    <string name="take_photo">Сделать фото</string>
+    <string name="choose_from_gallery">Выбрать из галереи</string>
+    <string name="error_taking_photo">Ошибка при съёмке фото</string>
+    <string name="delete_avatar">Удалить аватар</string>
+    <string name="confirm_delete_avatar">Вы уверены, что хотите удалить свой аватар?</string>
+    <string name="no_avatar_to_delete">Нет аватара для удаления</string>
+    <string name="avatar_deleted">Аватар удалён</string>
 </resources>

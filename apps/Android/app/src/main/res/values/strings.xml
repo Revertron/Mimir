@@ -209,5 +209,13 @@
     <string name="message_text_size_label">Message text size:</string>
     <string name="font_size_preview_label">Preview:</string>
     <string name="font_size_preview_text">This is a preview of how your messages will look with the selected font size.</string>
+    <string name="choose_image_source">Choose image source</string>
+    <string name="take_photo">Take photo</string>
+    <string name="choose_from_gallery">Choose from gallery</string>
+    <string name="error_taking_photo">Error taking photo</string>
+    <string name="delete_avatar">Delete avatar</string>
+    <string name="confirm_delete_avatar">Are you sure you want to delete your avatar?</string>
+    <string name="no_avatar_to_delete">No avatar to delete</string>
+    <string name="avatar_deleted">Avatar deleted</string>
 
 </resources>

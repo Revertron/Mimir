@@ -188,6 +188,32 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }.start()
                 }
             }
+            "ACTION_SEND_REACTION" -> {
+                val messageGuid = intent.getLongExtra("messageGuid", 0L)
+                val emoji = intent.getStringExtra("emoji")
+                val add = intent.getBooleanExtra("add", true)
+                val chatId = if (intent.hasExtra("chatId")) intent.getLongExtra("chatId", 0L) else null
+                val contactPubkey = intent.getByteArrayExtra("contactPubkey")
+
+                if (messageGuid != 0L && emoji != null) {
+                    Log.i(TAG, "Sending reaction: emoji=$emoji, messageGuid=$messageGuid, add=$add, chatId=$chatId")
+
+                    // For personal chats, send directly to contact
+                    if (contactPubkey != null) {
+                        val sent = mimirServer?.sendReaction(contactPubkey, messageGuid, emoji, add, chatId) ?: false
+                        if (!sent) {
+                            // No active connection - queue for later
+                            Log.i(TAG, "No connection available, queueing reaction for later")
+                            storage.addPendingReaction(messageGuid, chatId, contactPubkey, emoji, add)
+                        }
+                    }
+                    // For group chats, send via mediator (TODO: implement)
+                    else if (chatId != null) {
+                        // Group chat reactions would be sent via mediator
+                        Log.w(TAG, "Group chat reactions not yet implemented")
+                    }
+                }
+            }
             "online" -> {
                 mimirServer?.reconnectPeers()
                 Log.i(TAG, "Resending unsent messages")
@@ -1099,6 +1125,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val expiration = getUtcTime() + IP_CACHE_DEFAULT_TTL
         val storage = (application as App).storage
         storage.saveIp(from, address, 0, clientId, 0, expiration)
+
+        // Send any pending reactions for this contact
+        Thread {
+            sendPendingReactionsForContact(from, storage)
+        }.start()
     }
 
     override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
@@ -1142,6 +1173,28 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean) {
         (application as App).storage.setMessageDelivered(to, guid, delivered)
+    }
+
+    override fun onReactionReceived(from: ByteArray, messageGuid: Long, emoji: String, add: Boolean, chatId: Long?) {
+        val storage = (application as App).storage
+        Log.i(TAG, "onReactionReceived: emoji=$emoji, messageGuid=$messageGuid, add=$add, chatId=$chatId")
+
+        if (add) {
+            storage.addReaction(messageGuid, chatId, from, emoji)
+        } else {
+            storage.removeReaction(messageGuid, chatId, from, emoji)
+        }
+
+        // Broadcast reaction update to active activities
+        val intent = Intent("ACTION_REACTION_UPDATED").apply {
+            putExtra("messageGuid", messageGuid)
+            putExtra("emoji", emoji)
+            putExtra("add", add)
+            if (chatId != null) {
+                putExtra("chatId", chatId)
+            }
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     override fun onPeerStatusChanged(from: ByteArray, status: PeerStatus) {
@@ -1202,6 +1255,38 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             putExtra("error", error)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    private fun sendPendingReactionsForContact(contactPubkey: ByteArray, storage: SqlStorage) {
+        val pendingReactions = storage.getPendingReactionsForContact(contactPubkey)
+        if (pendingReactions.isEmpty()) {
+            return
+        }
+
+        Log.i(TAG, "Sending ${pendingReactions.size} pending reactions for contact ${Hex.toHexString(contactPubkey).take(16)}...")
+
+        for (pending in pendingReactions) {
+            val sent = mimirServer?.sendReaction(
+                contactPubkey,
+                pending.messageGuid,
+                pending.emoji,
+                pending.add,
+                pending.chatId
+            ) ?: false
+
+            if (sent) {
+                // Remove from pending queue
+                storage.removePendingReaction(pending.id)
+                Log.i(TAG, "Sent pending reaction: emoji=${pending.emoji}, messageGuid=${pending.messageGuid}")
+            } else {
+                // Connection lost again, stop trying
+                Log.w(TAG, "Failed to send pending reaction, connection lost")
+                break
+            }
+
+            // Small delay between reactions to avoid flooding
+            Thread.sleep(100)
+        }
     }
 
     private fun updateTick(forced: Boolean = false) {

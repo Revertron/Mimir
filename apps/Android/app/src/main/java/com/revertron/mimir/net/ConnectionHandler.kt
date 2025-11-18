@@ -334,6 +334,15 @@ class ConnectionHandler(
                         peer?.let { listener.onMessageReceived(it, message.guid, message.replyTo, message.sendTime, message.editTime, message.type, message.data) }
                     }
                 }
+                MSG_TYPE_REACTION -> {
+                    val reaction = readMessageReaction(dis) ?: return ProcessResult.Failed
+                    Log.i(TAG, "Got reaction: emoji=${reaction.emoji}, messageGuid=${reaction.messageGuid}, add=${reaction.add}, chatId=${reaction.chatId}")
+                    synchronized(listener) {
+                        peer?.let {
+                            listener.onReactionReceived(it, reaction.messageGuid, reaction.emoji, reaction.add, reaction.chatId)
+                        }
+                    }
+                }
                 MSG_TYPE_CALL_OFFER -> {
                     val offer = readCallOffer(dis) ?: return ProcessResult.Failed
                     Log.i(TAG, "Got call offer: $offer")
@@ -408,6 +417,33 @@ class ConnectionHandler(
                 buffer.add(id to message)
                 sentMessages.add(guid)
             }
+        }
+    }
+
+    /**
+     * Sends a reaction to a message.
+     * @param messageGuid GUID of the message being reacted to
+     * @param emoji The emoji reaction
+     * @param add true to add reaction, false to remove
+     * @param chatId Optional group chat ID (null for personal chats)
+     */
+    fun sendReaction(messageGuid: Long, emoji: String, add: Boolean, chatId: Long? = null) {
+        if (peerStatus != Status.Auth2Done) {
+            Log.w(TAG, "Cannot send reaction, not authenticated")
+            return
+        }
+
+        try {
+            val reaction = MessageReaction(messageGuid, emoji, add, chatId)
+            val baos = ByteArrayOutputStream()
+            val dos = DataOutputStream(baos)
+            writeMessageReaction(dos, reaction)
+            val bytes = baos.toByteArray()
+            connection.writeWithTimeout(bytes, 2000)
+            lastActiveTime = System.currentTimeMillis()
+            Log.i(TAG, "Reaction sent: emoji=$emoji, messageGuid=$messageGuid, add=$add, chatId=$chatId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending reaction", e)
         }
     }
 

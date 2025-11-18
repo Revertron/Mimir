@@ -29,7 +29,7 @@ class MessageAdapter(
     private val chatId: Long,
     private val groupChat: Boolean,
     private val contactName: String,
-    private val onClick: View.OnClickListener,
+    private val onLongClick: View.OnLongClickListener,
     private val onReplyClick: View.OnClickListener,
     private val onPictureClick: View.OnClickListener
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
@@ -58,6 +58,7 @@ class MessageAdapter(
         val replyToName: AppCompatTextView = view.findViewById(R.id.reply_contact_name)
         val replyToText: AppCompatTextView = view.findViewById(R.id.reply_text)
         val replyToPanel: View = view.findViewById(R.id.reply_panel)
+        val reactionsContainer: androidx.appcompat.widget.LinearLayoutCompat = view.findViewById(R.id.reactions_container)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -67,8 +68,14 @@ class MessageAdapter(
             R.layout.message_outgoing_layout
         }
         val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
-        view.setOnClickListener(onClick)
-        //TODO make item background reflect touches
+
+        // Single tap shows context menu with reactions
+        view.setOnClickListener { v ->
+            onLongClick.onLongClick(v)  // Trigger long click behavior on regular click
+        }
+        // Keep long click as fallback
+        view.setOnLongClickListener(onLongClick)
+
         view.findViewById<View>(R.id.reply_panel).setOnClickListener(onReplyClick)
         view.findViewById<View>(R.id.picture).setOnClickListener(onPictureClick)
         if (!groupChat) {
@@ -230,6 +237,9 @@ class MessageAdapter(
         } else {
             storage.setGroupMessageRead(chatId, message.id, true)
         }
+
+        // Display reactions for this message
+        displayReactions(holder, message.guid)
     }
 
     private fun formatTime(time: Long): String {
@@ -281,5 +291,227 @@ class MessageAdapter(
             }
         }
         return -1
+    }
+
+    /**
+     * Shows the reaction picker popup when a message is tapped.
+     */
+    // Deprecated: Reaction picker is now shown in ChatActivity alongside context menu
+    @Deprecated("Moved to ChatActivity.showQuickReactions()")
+    private fun showReactionPicker(messageView: View) {
+        // This method is no longer used but kept for reference
+        return
+        val messageId = messageView.tag as? Long ?: return
+
+        // Get the message to find its GUID
+        val message = if (groupChat) {
+            storage.getGroupMessage(chatId, messageId)
+        } else {
+            storage.getMessage(messageId)
+        } ?: return
+
+        val chatIdForReactions = if (groupChat) chatId else null
+
+        // Create popup window
+        val popupView = LayoutInflater.from(messageView.context)
+            .inflate(R.layout.reaction_picker_popup, null)
+
+        // Measure the popup view to get its dimensions
+        popupView.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+
+        val popupWindow = android.widget.PopupWindow(
+            popupView,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        )
+
+        popupWindow.elevation = 8f
+        popupWindow.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        popupWindow.isOutsideTouchable = true
+        popupWindow.isFocusable = true
+
+        // Get current user's pubkey
+        val currentUserPubkey = storage.getAccountInfo(1, 0L)?.let {
+            (it.keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+        }
+
+        // Set up emoji click listeners (compact: 5 most popular)
+        val emojis = listOf(
+            R.id.emoji_like to "👍",
+            R.id.emoji_love to "❤️",
+            R.id.emoji_laugh to "😂",
+            R.id.emoji_fire to "🔥",
+            R.id.emoji_clap to "👏"
+        )
+
+        for ((viewId, emoji) in emojis) {
+            popupView.findViewById<View>(viewId)?.setOnClickListener {
+                popupWindow.dismiss()
+
+                if (currentUserPubkey != null) {
+                    // Check if user has an existing reaction (to send removal to peer)
+                    val existingReaction = storage.getUserCurrentReaction(message.guid, chatIdForReactions, currentUserPubkey)
+
+                    // Toggle the reaction locally
+                    val added = storage.toggleReaction(message.guid, chatIdForReactions, currentUserPubkey, emoji)
+
+                    // Post update to main thread to avoid RecyclerView inconsistency
+                    (messageView.context as? android.app.Activity)?.runOnUiThread {
+                        try {
+                            notifyDataSetChanged()
+                        } catch (e: Exception) {
+                            android.util.Log.e("MessageAdapter", "Error updating reactions", e)
+                        }
+                    }
+
+                    // If user had a different reaction, send removal first
+                    if (existingReaction != null && existingReaction != emoji) {
+                        val removeIntent = android.content.Intent(messageView.context, com.revertron.mimir.ConnectionService::class.java)
+                        removeIntent.putExtra("command", "ACTION_SEND_REACTION")
+                        removeIntent.putExtra("messageGuid", message.guid)
+                        removeIntent.putExtra("emoji", existingReaction)
+                        removeIntent.putExtra("add", false)
+                        if (chatIdForReactions != null) {
+                            removeIntent.putExtra("chatId", chatIdForReactions)
+                        }
+                        if (!groupChat) {
+                            val contactPubkey = storage.getContactPubkey(chatId)
+                            if (contactPubkey != null) {
+                                removeIntent.putExtra("contactPubkey", contactPubkey)
+                            }
+                        }
+                        messageView.context.startService(removeIntent)
+                    }
+
+                    // Send the new reaction to peer via ConnectionService
+                    val intent = android.content.Intent(messageView.context, com.revertron.mimir.ConnectionService::class.java)
+                    intent.putExtra("command", "ACTION_SEND_REACTION")
+                    intent.putExtra("messageGuid", message.guid)
+                    intent.putExtra("emoji", emoji)
+                    intent.putExtra("add", added)
+                    if (chatIdForReactions != null) {
+                        intent.putExtra("chatId", chatIdForReactions)
+                    }
+                    // For personal chats, need contact pubkey
+                    if (!groupChat) {
+                        val contactPubkey = storage.getContactPubkey(chatId)
+                        if (contactPubkey != null) {
+                            intent.putExtra("contactPubkey", contactPubkey)
+                        }
+                    }
+                    messageView.context.startService(intent)
+                }
+            }
+        }
+
+        // Calculate position: show popup centered above the message
+        val location = IntArray(2)
+        messageView.getLocationOnScreen(location)
+        val messageX = location[0]
+        val messageY = location[1]
+
+        val popupWidth = popupView.measuredWidth
+        val xOffset = (messageView.width - popupWidth) / 2
+        val yOffset = -messageView.height - popupView.measuredHeight - 8
+
+        // Show popup above the message
+        popupWindow.showAsDropDown(messageView, xOffset, yOffset, android.view.Gravity.NO_GRAVITY)
+    }
+
+    /**
+     * Displays reactions for a message in the reactions container.
+     * Shows up to 4 reactions per row, wraps to new rows as needed.
+     * @param holder ViewHolder containing the reactions container
+     * @param messageGuid GUID of the message
+     */
+    private fun displayReactions(holder: ViewHolder, messageGuid: Long) {
+        // Get reactions from storage
+        val chatIdForReactions = if (groupChat) chatId else null
+        val reactionCounts = storage.getReactionCounts(messageGuid, chatIdForReactions)
+
+        if (reactionCounts.isEmpty()) {
+            holder.reactionsContainer.visibility = View.GONE
+            return
+        }
+
+        holder.reactionsContainer.visibility = View.VISIBLE
+        holder.reactionsContainer.removeAllViews()
+
+        // Get current user's pubkey to highlight their reactions
+        val currentUserPubkey = storage.getAccountInfo(1, 0L)?.let {
+            (it.keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+        }
+
+        // Create reaction badges with max 4 per row
+        var currentRow: androidx.appcompat.widget.LinearLayoutCompat? = null
+        var itemsInRow = 0
+        val maxPerRow = 4
+
+        for ((emoji, reactors) in reactionCounts) {
+            // Create new row if needed
+            if (currentRow == null || itemsInRow >= maxPerRow) {
+                currentRow = androidx.appcompat.widget.LinearLayoutCompat(holder.itemView.context)
+                currentRow.orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
+                holder.reactionsContainer.addView(currentRow)
+                itemsInRow = 0
+            }
+
+            // Inflate reaction badge
+            val badgeView = LayoutInflater.from(holder.itemView.context)
+                .inflate(R.layout.reaction_badge, currentRow, false)
+
+            val emojiView = badgeView.findViewById<AppCompatTextView>(R.id.reaction_emoji)
+            val countView = badgeView.findViewById<AppCompatTextView>(R.id.reaction_count)
+
+            emojiView.text = emoji
+            // Show count only if more than 1 reactor
+            if (reactors.size > 1) {
+                countView.text = reactors.size.toString()
+                countView.visibility = View.VISIBLE
+            } else {
+                countView.visibility = View.GONE
+            }
+
+            // Highlight if current user has this reaction
+            val userReacted = currentUserPubkey != null && reactors.any { it.contentEquals(currentUserPubkey) }
+            if (userReacted) {
+                badgeView.setBackgroundResource(R.drawable.reaction_badge_background_selected)
+            } else {
+                badgeView.setBackgroundResource(R.drawable.reaction_badge_background)
+            }
+
+            // Click to toggle reaction
+            badgeView.setOnClickListener {
+                if (currentUserPubkey != null) {
+                    val added = storage.toggleReaction(messageGuid, chatIdForReactions, currentUserPubkey, emoji)
+                    notifyItemChanged(holder.bindingAdapterPosition)
+
+                    // Send reaction to peer via ConnectionService
+                    val intent = android.content.Intent(holder.itemView.context, com.revertron.mimir.ConnectionService::class.java)
+                    intent.putExtra("command", "ACTION_SEND_REACTION")
+                    intent.putExtra("messageGuid", messageGuid)
+                    intent.putExtra("emoji", emoji)
+                    intent.putExtra("add", added)
+                    if (chatIdForReactions != null) {
+                        intent.putExtra("chatId", chatIdForReactions)
+                    }
+                    // For personal chats, need contact pubkey
+                    if (!groupChat) {
+                        val contactPubkey = storage.getContactPubkey(chatId)
+                        if (contactPubkey != null) {
+                            intent.putExtra("contactPubkey", contactPubkey)
+                        }
+                    }
+                    holder.itemView.context.startService(intent)
+                }
+            }
+
+            currentRow.addView(badgeView)
+            itemsInRow++
+        }
     }
 }

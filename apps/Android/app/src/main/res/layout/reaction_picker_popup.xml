@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Compact reaction picker popup (Telegram-style) -->
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="@drawable/reaction_picker_background"
+    android:paddingStart="12dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="8dp"
+    android:elevation="12dp">
+
+    <!-- Compact emoji reactions (5 most popular) -->
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/emoji_like"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:text="👍"
+        android:textSize="28sp"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackgroundBorderless" />
+
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/emoji_love"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="4dp"
+        android:text="❤️"
+        android:textSize="28sp"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackgroundBorderless" />
+
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/emoji_laugh"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="4dp"
+        android:text="😂"
+        android:textSize="28sp"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackgroundBorderless" />
+
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/emoji_fire"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="4dp"
+        android:text="🔥"
+        android:textSize="28sp"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackgroundBorderless" />
+
+    <androidx.appcompat.widget.AppCompatTextView
+        android:id="@+id/emoji_clap"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="4dp"
+        android:text="👏"
+        android:textSize="28sp"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackgroundBorderless" />
+
+</androidx.appcompat.widget.LinearLayoutCompat>

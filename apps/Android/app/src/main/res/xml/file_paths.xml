@@ -4,4 +4,6 @@
     <files-path name="shared" path="." />
     <!-- Share or downloads -->
     <external-path name="downloads" path="Download/" />
+    <!-- Camera photos temporary storage -->
+    <cache-path name="camera_photos" path="camera/" />
 </paths>
