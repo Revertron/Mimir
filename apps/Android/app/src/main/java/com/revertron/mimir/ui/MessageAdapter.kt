@@ -4,6 +4,7 @@ import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.util.Log
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,6 +13,7 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.updateMargins
+import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
@@ -82,6 +84,11 @@ class MessageAdapter(
         } else {
             storage.getMessage(messageIds[position].first)
         } ?: return
+
+        val prefs = PreferenceManager.getDefaultSharedPreferences(holder.itemView.context)
+        val fontSize = prefs.getInt(SettingsData.KEY_MESSAGE_FONT_SIZE, 15)
+        holder.message.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat())
+        holder.replyToText.setTextSize(TypedValue.COMPLEX_UNIT_SP, (fontSize - 2).toFloat())
 
         if (groupChat) {
             if (message.incoming) {

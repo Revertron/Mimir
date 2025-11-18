@@ -191,4 +191,10 @@
     <string name="member_count_online">%1$d участников, %2$d в сети</string>
     <string name="members_only">%d участников</string>
     <string name="system_message">Системное сообщение</string>
+    <string name="message_font_size">Размер шрифта сообщений</string>
+    <string name="message_font_size_desc">Настройка размера текста в сообщениях чатов.</string>
+    <string name="font_size_settings">Настройка размера шрифта</string>
+    <string name="message_text_size_label">Размер текста сообщений:</string>
+    <string name="font_size_preview_label">Предпросмотр:</string>
+    <string name="font_size_preview_text">Это предпросмотр того, как будут выглядеть ваши сообщения с выбранным размером шрифта.</string>
 </resources>

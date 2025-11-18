@@ -203,5 +203,11 @@
     <string name="member_count_online">%1$d members, %2$d online</string>
     <string name="members_only">%d members</string>
     <string name="system_message">System message</string>
+    <string name="message_font_size">Message font size</string>
+    <string name="message_font_size_desc">Adjust the size of text in chat messages.</string>
+    <string name="font_size_settings">Font size settings</string>
+    <string name="message_text_size_label">Message text size:</string>
+    <string name="font_size_preview_label">Preview:</string>
+    <string name="font_size_preview_text">This is a preview of how your messages will look with the selected font size.</string>
 
 </resources>
