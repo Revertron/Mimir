@@ -83,7 +83,7 @@ class MediatorClient(
 
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
-        private const val PING_DEADLINE_MS: Long = 240_000 // Ping every 4 minutes, QUIC timeout is 5 minutes
+        private const val PING_DEADLINE_MS: Long = 120_000 // Ping every 2 minutes, QUIC timeout is 5 minutes
 
         // TLV Tag constants (purpose-based)
         private const val TAG_PUBKEY: Byte = 0x01.toByte()
@@ -919,7 +919,7 @@ class MediatorClient(
                 if (status == STATUS_OK && (reqId.toInt() and 0xFFFF) == CMD_REQUEST_MEMBER_INFO) {
                     // Parse TLV payload: TAG_CHAT_ID, TAG_LAST_UPDATE
                     try {
-                        Log.d(TAG, "Member info request payload size: ${payload.size}, first bytes: ${payload.take(20).joinToString(" ") { "0x%02X".format(it) }}")
+                        //Log.d(TAG, "Member info request payload size: ${payload.size}, first bytes: ${payload.take(20).joinToString(" ") { "0x%02X".format(it) }}")
                         val tlvs = payload.parseTLVs()
                         val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
                         val lastUpdate = tlvs[TAG_LAST_UPDATE]?.readLong(0) ?: 0L

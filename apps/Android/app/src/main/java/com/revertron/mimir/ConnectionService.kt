@@ -1159,11 +1159,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     override fun getMyInfo(ifUpdatedSince: Long): InfoResponse? {
         //TODO refactor for multi account
         Log.d(TAG, "getMyInfo called with ifUpdatedSince=$ifUpdatedSince")
-        val info = (application as App).storage.getAccountInfo(1, ifUpdatedSince)
-        if (info == null) {
-            Log.w(TAG, "getMyInfo: getAccountInfo returned null for ifUpdatedSince=$ifUpdatedSince")
-            return null
-        }
+        val info = (application as App).storage.getAccountInfo(1, ifUpdatedSince) ?: return null
         Log.d(TAG, "getMyInfo: Got account info - name=${info.name}, updated=${info.updated}")
         var avatar: ByteArray? = null
         if (info.avatar.isNotEmpty()) {

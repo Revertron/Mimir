@@ -510,19 +510,8 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
         }
 
         override fun onMemberInfoRequest(chatId: Long, lastUpdate: Long): MediatorClient.MemberInfoResponse? {
-            Log.i(TAG, "onMemberInfoRequest: chatId=$chatId, lastUpdate=$lastUpdate")
-            val info = infoProvider.getMyInfo(lastUpdate)
-            if (info == null) {
-                Log.w(TAG, "onMemberInfoRequest: infoProvider.getMyInfo returned null for lastUpdate=$lastUpdate")
-                return null
-            }
-            Log.d(TAG, "onMemberInfoRequest: Got info - nickname=${info.nickname}, time=${info.time}, hasAvatar=${info.avatar != null}")
-
-            val chatInfo = storage.getGroupChat(chatId)
-            if (chatInfo == null) {
-                Log.e(TAG, "onMemberInfoRequest: Chat $chatId not found in storage!")
-                return null
-            }
+            val info = infoProvider.getMyInfo(lastUpdate) ?: return null
+            val chatInfo = storage.getGroupChat(chatId) ?: return null
 
             Log.i(TAG, "onMemberInfoRequest: Returning member info for chat $chatId")
             return MediatorClient.MemberInfoResponse(info.nickname, info.info, info.avatar, chatInfo.sharedKey, info.time)
