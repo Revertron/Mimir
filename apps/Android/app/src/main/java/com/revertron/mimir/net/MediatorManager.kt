@@ -195,9 +195,19 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
      * Multiple listeners can be registered per chat.
      */
     fun registerMessageListener(chatId: Long, listener: ChatMessageListener) {
-        chatListeners.compute(chatId) { _, existing ->
-            (existing ?: mutableSetOf()).apply { add(listener) }
+        // API 23-compatible alternative to compute()
+        // Create a new set if needed
+        val newSet = mutableSetOf<ChatMessageListener>()
+        val existingSet = chatListeners.putIfAbsent(chatId, newSet)
+
+        // Use whichever set is in the map (existing or new)
+        val setToUse = existingSet ?: newSet
+
+        // Synchronize on the set itself when modifying
+        synchronized(setToUse) {
+            setToUse.add(listener)
         }
+
         Log.i(TAG, "Registered listener for chat $chatId, total: ${chatListeners[chatId]?.size}")
     }
 
@@ -500,19 +510,8 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
         }
 
         override fun onMemberInfoRequest(chatId: Long, lastUpdate: Long): MediatorClient.MemberInfoResponse? {
-            Log.i(TAG, "onMemberInfoRequest: chatId=$chatId, lastUpdate=$lastUpdate")
-            val info = infoProvider.getMyInfo(lastUpdate)
-            if (info == null) {
-                Log.w(TAG, "onMemberInfoRequest: infoProvider.getMyInfo returned null for lastUpdate=$lastUpdate")
-                return null
-            }
-            Log.d(TAG, "onMemberInfoRequest: Got info - nickname=${info.nickname}, time=${info.time}, hasAvatar=${info.avatar != null}")
-
-            val chatInfo = storage.getGroupChat(chatId)
-            if (chatInfo == null) {
-                Log.e(TAG, "onMemberInfoRequest: Chat $chatId not found in storage!")
-                return null
-            }
+            val info = infoProvider.getMyInfo(lastUpdate) ?: return null
+            val chatInfo = storage.getGroupChat(chatId) ?: return null
 
             Log.i(TAG, "onMemberInfoRequest: Returning member info for chat $chatId")
             return MediatorClient.MemberInfoResponse(info.nickname, info.info, info.avatar, chatInfo.sharedKey, info.time)

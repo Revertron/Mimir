@@ -97,6 +97,12 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
         val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
         setSupportActionBar(toolbar)
+        toolbar.setOnClickListener {
+            val intent = Intent(this, ContactActivity::class.java)
+            intent.putExtra("pubkey", contact.pubkey)
+            intent.putExtra("name", contact.name)
+            startActivity(intent, animFromRight.toBundle())
+        }
 
         val pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
@@ -116,12 +122,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             avatar.setImageResource(R.drawable.button_rounded_white)
             val avatarColor = getAvatarColor(contact.pubkey)
             avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
-        }
-        avatar.setOnClickListener {
-            val intent = Intent(this, ContactActivity::class.java)
-            intent.putExtra("pubkey", contact.pubkey)
-            intent.putExtra("name", contact.name)
-            startActivity(intent, animFromRight.toBundle())
         }
 
         replyPanel = findViewById(R.id.reply_panel)

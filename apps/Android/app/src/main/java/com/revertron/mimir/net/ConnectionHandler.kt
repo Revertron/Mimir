@@ -33,7 +33,7 @@ class ConnectionHandler(
         // Keep-alive configuration
         private const val PING_INTERVAL_MS = 60_000L // 60 seconds
         private const val CONNECTION_TIMEOUT_MS = 600_000L // 10 minutes
-        private const val PING_TIMEOUT_MS = 5_000L // 5 seconds to wait for pong
+        private const val PING_TIMEOUT_MS = 7_000L // 7 seconds to wait for pong
         private const val CALL_PING_INTERVAL_MS = 2_000L // 2 seconds during calls
         private const val CALL_TIMEOUT_MS = 3_500L // 3.5 seconds during calls
     }
@@ -61,6 +61,7 @@ class ConnectionHandler(
         val dis = DataInputStream(ConnectionInputStream(connection))
         val startTime = System.currentTimeMillis()
         val rand = Random.Default
+        var deadPeer = false
         try {
             while (!this.isInterrupted) {
                 when (peerStatus) {
@@ -99,7 +100,8 @@ class ConnectionHandler(
                     }
                     Status.HelloSent -> {
                         if (System.currentTimeMillis() - startTime >= 5000) {
-                            Log.i(TAG, "Connection with $address timed out")
+                            deadPeer = true
+                            Log.i(TAG, "Connection with $address timed out, dead peer")
                             break
                         }
                     }
@@ -164,7 +166,7 @@ class ConnectionHandler(
             if (callStatus != CallStatus.Idle) {
                 listener.onCallStatusChanged(CallStatus.Hangup, it)
             }
-            listener.onConnectionClosed(it, address)
+            listener.onConnectionClosed(it, address, deadPeer)
         }
     }
 
@@ -377,7 +379,6 @@ class ConnectionHandler(
                     stopAudio()
                 }
                 MSG_TYPE_PING -> {
-                    lastPingTime = System.currentTimeMillis()
                     writePong(dos)
                     return ProcessResult.KeepAlive  // Ping/Pong is not meaningful activity
                 }

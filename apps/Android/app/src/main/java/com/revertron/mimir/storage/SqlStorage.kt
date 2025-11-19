@@ -1067,6 +1067,13 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
+     * Usually deleted dead peer address
+     */
+    fun removeContactPeer(address: String) {
+        writableDatabase.delete("ips", "address = ?", arrayOf(address))
+    }
+
+    /**
      * Returns the public keys of every contact that currently has
      * NO un-expired rows in the ips table.
      */

@@ -692,13 +692,16 @@ class MimirServer(
         callStatus = status
     }
 
-    override fun onConnectionClosed(from: ByteArray, address: String) {
+    override fun onConnectionClosed(from: ByteArray, address: String, deadPeer: Boolean) {
         synchronized(connections) {
             val pubKey = Hex.toHexString(from)
             Log.i(TAG, "Removing connection from $pubKey and $address")
             connections.remove(Hex.toHexString(from))
         }
-        listener.onConnectionClosed(from, address)
+        if (deadPeer) {
+            storage.removeContactPeer(address)
+        }
+        listener.onConnectionClosed(from, address, deadPeer)
         listener.onPeerStatusChanged(from, PeerStatus.NotConnected)
     }
 
@@ -809,7 +812,7 @@ interface EventListener {
     fun onReactionReceived(from: ByteArray, messageGuid: Long, emoji: String, add: Boolean, chatId: Long?) {}
     fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean { return false }
     fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {}
-    fun onConnectionClosed(from: ByteArray, address: String) {}
+    fun onConnectionClosed(from: ByteArray, address: String, deadPeer: Boolean) {}
     fun onPeerStatusChanged(from: ByteArray, status: PeerStatus) {}
 }
 

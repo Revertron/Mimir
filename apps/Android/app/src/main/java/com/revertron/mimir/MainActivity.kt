@@ -113,6 +113,14 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        super.onPrepareOptionsMenu(menu)
+
+        val invites = getStorage().getPendingGroupInvites()
+        menu.findItem(R.id.group_invites).isVisible = invites.isNotEmpty()
+        return true
+    }
+
     @Suppress("NAME_SHADOWING")
     @SuppressLint("NotifyDataSetChanged")
     override fun onOptionsItemSelected(item: MenuItem): Boolean {

@@ -178,6 +178,9 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         toolbar.setOnMenuItemClickListener(this)
+        toolbar.setOnClickListener {
+            openGroupInfo()
+        }
 
         // Extract group chat info from intent
         val chatId = intent.getLongExtra(EXTRA_CHAT_ID, 0)
@@ -248,21 +251,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             // Use chat ID for color generation
             val avatarColor = getAvatarColor(groupChat.chatId.toString().toByteArray())
             avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
-        }
-
-        // Click listener to open group info
-        avatar.setOnClickListener {
-            openGroupInfo()
-        }
-
-        // Click listener on title to open group info
-        findViewById<AppCompatTextView>(R.id.title).setOnClickListener {
-            openGroupInfo()
-        }
-
-        // Click listener on subtitle to open group info
-        findViewById<AppCompatTextView>(R.id.subtitle).setOnClickListener {
-            openGroupInfo()
         }
 
         // Setup reply panel
