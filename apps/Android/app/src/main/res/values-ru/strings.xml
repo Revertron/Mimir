@@ -197,4 +197,9 @@
     <string name="message_text_size_label">Размер текста сообщений:</string>
     <string name="font_size_preview_label">Предпросмотр:</string>
     <string name="font_size_preview_text">Это предпросмотр того, как будут выглядеть ваши сообщения с выбранным размером шрифта.</string>
+    <string name="font_size_very_small">Очень мелкий</string>
+    <string name="font_size_small">Мелкий</string>
+    <string name="font_size_medium">Средний</string>
+    <string name="font_size_large">Крупный</string>
+    <string name="font_size_very_large">Самый крупный</string>
 </resources>

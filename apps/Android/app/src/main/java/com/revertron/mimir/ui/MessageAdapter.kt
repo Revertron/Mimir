@@ -25,6 +25,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 class MessageAdapter(
+    context: android.content.Context,
     private val storage: SqlStorage,
     private val chatId: Long,
     private val groupChat: Boolean,
@@ -36,6 +37,10 @@ class MessageAdapter(
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
+
+    // Cache preferences to avoid repeated lookups in onBindViewHolder
+    private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+    private var fontSize = prefs.getInt(SettingsData.KEY_MESSAGE_FONT_SIZE, 15)
 
     private val messageIds = if (groupChat) {
         storage.getGroupMessageIds(chatId).toMutableList()
@@ -85,8 +90,6 @@ class MessageAdapter(
             storage.getMessage(messageIds[position].first)
         } ?: return
 
-        val prefs = PreferenceManager.getDefaultSharedPreferences(holder.itemView.context)
-        val fontSize = prefs.getInt(SettingsData.KEY_MESSAGE_FONT_SIZE, 15)
         holder.message.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat())
         holder.replyToText.setTextSize(TypedValue.COMPLEX_UNIT_SP, (fontSize - 2).toFloat())
 
@@ -281,5 +284,13 @@ class MessageAdapter(
             }
         }
         return -1
+    }
+
+    /**
+     * Update font size from preferences and refresh visible items
+     */
+    fun updateFontSize() {
+        fontSize = prefs.getInt(SettingsData.KEY_MESSAGE_FONT_SIZE, 15)
+        notifyDataSetChanged()
     }
 }

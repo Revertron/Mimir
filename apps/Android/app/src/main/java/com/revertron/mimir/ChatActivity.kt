@@ -140,7 +140,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             getImageFromUri(image)
         }
 
-        val adapter = MessageAdapter(getStorage(), contact.id, groupChat = false, contact.name, this, onClickOnReply(), onClickOnPicture())
+        val adapter = MessageAdapter(this, getStorage(), contact.id, groupChat = false, contact.name, this, onClickOnReply(), onClickOnPicture())
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }

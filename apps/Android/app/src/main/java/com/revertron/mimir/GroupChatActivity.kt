@@ -286,6 +286,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val chatId = groupChat.chatId.toLong()
 
         adapter = MessageAdapter(
+            this,
             getStorage(),
             chatId,
             groupChat = true, // Enable group-chat mode to show sender names
