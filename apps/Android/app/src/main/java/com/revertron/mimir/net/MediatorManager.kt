@@ -195,9 +195,19 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
      * Multiple listeners can be registered per chat.
      */
     fun registerMessageListener(chatId: Long, listener: ChatMessageListener) {
-        chatListeners.compute(chatId) { _, existing ->
-            (existing ?: mutableSetOf()).apply { add(listener) }
+        // API 23-compatible alternative to compute()
+        // Create a new set if needed
+        val newSet = mutableSetOf<ChatMessageListener>()
+        val existingSet = chatListeners.putIfAbsent(chatId, newSet)
+
+        // Use whichever set is in the map (existing or new)
+        val setToUse = existingSet ?: newSet
+
+        // Synchronize on the set itself when modifying
+        synchronized(setToUse) {
+            setToUse.add(listener)
         }
+
         Log.i(TAG, "Registered listener for chat $chatId, total: ${chatListeners[chatId]?.size}")
     }
 
