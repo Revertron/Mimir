@@ -13,7 +13,6 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.updateMargins
-import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
@@ -25,22 +24,21 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 class MessageAdapter(
-    context: android.content.Context,
     private val storage: SqlStorage,
     private val chatId: Long,
     private val groupChat: Boolean,
     private val contactName: String,
     private val onClick: View.OnClickListener,
     private val onReplyClick: View.OnClickListener,
-    private val onPictureClick: View.OnClickListener
+    private val onPictureClick: View.OnClickListener,
+    fontSizeInSp: Int
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
 
-    // Cache preferences to avoid repeated lookups in onBindViewHolder
-    private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-    private var fontSize = prefs.getInt(SettingsData.KEY_MESSAGE_FONT_SIZE, 15)
+    // Font size passed from Activity (in SP units)
+    private var fontSize = fontSizeInSp
 
     private val messageIds = if (groupChat) {
         storage.getGroupMessageIds(chatId).toMutableList()
@@ -287,10 +285,10 @@ class MessageAdapter(
     }
 
     /**
-     * Update font size from preferences and refresh visible items
+     * Update font size and refresh visible items
      */
-    fun updateFontSize() {
-        fontSize = prefs.getInt(SettingsData.KEY_MESSAGE_FONT_SIZE, 15)
+    fun updateFontSize(fontSizeInSp: Int) {
+        fontSize = fontSizeInSp
         notifyDataSetChanged()
     }
 }

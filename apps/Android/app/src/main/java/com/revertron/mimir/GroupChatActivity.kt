@@ -37,6 +37,7 @@ import com.revertron.mimir.ui.GroupChat
 import com.revertron.mimir.ui.MessageAdapter
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
+import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
@@ -285,15 +286,18 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         // MessageAdapter will use this to look up messages from the messages_<chatId> table
         val chatId = groupChat.chatId.toLong()
 
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val fontSize = prefs.getInt(KEY_MESSAGE_FONT_SIZE, 15)
+
         adapter = MessageAdapter(
-            this,
             getStorage(),
             chatId,
             groupChat = true, // Enable group-chat mode to show sender names
             groupChat.name,
             this,
             onClickOnReply(),
-            onClickOnPicture()
+            onClickOnPicture(),
+            fontSize
         )
 
         recyclerView = findViewById(R.id.messages_list)
