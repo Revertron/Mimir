@@ -31,6 +31,7 @@ import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
+import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 import java.lang.Thread.sleep
@@ -140,7 +141,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
             getImageFromUri(image)
         }
 
-        val adapter = MessageAdapter(getStorage(), contact.id, groupChat = false, contact.name, this, onClickOnReply(), onClickOnPicture())
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val fontSize = prefs.getInt(KEY_MESSAGE_FONT_SIZE, 15)
+
+        val adapter = MessageAdapter(getStorage(), contact.id, groupChat = false, contact.name, this, onClickOnReply(), onClickOnPicture(), fontSize)
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }

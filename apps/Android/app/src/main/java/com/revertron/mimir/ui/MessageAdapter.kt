@@ -4,6 +4,7 @@ import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.util.Log
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -29,7 +30,8 @@ class MessageAdapter(
     private val contactName: String,
     private val onClick: View.OnClickListener,
     private val onReplyClick: View.OnClickListener,
-    private val onPictureClick: View.OnClickListener
+    private val onPictureClick: View.OnClickListener,
+    private val fontSize: Int
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
@@ -82,6 +84,9 @@ class MessageAdapter(
         } else {
             storage.getMessage(messageIds[position].first)
         } ?: return
+
+        holder.message.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat())
+        holder.replyToText.setTextSize(TypedValue.COMPLEX_UNIT_SP, (fontSize - 2).toFloat())
 
         if (groupChat) {
             if (message.incoming) {
