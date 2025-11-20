@@ -57,6 +57,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     }
 
     var avatarDrawable: Drawable? = null
+    lateinit var myPubKey: ByteArray
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,10 +71,13 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
 
         val info = getStorage().getAccountInfo(1, 0L)
-        if (info != null && info.avatar.isNotEmpty()) {
-            avatarDrawable = loadRoundedAvatar(this, info.avatar)
-            if (avatarDrawable != null) {
-                toolbar.navigationIcon = avatarDrawable
+        if (info != null) {
+            myPubKey = (info.keyPair.public as Ed25519PublicKeyParameters).encoded
+            if (info.avatar.isNotEmpty()) {
+                avatarDrawable = loadRoundedAvatar(this, info.avatar)
+                if (avatarDrawable != null) {
+                    toolbar.navigationIcon = avatarDrawable
+                }
             }
         }
 
@@ -423,9 +427,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 avatar = contact.avatar
             )
         })
-
-        // Get current user's public key
-        val myPubKey = App.app.mediatorManager?.getPublicKey() ?: return chatItems
 
         // Convert group chats to ChatListItems
         chatItems.addAll(groupChats.map { groupChat ->
