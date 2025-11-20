@@ -229,8 +229,9 @@ fun formatDuration(elapsed: Long): String {
  *
  * Large images are
  * 1. down-scaled so that the *smaller* dimension becomes [maxSize],
- * 2. centre-cropped to a square,
- * 3. returned as an immutable [Bitmap].
+ * 2. rotated according to EXIF orientation,
+ * 3. centre-cropped to a square,
+ * 4. returned as an immutable [Bitmap].
  *
  * **Call this from a background thread only** – the function blocks.
  *
@@ -250,12 +251,6 @@ fun loadSquareAvatar(context: Context, uri: Uri, maxSize: Int): Bitmap? {
 
     val (w, h) = o.outWidth to o.outHeight
     if (w <= 0 || h <= 0) return null
-    if (w == h && w < maxSize) {
-        val bmp = cr.openInputStream(uri).use { ins ->
-            BitmapFactory.decodeStream(ins)
-        } ?: return null
-        return bmp
-    }
 
     val shortEdge = min(w, h)
     val scaleFactor = shortEdge / maxSize        // integer scale
@@ -273,17 +268,22 @@ fun loadSquareAvatar(context: Context, uri: Uri, maxSize: Int): Bitmap? {
     } ?: return null
 
     /* ---------------------------------------------------------------------
-       3. Fine-scale so that the *smaller* side becomes exactly maxSize
+       3. Rotate according to EXIF orientation
        ------------------------------------------------------------------ */
-    val scale = maxSize.toFloat() / min(bmp.width, bmp.height)
+    val rotated = rotateBitmapAccordingToExif(bmp, uri, cr)
+
+    /* ---------------------------------------------------------------------
+       4. Fine-scale so that the *smaller* side becomes exactly maxSize
+       ------------------------------------------------------------------ */
+    val scale = maxSize.toFloat() / min(rotated.width, rotated.height)
     val matrix = Matrix().apply { postScale(scale, scale) }
 
     val scaled = Bitmap.createBitmap(
-        bmp, 0, 0, bmp.width, bmp.height, matrix, true
+        rotated, 0, 0, rotated.width, rotated.height, matrix, true
     )
 
     /* ---------------------------------------------------------------------
-       4. Centre-crop to square
+       5. Centre-crop to square
        ------------------------------------------------------------------ */
     val cropSize = min(scaled.width, scaled.height)
     val cropX = (scaled.width - cropSize) / 2
@@ -294,9 +294,10 @@ fun loadSquareAvatar(context: Context, uri: Uri, maxSize: Int): Bitmap? {
     )
 
     /* ---------------------------------------------------------------------
-       5. Clean up if we created an intermediate bitmap
+       6. Clean up if we created intermediate bitmaps
        ------------------------------------------------------------------ */
-    if (scaled != bmp) scaled.recycle()
+    if (scaled != rotated) scaled.recycle()
+    if (rotated != bmp) rotated.recycle()
     return avatar
 }
 
@@ -370,8 +371,34 @@ fun loadRoundedAvatar(context: Context, fileName: String?, size: Int = 32, corne
         try {
             f.inputStream().use {
                 val iconSize = TypedValue.applyDimension(COMPLEX_UNIT_DIP, size.toFloat(), resources.displayMetrics).toInt()
-                val raw = BitmapFactory.decodeFile(f.absolutePath)
-                val scaled = raw.scale(iconSize, iconSize)
+
+                // Decode the bitmap
+                val raw = BitmapFactory.decodeFile(f.absolutePath) ?: return null
+
+                // Apply EXIF rotation if needed
+                val rotated = try {
+                    val exif = ExifInterface(f.absolutePath)
+                    val orientation = exif.getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL
+                    )
+                    val matrix = Matrix()
+                    when (orientation) {
+                        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                    }
+                    if (orientation != ExifInterface.ORIENTATION_NORMAL) {
+                        Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, matrix, true)
+                            .also { if (it != raw) raw.recycle() }
+                    } else {
+                        raw
+                    }
+                } catch (_: Exception) {
+                    raw
+                }
+
+                val scaled = rotated.scale(iconSize, iconSize)
 
                 val drawable = RoundedBitmapDrawableFactory.create(resources, scaled).apply {
                     cornerRadius = TypedValue.applyDimension(COMPLEX_UNIT_DIP, corners.toFloat(), resources.displayMetrics)
@@ -440,52 +467,55 @@ private fun rotateBitmapAccordingToExif(bitmap: Bitmap, uri: Uri, contentResolve
 }
 
 /**
- * Copies picture file to app directory, creates preview
+ * Copies picture file to app directory, creates preview with EXIF rotation applied
  *
  * @return Hash of file, null if some error occurs
  */
 fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, quality: Int): JSONObject? {
     val tag = "prepareFileForMessage"
-    // TODO fix getting size
-    var size = uri.length(context)
+    val originalSize = uri.length(context)
 
-    val inputStream = if (size <= PICTURE_MAX_SIZE) {
-        val contentResolver = context.contentResolver
-        contentResolver.openInputStream(uri)
-    } else {
-        Log.i(tag, "File is too big, will try to resize")
-        val resized = uri.resizeAndCompress(context, imageSize, quality)
-        Log.i(tag, "Resized from $size to ${resized.size}")
-        val newSize = resized.size.toLong()
-        if (newSize > size || newSize > PICTURE_MAX_SIZE) return null
-        size = newSize
-        ByteArrayInputStream(resized)
+    // Always process through resizeAndCompress to ensure EXIF rotation is applied
+    // Even if the file is small, this ensures proper orientation
+    val resized = try {
+        uri.resizeAndCompress(context, imageSize, quality)
+    } catch (e: Exception) {
+        Log.e(tag, "Error processing image", e)
+        return null
     }
+
+    Log.i(tag, "Processed image from $originalSize to ${resized.size} bytes")
+
+    val newSize = resized.size.toLong()
+    if (newSize > PICTURE_MAX_SIZE) {
+        Log.e(tag, "Processed image is still too big: $newSize > $PICTURE_MAX_SIZE")
+        return null
+    }
+
     val imagesDir = File(context.filesDir, "files")
     if (!imagesDir.exists()) {
         imagesDir.mkdirs()
     }
+
     val fileName = randomString(16)
-    val ext = getMimeType(context, uri)
+    val ext = "jpg"  // Always use jpg since resizeAndCompress outputs JPEG
     val fullName = "$fileName.$ext"
     val outputFile = File(imagesDir, fullName)
-    val outputStream = FileOutputStream(outputFile)
-    inputStream.use { input ->
-        outputStream.use { output ->
-            val copied = (input?.copyTo(output) ?: {
-                Log.e(tag, "File is not accessible")
-                null
-            }) as Long
-            if (copied != size) {
-                Log.e(tag, "Error copying file to app storage!")
-                return null
-            }
+
+    try {
+        FileOutputStream(outputFile).use { output ->
+            output.write(resized)
+            output.flush()
         }
+    } catch (e: Exception) {
+        Log.e(tag, "Error writing file", e)
+        return null
     }
+
     val hash = getFileHash(outputFile)
     val json = JSONObject()
     json.put("name", fullName)
-    json.put("size", size)
+    json.put("size", newSize)
     json.put("hash", Hex.toHexString(hash))
     return json
 }

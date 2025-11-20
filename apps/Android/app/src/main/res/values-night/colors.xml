@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Reaction badge colors (dark theme) -->
+    <color name="reaction_badge_bg">#FF383838</color>
+    <color name="reaction_badge_border">#FF606060</color>
+    <color name="reaction_badge_bg_selected">#FF1A3A52</color>
+    <color name="reaction_badge_border_selected">#FF2196F3</color>
+
+    <!-- Reaction picker colors (dark theme) -->
+    <color name="reaction_picker_bg">#FF2A2A2A</color>
+    <color name="reaction_picker_border">#FF606060</color>
+</resources>

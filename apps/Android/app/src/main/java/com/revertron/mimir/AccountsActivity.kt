@@ -1,17 +1,26 @@
 package com.revertron.mimir
 
+import android.Manifest
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.revertron.mimir.ChatActivity.Companion.PICK_IMAGE_REQUEST_CODE
 import com.revertron.mimir.storage.AccountInfo
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
@@ -21,9 +30,15 @@ import java.net.URLEncoder
 
 class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
+    companion object {
+        private const val TAG = "AccountsActivity"
+        private const val TAKE_PHOTO_REQUEST_CODE = 124
+    }
+
     val accountNumber = 1 //TODO make multi account
     lateinit var accountInfo: AccountInfo
     lateinit var myNameEdit: AppCompatEditText
+    private var currentPhotoUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,8 +58,17 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
             val avatar = loadRoundedAvatar(this, accountInfo.avatar, 128, 8)
             avatarView.setImageDrawable(avatar)
         }
-        avatarView.setOnClickListener {
+
+        // Camera button - select/take photo
+        val cameraButton = findViewById<AppCompatImageView>(R.id.camera_button)
+        cameraButton.setOnClickListener {
             selectPicture()
+        }
+
+        // Delete button - remove avatar
+        val deleteButton = findViewById<AppCompatImageView>(R.id.delete_button)
+        deleteButton.setOnClickListener {
+            deleteAvatar()
         }
 
         myNameEdit = findViewById(R.id.contact_name)
@@ -114,41 +138,153 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PICK_IMAGE_REQUEST_CODE && resultCode == RESULT_OK) {
-            if (data == null || data.data == null) {
-                Log.e(ChatActivity.Companion.TAG, "Error getting picture")
-                return
-            }
-            val selectedPictureUri = data.data!!
-            Thread {
-                val bmp = loadSquareAvatar(this.applicationContext, selectedPictureUri, 256)
-                if (bmp != null) {
-                    val avatarsDir = File(filesDir, "avatars")
-                    if (!avatarsDir.exists()) {
-                        avatarsDir.mkdirs()
+        when (requestCode) {
+            PICK_IMAGE_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    if (data == null || data.data == null) {
+                        Log.e(TAG, "Error getting picture from gallery")
+                        return
                     }
-                    val fileName = accountInfo.avatar.ifEmpty {
-                        randomString(16) + ".jpg"
-                    }
-
-                    // TODO support avatars with opacity like PNG
-                    val f = File(avatarsDir, fileName)
-                    f.outputStream().use {
-                        bmp.compress(Bitmap.CompressFormat.JPEG, 95, it)
-                    }
-                    getStorage().updateAvatar(accountNumber, fileName)
-                    runOnUiThread({
-                        val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
-                        avatarView.setImageBitmap(bmp)
-                    })
+                    val selectedPictureUri = data.data!!
+                    processAvatarImage(selectedPictureUri)
                 }
-            }.start()
+            }
+            TAKE_PHOTO_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    currentPhotoUri?.let { uri ->
+                        processAvatarImage(uri)
+                    } ?: run {
+                        Log.e(TAG, "Error: photo URI is null")
+                        Toast.makeText(this, R.string.error_taking_photo, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 
+    private fun processAvatarImage(uri: Uri) {
+        Thread {
+            val bmp = loadSquareAvatar(this.applicationContext, uri, 256)
+            if (bmp != null) {
+                val avatarsDir = File(filesDir, "avatars")
+                if (!avatarsDir.exists()) {
+                    avatarsDir.mkdirs()
+                }
+                val fileName = accountInfo.avatar.ifEmpty {
+                    randomString(16) + ".jpg"
+                }
+
+                // TODO support avatars with opacity like PNG
+                val f = File(avatarsDir, fileName)
+                f.outputStream().use {
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 95, it)
+                }
+                getStorage().updateAvatar(accountNumber, fileName)
+                runOnUiThread {
+                    val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
+                    avatarView.setImageBitmap(bmp)
+                }
+            }
+        }.start()
+    }
+
     private fun selectPicture() {
+        showImageSourceDialog()
+    }
+
+    private fun showImageSourceDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.choose_image_source)
+            .setItems(arrayOf(
+                getString(R.string.take_photo),
+                getString(R.string.choose_from_gallery)
+            )) { _, which ->
+                when (which) {
+                    0 -> checkCameraPermissionAndTakePhoto()
+                    1 -> pickImageFromGallery()
+                }
+            }
+            .show()
+    }
+
+    private fun checkCameraPermissionAndTakePhoto() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+                takePhoto()
+            }
+            else -> {
+                requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private val requestCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                takePhoto()
+            } else {
+                Toast.makeText(this, R.string.toast_no_permission, Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private fun takePhoto() {
+        try {
+            val cameraDir = File(cacheDir, "camera")
+            if (!cameraDir.exists()) {
+                cameraDir.mkdirs()
+            }
+
+            val photoFile = File(cameraDir, "avatar_${System.currentTimeMillis()}.jpg")
+            currentPhotoUri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.file_provider",
+                photoFile
+            )
+
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, currentPhotoUri)
+            startActivityForResult(intent, TAKE_PHOTO_REQUEST_CODE)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating camera intent", e)
+            Toast.makeText(this, R.string.error_taking_photo, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun pickImageFromGallery() {
         val intent = Intent(Intent.ACTION_PICK)
         intent.type = "image/*"
         startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
+    }
+
+    private fun deleteAvatar() {
+        if (accountInfo.avatar.isEmpty()) {
+            Toast.makeText(this, R.string.no_avatar_to_delete, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.delete_avatar)
+            .setMessage(R.string.confirm_delete_avatar)
+            .setPositiveButton(R.string.menu_delete) { _, _ ->
+                // Delete avatar file
+                val avatarsDir = File(filesDir, "avatars")
+                val avatarFile = File(avatarsDir, accountInfo.avatar)
+                if (avatarFile.exists()) {
+                    avatarFile.delete()
+                }
+
+                // Update database
+                getStorage().updateAvatar(accountNumber, "")
+
+                // Update UI
+                val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
+                avatarView.setImageResource(R.drawable.button_rounded_white)
+
+                Toast.makeText(this, R.string.avatar_deleted, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 }

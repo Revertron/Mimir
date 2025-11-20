@@ -19,6 +19,7 @@ const val MSG_TYPE_INFO_RESPONSE = 7
 const val MSG_TYPE_PING = 8
 const val MSG_TYPE_PONG = 9
 const val MSG_TYPE_MESSAGE_TEXT = 1000
+const val MSG_TYPE_REACTION = 1001
 const val MSG_TYPE_CALL_OFFER = 2000
 const val MSG_TYPE_CALL_ANSWER = 2001
 const val MSG_TYPE_CALL_HANG = 2002
@@ -33,6 +34,7 @@ data class Challenge(val data: ByteArray)
 data class ChallengeAnswer(val data: ByteArray)
 data class InfoResponse(val time: Long, val nickname: String, val info: String, val avatar: ByteArray?)
 data class Message(val guid: Long, val replyTo: Long, val sendTime: Long, val editTime: Long, val type: Int, val data: ByteArray)
+data class MessageReaction(val messageGuid: Long, val emoji: String, val add: Boolean, val chatId: Long? = null)
 data class CallOffer(val mimeType: String, val sampleRate: Int, val channelCount: Int = 1)
 data class CallAnswer(val ok: Boolean, val error: String = "")
 data class CallPacket(val data: ByteArray)
@@ -472,5 +474,60 @@ fun readAndDismiss(dis: DataInputStream, size: Long) {
         val read = dis.read(data, 0, if (size > data.size) data.size else (size as Int))
         if (read < 0) return
         size -= read
+    }
+}
+
+/**
+ * Reads a message reaction from the socket
+ */
+fun readMessageReaction(dis: DataInputStream): MessageReaction? {
+    return try {
+        val messageGuid = dis.readLong()
+        val emojiLength = dis.readInt()
+        val emojiBytes = ByteArray(emojiLength)
+        var count = 0
+        while (count < emojiLength) {
+            val read = dis.read(emojiBytes, count, emojiLength - count)
+            if (read < 0) return null
+            count += read
+        }
+        val emoji = String(emojiBytes)
+        val add = dis.readBoolean()
+
+        // Read optional chatId
+        val hasChatId = dis.readBoolean()
+        val chatId = if (hasChatId) dis.readLong() else null
+
+        MessageReaction(messageGuid, emoji, add, chatId)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error reading reaction: $e")
+        null
+    }
+}
+
+/**
+ * Writes a message reaction to the socket
+ */
+fun writeMessageReaction(dos: DataOutputStream, reaction: MessageReaction, stream: Int = 0, type: Int = MSG_TYPE_REACTION): Boolean {
+    return try {
+        val emojiBytes = reaction.emoji.toByteArray()
+        val hasChatId = reaction.chatId != null
+        val size = 8 + 4 + emojiBytes.size + 1 + 1 + (if (hasChatId) 8 else 0)
+
+        writeHeader(dos, stream, type, size)
+
+        dos.writeLong(reaction.messageGuid)
+        dos.writeInt(emojiBytes.size)
+        dos.write(emojiBytes)
+        dos.writeBoolean(reaction.add)
+        dos.writeBoolean(hasChatId)
+        if (hasChatId) {
+            dos.writeLong(reaction.chatId!!)
+        }
+        dos.flush()
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "Error writing reaction: $e")
+        false
     }
 }

@@ -398,6 +398,26 @@ class MimirServer(
         }
     }
 
+    /**
+     * Sends a reaction to a contact.
+     * @return true if sent successfully, false if no connection available
+     */
+    fun sendReaction(contact: ByteArray, messageGuid: Long, emoji: String, add: Boolean, chatId: Long? = null): Boolean {
+        val contactString = Hex.toHexString(contact)
+        Log.i(TAG, "Sending reaction to $contactString: emoji=$emoji, messageGuid=$messageGuid, add=$add")
+
+        synchronized(connections) {
+            val handler = connections.get(contactString)
+            if (handler != null) {
+                handler.sendReaction(messageGuid, emoji, add, chatId)
+                return true
+            } else {
+                Log.w(TAG, "No active connection to $contactString, cannot send reaction")
+                return false
+            }
+        }
+    }
+
     fun reconnectPeers() {
         messenger.retryPeersNow()
         announceTtl = 0L
@@ -631,6 +651,10 @@ class MimirServer(
         listener.onMessageDelivered(to, guid, delivered)
     }
 
+    override fun onReactionReceived(from: ByteArray, messageGuid: Long, emoji: String, add: Boolean, chatId: Long?) {
+        listener.onReactionReceived(from, messageGuid, emoji, add, chatId)
+    }
+
     override fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean {
         Log.i(TAG, "onIncomingCall status: $callStatus")
         if (callStatus != CallStatus.Idle) {
@@ -785,6 +809,7 @@ interface EventListener {
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
     fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray)
     fun onMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean)
+    fun onReactionReceived(from: ByteArray, messageGuid: Long, emoji: String, add: Boolean, chatId: Long?) {}
     fun onIncomingCall(from: ByteArray, inCall: Boolean): Boolean { return false }
     fun onCallStatusChanged(status: CallStatus, from: ByteArray?) {}
     fun onConnectionClosed(from: ByteArray, address: String, deadPeer: Boolean) {}

@@ -22,5 +22,15 @@
     <color name="message_outgoing_dark_normal">#FF305090</color>
     <color name="message_outgoing_dark_pressed">#FF4565A5</color>
 
+    <!-- Reaction badge colors (light theme) -->
+    <color name="reaction_badge_bg">#F0F0F0F0</color>
+    <color name="reaction_badge_border">#FFD0D0D0</color>
+    <color name="reaction_badge_bg_selected">#FFE8F4FD</color>
+    <color name="reaction_badge_border_selected">#FF2196F3</color>
+
+    <!-- Reaction picker colors (light theme) -->
+    <color name="reaction_picker_bg">#FFFFFFFF</color>
+    <color name="reaction_picker_border">#FFD0D0D0</color>
+
     <color name="transparent">#00000000</color>
 </resources>

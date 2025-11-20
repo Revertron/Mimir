@@ -1,5 +1,6 @@
 package com.revertron.mimir
 
+import android.Manifest
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -7,11 +8,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.PorterDuff
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
@@ -19,6 +22,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatImageView
@@ -27,6 +31,8 @@ import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -40,6 +46,7 @@ import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
+import java.io.File
 
 /**
  * Group chat activity using ConnectionService for server-mediated group messaging.
@@ -55,7 +62,7 @@ import org.json.JSONObject
  * follows the same pattern as NewChatActivity by delegating all mediator operations to
  * ConnectionService and receiving responses via LocalBroadcast.
  */
-class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
+class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener {
 
     companion object {
         const val TAG = "GroupChatActivity"
@@ -67,6 +74,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
 
         private const val REQUEST_SELECT_CONTACT = 100
         private const val PICK_IMAGE_REQUEST_CODE = 123
+        private const val TAKE_PHOTO_REQUEST_CODE = 126
     }
 
     private lateinit var groupChat: GroupChat
@@ -83,6 +91,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     private var replyTo = 0L
     private var attachmentJson: JSONObject? = null
     private var isVisible: Boolean = false
+    private var currentPhotoUri: Uri? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val mediatorReceiver = object : BroadcastReceiver() {
@@ -112,6 +121,25 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                             // New message received, refresh UI
                             adapter.addMessageId(localId, true)
                             recyclerView.scrollToPosition(adapter.itemCount - 1)
+                        }
+                    }
+                }
+                "ACTION_REACTION_UPDATED" -> {
+                    val messageGuid = intent.getLongExtra("messageGuid", 0L)
+                    val receivedChatId = if (intent.hasExtra("chatId")) intent.getLongExtra("chatId", 0L) else null
+
+                    // Only update if reaction is for this group chat
+                    if (receivedChatId == groupChat.chatId && messageGuid != 0L) {
+                        Log.i(TAG, "Reaction updated for message $messageGuid in chat ${groupChat.chatId}")
+                        mainHandler.post {
+                            // Find message and update it
+                            val messageId = getStorage().getGroupMessageIdByGuid(messageGuid, groupChat.chatId)
+                            if (messageId != null) {
+                                val position = adapter.getMessageIdPosition(messageId)
+                                if (position >= 0) {
+                                    adapter.notifyItemChanged(position)
+                                }
+                            }
                         }
                     }
                 }
@@ -198,6 +226,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val filter = IntentFilter().apply {
             addAction("ACTION_MEDIATOR_MESSAGE_SENT")
             addAction("ACTION_GROUP_MESSAGE_RECEIVED")
+            addAction("ACTION_REACTION_UPDATED")
             addAction("ACTION_MEDIATOR_LEFT_CHAT")
             addAction("ACTION_MEDIATOR_ERROR")
         }
@@ -279,7 +308,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             chatId,
             groupChat = true, // Enable group-chat mode to show sender names
             groupChat.name,
-            this,
+            onLongClickMessage(),
             onClickOnReply(),
             onClickOnPicture()
         )
@@ -574,11 +603,23 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 }
             }
             PICK_IMAGE_REQUEST_CODE -> {
-                if (resultCode == RESULT_OK && data != null && data.data != null) {
+                if (resultCode == RESULT_OK) {
+                    if (data == null || data.data == null) {
+                        Log.e(TAG, "Error getting picture from gallery")
+                        return
+                    }
                     val selectedPictureUri = data.data!!
                     getImageFromUri(selectedPictureUri)
-                } else {
-                    Log.e(TAG, "Error getting picture")
+                }
+            }
+            TAKE_PHOTO_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    currentPhotoUri?.let { uri ->
+                        getImageFromUri(uri)
+                    } ?: run {
+                        Log.e(TAG, "Error: photo URI is null")
+                        Toast.makeText(this, R.string.error_taking_photo, Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
@@ -605,6 +646,69 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     // Image attachment handling
 
     private fun selectAndSendPicture() {
+        showImageSourceDialog()
+    }
+
+    private fun showImageSourceDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.choose_image_source)
+            .setItems(arrayOf(
+                getString(R.string.take_photo),
+                getString(R.string.choose_from_gallery)
+            )) { _, which ->
+                when (which) {
+                    0 -> checkCameraPermissionAndTakePhoto()
+                    1 -> pickImageFromGallery()
+                }
+            }
+            .show()
+    }
+
+    private fun checkCameraPermissionAndTakePhoto() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+                takePhoto()
+            }
+            else -> {
+                requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private val requestCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                takePhoto()
+            } else {
+                Toast.makeText(this, R.string.toast_no_permission, Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private fun takePhoto() {
+        try {
+            val cameraDir = File(cacheDir, "camera")
+            if (!cameraDir.exists()) {
+                cameraDir.mkdirs()
+            }
+
+            val photoFile = File(cameraDir, "group_photo_${System.currentTimeMillis()}.jpg")
+            currentPhotoUri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.file_provider",
+                photoFile
+            )
+
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, currentPhotoUri)
+            startActivityForResult(intent, TAKE_PHOTO_REQUEST_CODE)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating camera intent", e)
+            Toast.makeText(this, R.string.error_taking_photo, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun pickImageFromGallery() {
         val intent = Intent(Intent.ACTION_PICK)
         intent.type = "image/*"
         startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
@@ -633,20 +737,121 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
 
     // Click handlers
 
-    override fun onClick(view: View) {
-        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.END)
-        popup.inflate(R.menu.menu_context_message) // Same menu resource
-        popup.setForceShowIcon(true)
-        popup.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.menu_copy -> handleCopy(view)
-                R.id.menu_reply -> handleReply(view)
-                R.id.menu_forward -> handleForward(view)
-                R.id.menu_delete -> handleDelete(view)
-                else -> false
+    private var contextMenuWindow: android.widget.PopupWindow? = null
+
+    private fun onLongClickMessage() = View.OnLongClickListener { view ->
+        // Show combined reactions and context menu
+        showCombinedContextMenu(view)
+        true
+    }
+
+    private fun showCombinedContextMenu(messageView: View) {
+        // Dismiss existing window if any
+        contextMenuWindow?.dismiss()
+
+        val messageId = messageView.tag as? Long ?: return
+        val message = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return
+
+        // Inflate combined menu (reactions + actions)
+        val menuView = layoutInflater.inflate(R.layout.message_context_menu, null)
+
+        val reactions = mapOf(
+            R.id.reaction_thumbsup to "👍",
+            R.id.reaction_thumbsdown to "👎",
+            R.id.reaction_fire to "🔥",
+            R.id.reaction_laugh to "😂",
+            R.id.reaction_sad to "😢"
+        )
+
+        // Get current user pubkey for reaction handling
+        val currentUserPubkey = getStorage().getAccountInfo(1, 0L)?.let {
+            (it.keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+        }
+
+        // Setup reaction buttons
+        for ((viewId, emoji) in reactions) {
+            menuView.findViewById<View>(viewId)?.setOnClickListener {
+                if (currentUserPubkey != null) {
+                    // Check if user has an existing reaction
+                    val existingReaction = getStorage().getUserCurrentReaction(message.guid, groupChat.chatId, currentUserPubkey)
+
+                    // Toggle the reaction locally
+                    val added = getStorage().toggleReaction(message.guid, groupChat.chatId, currentUserPubkey, emoji)
+                    adapter.notifyDataSetChanged()
+
+                    // If user had a different reaction, send removal first
+                    if (existingReaction != null && existingReaction != emoji) {
+                        val removeIntent = Intent(this, ConnectionService::class.java)
+                        removeIntent.putExtra("command", "ACTION_SEND_GROUP_REACTION")
+                        removeIntent.putExtra("messageGuid", message.guid)
+                        removeIntent.putExtra("chatId", groupChat.chatId)
+                        removeIntent.putExtra("emoji", existingReaction)
+                        removeIntent.putExtra("add", false)
+                        removeIntent.putExtra("mediatorAddress", mediatorAddress)
+                        startService(removeIntent)
+                    }
+
+                    // Send the new reaction
+                    val intent = Intent(this, ConnectionService::class.java)
+                    intent.putExtra("command", "ACTION_SEND_GROUP_REACTION")
+                    intent.putExtra("messageGuid", message.guid)
+                    intent.putExtra("chatId", groupChat.chatId)
+                    intent.putExtra("emoji", emoji)
+                    intent.putExtra("add", added)
+                    intent.putExtra("mediatorAddress", mediatorAddress)
+                    startService(intent)
+                }
+
+                contextMenuWindow?.dismiss()
             }
         }
-        popup.show()
+
+        // Setup action menu items
+        menuView.findViewById<View>(R.id.menu_reply)?.setOnClickListener {
+            handleReply(messageView)
+            contextMenuWindow?.dismiss()
+        }
+
+        menuView.findViewById<View>(R.id.menu_copy)?.setOnClickListener {
+            handleCopy(messageView)
+            contextMenuWindow?.dismiss()
+        }
+
+        menuView.findViewById<View>(R.id.menu_forward)?.setOnClickListener {
+            handleForward(messageView)
+            contextMenuWindow?.dismiss()
+        }
+
+        menuView.findViewById<View>(R.id.menu_delete)?.setOnClickListener {
+            handleDelete(messageView)
+            contextMenuWindow?.dismiss()
+        }
+
+        // Create popup window
+        val popupWindow = android.widget.PopupWindow(
+            menuView,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        )
+        popupWindow.isOutsideTouchable = true
+        popupWindow.isFocusable = true
+
+        // Calculate position above the message
+        val location = IntArray(2)
+        messageView.getLocationOnScreen(location)
+
+        // Measure the popup
+        menuView.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        val popupHeight = menuView.measuredHeight
+        val popupWidth = menuView.measuredWidth
+
+        // Position above the message, centered
+        val xOffset = (messageView.width - popupWidth) / 2
+        val yOffset = -(popupHeight + 10)  // 10dp above message
+
+        popupWindow.showAsDropDown(messageView, xOffset, yOffset)
+        contextMenuWindow = popupWindow
     }
 
     private fun onClickOnReply() = fun(it: View) {

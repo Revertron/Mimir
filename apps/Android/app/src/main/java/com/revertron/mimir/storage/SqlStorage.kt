@@ -38,7 +38,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 11
+        const val DATABASE_VERSION = 13
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
@@ -48,6 +48,17 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         // Group chat tables (version 8+)
         const val CREATE_GROUP_CHATS = "CREATE TABLE group_chats (chat_id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, avatar TEXT, mediator_pubkey BLOB NOT NULL, owner_pubkey BLOB NOT NULL, shared_key BLOB NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, last_message_time INTEGER DEFAULT 0, unread_count INTEGER DEFAULT 0, muted BOOL DEFAULT 0)"
         const val CREATE_GROUP_INVITES = "CREATE TABLE group_invites (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, from_pubkey BLOB NOT NULL, timestamp INTEGER NOT NULL, chat_name TEXT NOT NULL, chat_description TEXT, chat_avatar TEXT, encrypted_data BLOB NOT NULL, status INTEGER DEFAULT 0)"
+
+        // Reactions table (version 12+)
+        // Stores reactions for both personal and group chat messages
+        // For personal chats: message_guid is the guid from messages table, chat_id is NULL
+        // For group chats: message_guid is the guid from messages_<chatId> table, chat_id is the group chat ID
+        const val CREATE_REACTIONS = "CREATE TABLE reactions (id INTEGER PRIMARY KEY AUTOINCREMENT, message_guid INTEGER NOT NULL, chat_id INTEGER, reactor_pubkey BLOB NOT NULL, emoji TEXT NOT NULL, timestamp INTEGER NOT NULL, UNIQUE(message_guid, chat_id, reactor_pubkey, emoji))"
+
+        // Pending reactions table (version 13+)
+        // Stores reactions that failed to send and need to be retried
+        // contact_pubkey is the recipient for personal chats, NULL for group chats
+        const val CREATE_PENDING_REACTIONS = "CREATE TABLE pending_reactions (id INTEGER PRIMARY KEY AUTOINCREMENT, message_guid INTEGER NOT NULL, chat_id INTEGER, contact_pubkey BLOB, emoji TEXT NOT NULL, add_reaction BOOL NOT NULL, timestamp INTEGER NOT NULL)"
     }
 
     data class Message(
@@ -108,6 +119,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         db.execSQL(CREATE_MESSAGES)
         db.execSQL(CREATE_GROUP_CHATS)
         db.execSQL(CREATE_GROUP_INVITES)
+        db.execSQL(CREATE_REACTIONS)
+        db.execSQL(CREATE_PENDING_REACTIONS)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -178,6 +191,16 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         if (newVersion > oldVersion && newVersion > 10) {
             migrateGroupMessageReplyToColumn(db)
+        }
+
+        if (oldVersion < 12 && newVersion >= 12) {
+            // Add reactions table
+            db.execSQL(CREATE_REACTIONS)
+        }
+
+        if (oldVersion < 13 && newVersion >= 13) {
+            // Add pending reactions table
+            db.execSQL(CREATE_PENDING_REACTIONS)
         }
     }
 
@@ -526,11 +549,13 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
         if (this.writableDatabase.update("messages", values, "guid = ? AND contact = ?", arrayOf("$guid", "$contact")) > 0) {
             val id = getMessageIdByGuid(guid)
-            Log.i(TAG, "Message $id with guid $guid delivered = $delivered")
-            for (listener in listeners) {
-                listener.onMessageDelivered(id, delivered)
+            if (id != null) {
+                Log.i(TAG, "Message $id with guid $guid delivered = $delivered")
+                for (listener in listeners) {
+                    listener.onMessageDelivered(id, delivered)
+                }
+                notificationManager.onMessageDelivered(id, delivered)
             }
-            notificationManager.onMessageDelivered(id, delivered)
         }
     }
 
@@ -836,14 +861,30 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         return this.writableDatabase.delete(messagesTable, "id = ?", arrayOf(messageId.toString())) > 0
     }
 
-    private fun getMessageIdByGuid(guid: Long): Long {
+    fun getMessageIdByGuid(guid: Long): Long? {
         val db = this.readableDatabase
         val statement = db.compileStatement("SELECT id FROM messages WHERE guid=? LIMIT 1")
         statement.bindLong(1, guid)
         val result = try {
             statement.simpleQueryForLong()
         } catch (e: SQLiteDoneException) {
-            -1
+            statement.close()
+            return null
+        }
+        statement.close()
+        return result
+    }
+
+    fun getGroupMessageIdByGuid(guid: Long, chatId: Long): Long? {
+        val messagesTable = "messages_$chatId"
+        val db = this.readableDatabase
+        val statement = db.compileStatement("SELECT id FROM $messagesTable WHERE guid=? LIMIT 1")
+        statement.bindLong(1, guid)
+        val result = try {
+            statement.simpleQueryForLong()
+        } catch (e: SQLiteDoneException) {
+            statement.close()
+            return null
         }
         statement.close()
         return result
@@ -2291,7 +2332,374 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             db.endTransaction()
         }
     }
+
+    // ==================== REACTIONS ====================
+
+    /**
+     * Adds or updates a reaction to a message.
+     * If the same user reacts with the same emoji again, it's treated as a duplicate (UNIQUE constraint).
+     * @param messageGuid GUID of the message
+     * @param chatId Group chat ID (null for personal chats)
+     * @param reactorPubkey Public key of the reactor
+     * @param emoji The emoji reaction
+     * @return The reaction ID, or -1 if failed
+     */
+    fun addReaction(messageGuid: Long, chatId: Long?, reactorPubkey: ByteArray, emoji: String): Long {
+        val values = ContentValues().apply {
+            put("message_guid", messageGuid)
+            if (chatId != null) {
+                put("chat_id", chatId)
+            }
+            put("reactor_pubkey", reactorPubkey)
+            put("emoji", emoji)
+            put("timestamp", System.currentTimeMillis())
+        }
+
+        val id = try {
+            writableDatabase.insertWithOnConflict("reactions", null, values, SQLiteDatabase.CONFLICT_IGNORE)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding reaction", e)
+            -1L
+        }
+
+        if (id > 0) {
+            // Notify listeners
+            for (listener in listeners) {
+                listener.onReactionAdded(messageGuid, chatId, emoji)
+            }
+        }
+
+        return id
+    }
+
+    /**
+     * Removes a specific reaction from a message.
+     * @param messageGuid GUID of the message
+     * @param chatId Group chat ID (null for personal chats)
+     * @param reactorPubkey Public key of the reactor
+     * @param emoji The emoji to remove
+     * @return true if successfully removed
+     */
+    fun removeReaction(messageGuid: Long, chatId: Long?, reactorPubkey: ByteArray, emoji: String): Boolean {
+        val pubkeyHex = Hex.toHexString(reactorPubkey)
+        val deleted = try {
+            if (chatId != null) {
+                writableDatabase.delete(
+                    "reactions",
+                    "message_guid = ? AND chat_id = ? AND HEX(reactor_pubkey) = ? AND emoji = ?",
+                    arrayOf(messageGuid.toString(), chatId.toString(), pubkeyHex.uppercase(), emoji)
+                )
+            } else {
+                writableDatabase.delete(
+                    "reactions",
+                    "message_guid = ? AND chat_id IS NULL AND HEX(reactor_pubkey) = ? AND emoji = ?",
+                    arrayOf(messageGuid.toString(), pubkeyHex.uppercase(), emoji)
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing reaction", e)
+            0
+        }
+
+        if (deleted > 0) {
+            // Notify listeners
+            for (listener in listeners) {
+                listener.onReactionRemoved(messageGuid, chatId, emoji)
+            }
+        }
+
+        return deleted > 0
+    }
+
+    /**
+     * Gets all reactions for a specific message.
+     * @param messageGuid GUID of the message
+     * @param chatId Group chat ID (null for personal chats)
+     * @return List of reactions
+     */
+    fun getReactions(messageGuid: Long, chatId: Long?): List<Reaction> {
+        val reactions = mutableListOf<Reaction>()
+
+        val whereClause = if (chatId != null) {
+            "message_guid = ? AND chat_id = ?"
+        } else {
+            "message_guid = ? AND chat_id IS NULL"
+        }
+
+        val whereArgs = if (chatId != null) {
+            arrayOf(messageGuid.toString(), chatId.toString())
+        } else {
+            arrayOf(messageGuid.toString())
+        }
+
+        val cursor = readableDatabase.query(
+            "reactions",
+            arrayOf("id", "message_guid", "chat_id", "reactor_pubkey", "emoji", "timestamp"),
+            whereClause,
+            whereArgs,
+            null, null,
+            "timestamp ASC"
+        )
+
+        while (cursor.moveToNext()) {
+            reactions.add(Reaction(
+                id = cursor.getLong(0),
+                messageGuid = cursor.getLong(1),
+                chatId = cursor.getLong(2).takeIf { !cursor.isNull(2) },
+                reactorPubkey = cursor.getBlob(3), // Read as BLOB, not string
+                emoji = cursor.getString(4),
+                timestamp = cursor.getLong(5)
+            ))
+        }
+        cursor.close()
+
+        return reactions
+    }
+
+    /**
+     * Gets aggregated reaction counts for a message.
+     * Returns a map of emoji -> list of reactor pubkeys
+     */
+    fun getReactionCounts(messageGuid: Long, chatId: Long?): Map<String, List<ByteArray>> {
+        val reactions = getReactions(messageGuid, chatId)
+        val grouped = reactions.groupBy { it.emoji }
+        return grouped.mapValues { entry -> entry.value.map { it.reactorPubkey } }
+    }
+
+    /**
+     * Checks if a user has reacted with a specific emoji.
+     */
+    fun hasReacted(messageGuid: Long, chatId: Long?, reactorPubkey: ByteArray, emoji: String): Boolean {
+        val pubkeyHex = Hex.toHexString(reactorPubkey)
+        val cursor = if (chatId != null) {
+            readableDatabase.query(
+                "reactions",
+                arrayOf("id"),
+                "message_guid = ? AND chat_id = ? AND HEX(reactor_pubkey) = ? AND emoji = ?",
+                arrayOf(messageGuid.toString(), chatId.toString(), pubkeyHex.uppercase(), emoji),
+                null, null, null, "1"
+            )
+        } else {
+            readableDatabase.query(
+                "reactions",
+                arrayOf("id"),
+                "message_guid = ? AND chat_id IS NULL AND HEX(reactor_pubkey) = ? AND emoji = ?",
+                arrayOf(messageGuid.toString(), pubkeyHex.uppercase(), emoji),
+                null, null, null, "1"
+            )
+        }
+
+        val exists = cursor.count > 0
+        cursor.close()
+        return exists
+    }
+
+    /**
+     * Gets the current reaction emoji from a specific user on a message.
+     * Returns null if the user hasn't reacted yet.
+     */
+    fun getUserCurrentReaction(messageGuid: Long, chatId: Long?, reactorPubkey: ByteArray): String? {
+        val pubkeyHex = Hex.toHexString(reactorPubkey)
+        val cursor = if (chatId != null) {
+            readableDatabase.query(
+                "reactions",
+                arrayOf("emoji"),
+                "message_guid = ? AND chat_id = ? AND HEX(reactor_pubkey) = ?",
+                arrayOf(messageGuid.toString(), chatId.toString(), pubkeyHex.uppercase()),
+                null, null, null, "1"
+            )
+        } else {
+            readableDatabase.query(
+                "reactions",
+                arrayOf("emoji"),
+                "message_guid = ? AND chat_id IS NULL AND HEX(reactor_pubkey) = ?",
+                arrayOf(messageGuid.toString(), pubkeyHex.uppercase()),
+                null, null, null, "1"
+            )
+        }
+
+        val emoji = if (cursor.moveToFirst()) {
+            cursor.getString(0)
+        } else {
+            null
+        }
+        cursor.close()
+        return emoji
+    }
+
+    /**
+     * Toggles a reaction - adds it if not present, removes it if present.
+     * Important: Each user can only have ONE reaction per message.
+     * If adding a new reaction, any existing reaction from this user is removed first.
+     * @return true if added, false if removed
+     */
+    fun toggleReaction(messageGuid: Long, chatId: Long?, reactorPubkey: ByteArray, emoji: String): Boolean {
+        return if (hasReacted(messageGuid, chatId, reactorPubkey, emoji)) {
+            // User clicked on their existing reaction - remove it
+            removeReaction(messageGuid, chatId, reactorPubkey, emoji)
+            false
+        } else {
+            // User is adding a new reaction
+            // First, remove any existing reaction from this user on this message
+            removeAllReactionsFromUser(messageGuid, chatId, reactorPubkey)
+            // Then add the new reaction
+            addReaction(messageGuid, chatId, reactorPubkey, emoji)
+            true
+        }
+    }
+
+    /**
+     * Removes all reactions from a specific user on a message.
+     * Used to enforce "one reaction per user" policy.
+     */
+    private fun removeAllReactionsFromUser(messageGuid: Long, chatId: Long?, reactorPubkey: ByteArray): Int {
+        val pubkeyHex = Hex.toHexString(reactorPubkey)
+        return try {
+            if (chatId != null) {
+                writableDatabase.delete(
+                    "reactions",
+                    "message_guid = ? AND chat_id = ? AND HEX(reactor_pubkey) = ?",
+                    arrayOf(messageGuid.toString(), chatId.toString(), pubkeyHex.uppercase())
+                )
+            } else {
+                writableDatabase.delete(
+                    "reactions",
+                    "message_guid = ? AND chat_id IS NULL AND HEX(reactor_pubkey) = ?",
+                    arrayOf(messageGuid.toString(), pubkeyHex.uppercase())
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing all user reactions", e)
+            0
+        }
+    }
+
+    // ==================== PENDING REACTIONS ====================
+
+    /**
+     * Adds a pending reaction to the queue for later sending.
+     * Called when a reaction cannot be sent immediately due to no connection.
+     */
+    fun addPendingReaction(messageGuid: Long, chatId: Long?, contactPubkey: ByteArray?, emoji: String, add: Boolean): Long {
+        val values = ContentValues().apply {
+            put("message_guid", messageGuid)
+            if (chatId != null) {
+                put("chat_id", chatId)
+            }
+            if (contactPubkey != null) {
+                put("contact_pubkey", contactPubkey)
+            }
+            put("emoji", emoji)
+            put("add_reaction", add)
+            put("timestamp", System.currentTimeMillis())
+        }
+
+        return try {
+            writableDatabase.insert("pending_reactions", null, values)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding pending reaction", e)
+            -1L
+        }
+    }
+
+    /**
+     * Gets all pending reactions for a specific contact.
+     * Used when connection is established to send queued reactions.
+     */
+    fun getPendingReactionsForContact(contactPubkey: ByteArray): List<PendingReaction> {
+        val pubkeyHex = Hex.toHexString(contactPubkey)
+        val reactions = mutableListOf<PendingReaction>()
+
+        val cursor = readableDatabase.query(
+            "pending_reactions",
+            arrayOf("id", "message_guid", "chat_id", "emoji", "add_reaction", "timestamp"),
+            "HEX(contact_pubkey) = ? AND chat_id IS NULL",
+            arrayOf(pubkeyHex.uppercase()),
+            null, null, "timestamp ASC"
+        )
+
+        while (cursor.moveToNext()) {
+            reactions.add(PendingReaction(
+                id = cursor.getLong(0),
+                messageGuid = cursor.getLong(1),
+                chatId = cursor.getLong(2).takeIf { !cursor.isNull(2) },
+                contactPubkey = contactPubkey,
+                emoji = cursor.getString(3),
+                add = cursor.getInt(4) != 0,
+                timestamp = cursor.getLong(5)
+            ))
+        }
+        cursor.close()
+
+        return reactions
+    }
+
+    /**
+     * Gets all pending reactions for a specific group chat.
+     */
+    fun getPendingReactionsForChat(chatId: Long): List<PendingReaction> {
+        val reactions = mutableListOf<PendingReaction>()
+
+        val cursor = readableDatabase.query(
+            "pending_reactions",
+            arrayOf("id", "message_guid", "emoji", "add_reaction", "timestamp"),
+            "chat_id = ?",
+            arrayOf(chatId.toString()),
+            null, null, "timestamp ASC"
+        )
+
+        while (cursor.moveToNext()) {
+            reactions.add(PendingReaction(
+                id = cursor.getLong(0),
+                messageGuid = cursor.getLong(1),
+                chatId = chatId,
+                contactPubkey = null,
+                emoji = cursor.getString(2),
+                add = cursor.getInt(3) != 0,
+                timestamp = cursor.getLong(4)
+            ))
+        }
+        cursor.close()
+
+        return reactions
+    }
+
+    /**
+     * Removes a pending reaction after it has been successfully sent.
+     */
+    fun removePendingReaction(id: Long): Boolean {
+        return try {
+            writableDatabase.delete("pending_reactions", "id = ?", arrayOf(id.toString())) > 0
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing pending reaction", e)
+            false
+        }
+    }
+
+    /**
+     * Clears all pending reactions (e.g., for testing or cleanup).
+     */
+    fun clearAllPendingReactions(): Boolean {
+        return try {
+            writableDatabase.delete("pending_reactions", null, null)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing pending reactions", e)
+            false
+        }
+    }
 }
+
+// Data class for pending reactions
+data class PendingReaction(
+    val id: Long,
+    val messageGuid: Long,
+    val chatId: Long?,
+    val contactPubkey: ByteArray?,
+    val emoji: String,
+    val add: Boolean,
+    val timestamp: Long
+)
 
 // Data classes for group chat support
 data class GroupChatInfo(
@@ -2349,6 +2757,24 @@ data class GroupMemberInfo(
 data class AccountInfo(val name: String, val info: String, val avatar: String, val updated: Long, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)
 data class Peer(val address: String, val clientId: Int, val priority: Int, val expiration: Long)
 
+/**
+ * Represents a reaction on a message.
+ * @param id Database row ID
+ * @param messageGuid GUID of the message being reacted to
+ * @param chatId Group chat ID (null for personal chats)
+ * @param reactorPubkey Public key of the user who reacted
+ * @param emoji The emoji reaction (UTF-8 string)
+ * @param timestamp When the reaction was added
+ */
+data class Reaction(
+    val id: Long,
+    val messageGuid: Long,
+    val chatId: Long?,
+    val reactorPubkey: ByteArray,
+    val emoji: String,
+    val timestamp: Long
+)
+
 interface StorageListener {
     fun onContactAdded(id: Long) {}
     fun onContactRemoved(id: Long) {}
@@ -2363,4 +2789,7 @@ interface StorageListener {
     fun onGroupMessageRead(chatId: Long, id: Long) {}
     fun onGroupChatChanged(chatId: Long): Boolean { return false }
     fun onGroupInviteReceived(inviteId: Long, chatId: Long, fromPubkey: ByteArray) {}
+
+    fun onReactionAdded(messageGuid: Long, chatId: Long?, emoji: String) {}
+    fun onReactionRemoved(messageGuid: Long, chatId: Long?, emoji: String) {}
 }

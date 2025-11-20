@@ -9,6 +9,7 @@ object SettingsData {
     const val KEY_AUTO_UPDATES = "auto-updates"
     const val KEY_IMAGES_FORMAT = "images-format"
     const val KEY_IMAGES_QUALITY = "images-quality"
+    const val KEY_MESSAGE_FONT_SIZE = "message-font-size"
 
     fun create(context: Context): List<SettingsAdapter.Item> {
         val sp = PreferenceManager.getDefaultSharedPreferences(context)
@@ -26,6 +27,14 @@ object SettingsData {
                 id = R.string.resize_big_pics,
                 titleRes = R.string.resize_big_pics,
                 descriptionRes = R.string.resize_big_pics_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.message_font_size,
+                titleRes = R.string.message_font_size,
+                descriptionRes = R.string.message_font_size_desc,
                 isSwitch = false,
                 checked = false
             ),

@@ -68,6 +68,10 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 val intent = Intent(this, ImageSettingsActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
+            R.string.message_font_size -> {
+                val intent = Intent(this, FontSizeActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+            }
             R.string.check_for_updates -> {
                 val intent = Intent(this@SettingsActivity, ConnectionService::class.java).apply {
                     putExtra("command", "check_updates")
