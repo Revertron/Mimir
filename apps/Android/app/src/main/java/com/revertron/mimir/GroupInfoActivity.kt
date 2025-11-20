@@ -72,13 +72,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         }
 
         // Get current user's public key
-        val accountInfo = getStorage().getAccountInfo(1, 0L)
-        if (accountInfo != null) {
-            currentUserPubkey = (accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded
-        } else {
-            Log.e(TAG, "No account found")
-            finish()
-            return
+        App.app.mediatorManager?.apply {
+            currentUserPubkey = getPublicKey()
         }
 
         // Load group chat info from database

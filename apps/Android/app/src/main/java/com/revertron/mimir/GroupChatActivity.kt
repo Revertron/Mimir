@@ -170,9 +170,10 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             return
         }
 
-        val accountInfo = getStorage().getAccountInfo(1, 0L)
         // Get sender pubkey
-        accountInfo?.apply { publicKey = (accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded }
+        App.app.mediatorManager?.apply {
+            publicKey = getPublicKey()
+        }
 
         // Load avatar from storage
         val avatar = getStorage().getGroupChatAvatar(chatId)

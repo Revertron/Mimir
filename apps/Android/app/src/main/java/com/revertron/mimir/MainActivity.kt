@@ -424,16 +424,14 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             )
         })
 
+        // Get current user's public key
+        val myPubKey = App.app.mediatorManager?.getPublicKey() ?: return chatItems
+
         // Convert group chats to ChatListItems
         chatItems.addAll(groupChats.map { groupChat ->
             val avatar = storage.getGroupChatAvatar(groupChat.chatId)
             // Check if current user is the owner
-            val accountInfo = storage.getAccountInfo(1, 0L)
-            val isOwner = accountInfo?.let { info ->
-                groupChat.ownerPubkey.contentEquals(info.keyPair.public.let {
-                    (it as Ed25519PublicKeyParameters).encoded
-                })
-            } ?: false
+            val isOwner = myPubKey.contentEquals(groupChat.ownerPubkey)
 
             // Get last message for the group chat
             val lastMessage = storage.getLastGroupMessage(groupChat.chatId)

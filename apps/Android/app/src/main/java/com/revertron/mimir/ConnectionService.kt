@@ -109,7 +109,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         mimirServer?.start()
 
                         // Create MediatorManager with Messenger
-                        mediatorManager = MediatorManager(messenger, storage, this)
+                        mediatorManager = MediatorManager(messenger, storage, accountInfo.keyPair, this)
                         App.app.mediatorManager = mediatorManager
 
                         // Register global invite listener
@@ -303,13 +303,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun sendInviteToGroupChat(chatId: Long, storage: SqlStorage, recipientPubkey: ByteArray) {
         try {
-            val accountInfo = storage.getAccountInfo(1, 0L)
-            if (accountInfo == null) {
-                Log.e(TAG, "No account found")
-                broadcastMediatorError("send_invite", "No account found")
-                return
-            }
-
             // Get chat info to retrieve shared key
             val chatInfo = storage.getGroupChat(chatId)
             if (chatInfo == null) {
@@ -319,17 +312,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }
 
             // Encrypt shared key for recipient
-            val encryptedKey = GroupChatCrypto.encryptSharedKey(
-                chatInfo.sharedKey,
-                recipientPubkey
-            )
+            val encryptedKey = GroupChatCrypto.encryptSharedKey(chatInfo.sharedKey, recipientPubkey)
 
             // Send invite via mediator
-            val keyPair = accountInfo.keyPair
-            val client = mediatorManager!!.getOrCreateClient(
-                chatInfo.mediatorPubkey,
-                keyPair
-            )
+            val client = mediatorManager!!.getOrCreateClient(chatInfo.mediatorPubkey)
             client.sendInvite(chatId, recipientPubkey, encryptedKey)
 
             Log.i(TAG, "Invite sent for chat $chatId")
@@ -346,17 +332,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun leaveGroupChat(chatId: Long, storage: SqlStorage) {
         try {
-            val accountInfo = storage.getAccountInfo(1, 0L)
-            if (accountInfo == null) {
-                Log.e(TAG, "No account found")
-                broadcastMediatorError("leave", "No account found")
-                return
-            }
-            val keyPair = accountInfo.keyPair
-            val client = mediatorManager!!.getOrCreateClient(
-                MediatorManager.getDefaultMediatorPubkey(),
-                keyPair
-            )
+            val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
             client.leaveChat(chatId)
             Log.i(TAG, "Left chat $chatId")
             val broadcastIntent = Intent("ACTION_MEDIATOR_LEFT_CHAT").apply {
@@ -372,17 +348,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun deleteGroupChat(chatId: Long, storage: SqlStorage) {
         try {
-            val accountInfo = storage.getAccountInfo(1, 0L)
-            if (accountInfo == null) {
-                Log.e(TAG, "No account found")
-                broadcastMediatorError("delete", "No account found")
-                return
-            }
-            val keyPair = accountInfo.keyPair
-            val client = mediatorManager!!.getOrCreateClient(
-                MediatorManager.getDefaultMediatorPubkey(),
-                keyPair
-            )
+            val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
             // Delete chat on mediator first
             val success = client.deleteChat(chatId)
             if (success) {
@@ -416,13 +382,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         messageData: String
     ) {
         try {
-            val accountInfo = storage.getAccountInfo(1, 0L)
-            if (accountInfo == null) {
-                Log.e(TAG, "No account found")
-                broadcastMediatorError("send", "No account found")
-                return
-            }
-
             // Get chat info for encryption
             val chatInfo = storage.getGroupChat(chatId)
             if (chatInfo == null) {
@@ -452,11 +411,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val encryptedData = GroupChatCrypto.encryptMessage(baos.toByteArray(), chatInfo.sharedKey)
 
             // Send to mediator
-            val keyPair = accountInfo.keyPair
-            val client = mediatorManager!!.getOrCreateClient(
-                MediatorManager.getDefaultMediatorPubkey(),
-                keyPair
-            )
+            val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
             val messageId = client.sendMessage(chatId, guid, encryptedData)
             Log.i(TAG, "Message sent with ID: $messageId, guid = $guid, replyTo = $replyTo")
 
@@ -477,17 +432,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun subscribeToChat(chatId: Long, storage: SqlStorage) {
         try {
-            val accountInfo = storage.getAccountInfo(1, 0L)
-            if (accountInfo == null) {
-                Log.e(TAG, "No account found")
-                broadcastMediatorError("subscribe", "No account found")
-                return
-            }
-            val keyPair = accountInfo.keyPair
-            val client = mediatorManager!!.getOrCreateClient(
-                MediatorManager.getDefaultMediatorPubkey(),
-                keyPair
-            )
+            val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
             val serverLastId = client.subscribe(chatId)
             Log.i(TAG, "Subscribed to chat $chatId (server last message ID: $serverLastId)")
 
@@ -828,15 +773,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         handler.post {
             try {
                 Log.i(TAG, "Checking mediator connections...")
-
-                // Get account info for authentication
-                val accountInfo = storage.getAccountInfo(1, 0L)
-                if (accountInfo == null) {
-                    Log.e(TAG, "No account found for auto-connection")
-                    return@post
-                }
-                val keyPair = accountInfo.keyPair
-
                 // Get all unique known mediators from saved chats
                 val knownMediators = storage.getKnownMediators().toMutableList()
 
@@ -872,7 +808,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                             Log.i(TAG, "Connecting to mediator ${mediatorHex.take(8)}...")
 
                             // Get or create connection to this mediator
-                            val client = mediatorManager!!.getOrCreateClient(mediatorPubkey, keyPair)
+                            val client = mediatorManager!!.getOrCreateClient(mediatorPubkey)
 
                             // Find all chats on this mediator
                             val chatsOnThisMediator = allChats.filter {
@@ -917,15 +853,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun createChat(storage: SqlStorage, name: String, description: String, avatar: ByteArray?) {
         try {
-            val accountInfo = storage.getAccountInfo(1, 0L)
-            if (accountInfo == null) {
-                Log.e(TAG, "No account found")
-                broadcastMediatorError("create_chat", "No account found")
-                return
-            }
-            val keyPair = accountInfo.keyPair
             val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
-            val client = mediatorManager!!.getOrCreateClient(mediatorPubkey, keyPair)
+            val client = mediatorManager!!.getOrCreateClient(mediatorPubkey)
 
             // Create chat on mediator server
             val chatId = client.createChat(name, description, avatar)
@@ -935,7 +864,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val sharedKey = GroupChatCrypto.generateSharedKey()
 
             // Get owner pubkey (current user)
-            val ownerPubkey = (keyPair.public as Ed25519PublicKeyParameters).encoded
+            val ownerPubkey = mediatorManager!!.getPublicKey()
 
             // Save chat to local database
             val saved = storage.saveGroupChat(

@@ -6,6 +6,7 @@ import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -31,7 +32,12 @@ import kotlin.concurrent.write
  * manager.registerMessageListener(chatId, listener)
  * ```
  */
-class MediatorManager(private val messenger: Messenger, private val storage: SqlStorage, private val infoProvider: InfoProvider) {
+class MediatorManager(
+    private val messenger: Messenger,
+    private val storage: SqlStorage,
+    private val keyPair: AsymmetricCipherKeyPair,
+    private val infoProvider: InfoProvider
+) {
 
     companion object {
         private const val TAG = "MediatorManager"
@@ -84,7 +90,7 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
         companion object {
             private const val BASE_DELAY_MS = 1000L // 1 second
             private const val MAX_DELAY_MS = 60000L // 60 seconds
-            private const val MAX_ATTEMPTS = 10 // After 10 attempts, stop and wait for manual reconnect
+            private const val MAX_ATTEMPTS = 30 // After 30 attempts, stop and wait for manual reconnect
         }
 
         fun getNextDelay(): Long {
@@ -117,9 +123,8 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
      * Reuses existing connection if available.
      *
      * @param mediatorPubkey The mediator's public key as ByteArray
-     * @param keyPair User's key pair for authentication
      */
-    fun getOrCreateClient(mediatorPubkey: ByteArray, keyPair: AsymmetricCipherKeyPair): MediatorClient = lock.write {
+    fun getOrCreateClient(mediatorPubkey: ByteArray): MediatorClient = lock.write {
         val pubkeyHex = Hex.toHexString(mediatorPubkey)
 
         clients[pubkeyHex]?.let { existingClient ->
@@ -156,6 +161,13 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
             connectionStatus[pubkeyHex] = ConnectionState.FAILED
             throw e
         }
+    }
+
+    /**
+     * Returns the public key from current keyPair
+     */
+    fun getPublicKey(): ByteArray {
+        return (keyPair.public as Ed25519PublicKeyParameters).encoded
     }
 
     /**
@@ -276,9 +288,8 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
      * Only attempts reconnection if we're online and haven't exceeded max attempts.
      *
      * @param mediatorPubkey The mediator public key to reconnect to
-     * @param keyPair The user's key pair for authentication
      */
-    private fun scheduleReconnect(mediatorPubkey: ByteArray, keyPair: AsymmetricCipherKeyPair) {
+    private fun scheduleReconnect(mediatorPubkey: ByteArray) {
         val pubkeyHex = Hex.toHexString(mediatorPubkey)
 
         // Check if we're online
@@ -324,7 +335,7 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
 
                 try {
                     // Attempt to reconnect
-                    val client = getOrCreateClient(mediatorPubkey, keyPair)
+                    val client = getOrCreateClient(mediatorPubkey)
 
                     // Reset reconnection state on success
                     info.reset()
@@ -338,7 +349,7 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
 
                     // Schedule next attempt if we haven't exceeded max attempts
                     if (info.shouldAttemptReconnect()) {
-                        scheduleReconnect(mediatorPubkey, keyPair)
+                        scheduleReconnect(mediatorPubkey)
                     } else {
                         Log.w(TAG, "Max reconnection attempts reached for $pubkeyHex")
                     }
@@ -541,7 +552,7 @@ class MediatorManager(private val messenger: Messenger, private val storage: Sql
                     }
 
                     // Schedule reconnection with exponential backoff
-                    scheduleReconnect(mediatorPubkey, keyPair)
+                    scheduleReconnect(mediatorPubkey)
                 } else {
                     Log.w(TAG, "No keypair found for $address, cannot schedule reconnection")
                 }

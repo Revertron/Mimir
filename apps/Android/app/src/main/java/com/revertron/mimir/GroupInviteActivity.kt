@@ -197,7 +197,7 @@ class GroupInviteActivity : BaseActivity() {
 
                 // Tell mediator we're accepting the invite
                 // This will cause mediator to add us to members table and ask for our info
-                val mediatorClient = (application as? App)?.mediatorManager?.getOrCreateClient(mediatorPubkey, accountInfo.keyPair)
+                val mediatorClient = (application as? App)?.mediatorManager?.getOrCreateClient(mediatorPubkey)
                 if (mediatorClient != null) {
                     try {
                         mediatorClient.respondToInvite(inviteId, 1) // 1 = accept
@@ -256,18 +256,9 @@ class GroupInviteActivity : BaseActivity() {
         Thread {
             try {
                 val storage = getStorage()
-                val accountInfo = storage.getAccountInfo(1, 0L)
-                if (accountInfo == null) {
-                    runOnUiThread {
-                        Toast.makeText(this, R.string.no_account_found, Toast.LENGTH_SHORT).show()
-                        enableButtons(true)
-                    }
-                    return@Thread
-                }
-
                 // Tell mediator we're rejecting the invite
                 val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
-                val mediatorClient = (application as? App)?.mediatorManager?.getOrCreateClient(mediatorPubkey, accountInfo.keyPair)
+                val mediatorClient = (application as? App)?.mediatorManager?.getOrCreateClient(mediatorPubkey)
                 if (mediatorClient != null) {
                     try {
                         mediatorClient.respondToInvite(inviteId, 0) // 0 = reject
