@@ -31,14 +31,11 @@ class MessageAdapter(
     private val onClick: View.OnClickListener,
     private val onReplyClick: View.OnClickListener,
     private val onPictureClick: View.OnClickListener,
-    fontSizeInSp: Int
+    private val fontSize: Int
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
-
-    // Font size passed from Activity (in SP units)
-    private var fontSize = fontSizeInSp
 
     private val messageIds = if (groupChat) {
         storage.getGroupMessageIds(chatId).toMutableList()
@@ -282,13 +279,5 @@ class MessageAdapter(
             }
         }
         return -1
-    }
-
-    /**
-     * Update font size and refresh visible items
-     */
-    fun updateFontSize(fontSizeInSp: Int) {
-        fontSize = fontSizeInSp
-        notifyDataSetChanged()
     }
 }
