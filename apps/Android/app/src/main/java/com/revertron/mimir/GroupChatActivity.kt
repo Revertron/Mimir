@@ -293,6 +293,17 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
 
+        // Scroll to first unread message if any, otherwise scroll to end
+        val firstUnreadId = getStorage().getFirstUnreadGroupMessageId(groupChat.chatId)
+        if (firstUnreadId != null) {
+            val position = adapter.getMessageIdPosition(firstUnreadId)
+            if (position >= 0) {
+                recyclerView.post {
+                    recyclerView.scrollToPosition(position)
+                }
+            }
+        }
+
         getStorage().listeners.add(this)
     }
 

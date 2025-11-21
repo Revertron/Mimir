@@ -613,6 +613,59 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         return list
     }
 
+    /**
+     * Gets the ID of the first unread message for a contact.
+     * Returns null if there are no unread messages.
+     */
+    fun getFirstUnreadMessageId(userId: Long): Long? {
+        var result: Long? = null
+        val cursor = readableDatabase.query(
+            "messages",
+            arrayOf("id"),
+            "contact = ? AND read = 0 AND incoming = 1",
+            arrayOf("$userId"),
+            null,
+            null,
+            "id ASC",
+            "1"
+        )
+        if (cursor.moveToNext()) {
+            result = cursor.getLong(0)
+        }
+        cursor.close()
+        return result
+    }
+
+    /**
+     * Gets the ID of the first unread message for a group chat.
+     * Returns null if there are no unread messages.
+     */
+    fun getFirstUnreadGroupMessageId(chatId: Long): Long? {
+        val messagesTable = "messages_$chatId"
+        var result: Long? = null
+
+        try {
+            val cursor = readableDatabase.query(
+                messagesTable,
+                arrayOf("id"),
+                "read = 0 AND incoming = 1",
+                null,
+                null,
+                null,
+                "id ASC",
+                "1"
+            )
+            if (cursor.moveToNext()) {
+                result = cursor.getLong(0)
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting first unread message for chat $chatId", e)
+        }
+
+        return result
+    }
+
     private fun getUnreadCount(userId: Long): Int {
         val db = this.readableDatabase
         val cursor =

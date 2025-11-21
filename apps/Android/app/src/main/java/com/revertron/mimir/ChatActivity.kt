@@ -148,6 +148,18 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         val recycler = findViewById<RecyclerView>(R.id.messages_list)
         recycler.adapter = adapter
         recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
+
+        // Scroll to first unread message if any, otherwise scroll to end
+        val firstUnreadId = getStorage().getFirstUnreadMessageId(contact.id)
+        if (firstUnreadId != null) {
+            val position = adapter.getMessageIdPosition(firstUnreadId)
+            if (position >= 0) {
+                recycler.post {
+                    recycler.scrollToPosition(position)
+                }
+            }
+        }
+
         getStorage().listeners.add(this)
 
         showOnlineState(PeerStatus.Connecting)
