@@ -214,5 +214,25 @@
     <string name="font_size_medium">Medium</string>
     <string name="font_size_large">Large</string>
     <string name="font_size_very_large">Very large</string>
+    <string name="backup_settings">Backup &amp; Restore</string>
+    <string name="backup_and_restore">Backup &amp; Restore</string>
+    <string name="backup_and_restore_desc">Export or import your data and media files.</string>
+    <string name="backup_export">Export data</string>
+    <string name="backup_export_desc">Save all your data and media files to a zip file.</string>
+    <string name="backup_import">Import data</string>
+    <string name="backup_import_desc">Restore data and media files from a backup file.</string>
+    <string name="backup_export_success">Backup exported successfully!</string>
+    <string name="backup_export_failed">Failed to export backup</string>
+    <string name="backup_export_failed_with_error">Failed to export backup: %s</string>
+    <string name="backup_import_success">Backup imported successfully!</string>
+    <string name="backup_import_failed">Failed to import backup</string>
+    <string name="backup_import_failed_with_error">Failed to import backup: %s</string>
+    <string name="backup_import_invalid_file">This is not a valid Mimir backup file!</string>
+    <string name="backup_import_warning_title">Import Backup?</string>
+    <string name="backup_import_warning_message">This will overwrite all your current data, messages, and media files. This action cannot be undone. Are you sure you want to continue?</string>
+    <string name="backup_import_continue">Import</string>
+    <string name="backup_import_restart_title">Restart Required</string>
+    <string name="backup_import_restart_message">The backup has been imported successfully. The app needs to restart to apply the changes.</string>
+    <string name="backup_restart_now">Restart</string>
 
 </resources>

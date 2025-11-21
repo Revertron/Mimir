@@ -40,6 +40,14 @@ object SettingsData {
             ),
 
             SettingsAdapter.Item(
+                id = R.string.backup_and_restore,
+                titleRes = R.string.backup_and_restore,
+                descriptionRes = R.string.backup_and_restore_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
                 id = R.string.automatic_updates_checking,
                 titleRes = R.string.automatic_updates_checking,
                 descriptionRes = R.string.automatic_updates_checking_desc,

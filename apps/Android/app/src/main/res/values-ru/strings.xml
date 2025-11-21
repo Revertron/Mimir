@@ -149,6 +149,7 @@
     <string name="failed_to_leave_group">Ошибка выхода из группы</string>
     <string name="owner_cannot_leave_group">Владелец не может выйти из группы. Чтобы выйти вы должны удалить группу.</string>
     <string name="confirm_leave_group">Вы уверены, что хотите выйти из группы? Без приглашения вы не сможете в неё перезайти.</string>
+    <string name="failed_to_delete_group">Ошибка удаления группы</string>
     <string name="operation_failed">Ошибка взаимодействия с медиатором</string>
     <string name="group_invites">Приглашения в группы</string>
     <string name="no_invites">Нет ожидающих приглашений</string>
@@ -202,4 +203,26 @@
     <string name="font_size_medium">Средний</string>
     <string name="font_size_large">Крупный</string>
     <string name="font_size_very_large">Самый крупный</string>
+    <string name="delete_group">Удалить группу</string>
+    <string name="confirm_delete_group">Вы уверены, что хотите удалить группу? Это безвозвратно, и все участники будут изгнаны из неё.</string>
+    <string name="backup_settings">Бэкап и восстановление</string>
+    <string name="backup_and_restore">Бэкап и восстановление</string>
+    <string name="backup_and_restore_desc">Сохранение данных и восстановление из сохранённой копии.</string>
+    <string name="backup_export">Бэкап данных</string>
+    <string name="backup_export_desc">Сохранение всех данных приложения в zip-архив.</string>
+    <string name="backup_import">Восстановление данных</string>
+    <string name="backup_import_desc">Восстановить данные приложения из файла бэкапа.</string>
+    <string name="backup_export_success">Бэкап сохранён успешно!</string>
+    <string name="backup_export_failed">Ошибка сохранения бэкапа</string>
+    <string name="backup_export_failed_with_error">Ошибка сохранения бэкапа: %s</string>
+    <string name="backup_import_success">Бэкап импортирован успешно!</string>
+    <string name="backup_import_failed">Ошибка импорта бэкапа</string>
+    <string name="backup_import_failed_with_error">Ошибка импорта бэкапа: %s</string>
+    <string name="backup_import_invalid_file">Это не файл бэкапа Mimir!</string>
+    <string name="backup_import_warning_title">Импорт бэкапа?</string>
+    <string name="backup_import_warning_message">Это перепишет все текущие данные приложения, сообщения и файлы. Это безвозвратная операция. Вы уверены, что хотите продолжить?</string>
+    <string name="backup_import_continue">Импорт</string>
+    <string name="backup_import_restart_title">Нужен перезапуск</string>
+    <string name="backup_import_restart_message">Бэкап восстановлен успешно. Приложение должно быть перезапущено для загрузки новых данных.</string>
+    <string name="backup_restart_now">Перезапустить</string>
 </resources>

@@ -72,6 +72,10 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 val intent = Intent(this, FontSizeActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
+            R.string.backup_and_restore -> {
+                val intent = Intent(this, BackupActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+            }
             R.string.check_for_updates -> {
                 val intent = Intent(this@SettingsActivity, ConnectionService::class.java).apply {
                     putExtra("command", "check_updates")
