@@ -365,12 +365,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                     }
                     attachmentJson = null
                 }
-
-                // Update UI to show the new message
-                runOnUiThread {
-                    adapter.addMessageId(localId, false)
-                    recyclerView.scrollToPosition(adapter.itemCount - 1)
-                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending group message", e)
                 runOnUiThread {
@@ -552,8 +546,11 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean {
         if (chatId == groupChat.chatId) {
             runOnUiThread {
-                adapter.notifyDataSetChanged()
-                recyclerView.scrollToPosition(adapter.itemCount - 1)
+                val message = getStorage().getGroupMessage(chatId, id, false)
+                if (message != null) {
+                    adapter.addMessageId(id, message.incoming) // Add the message ID like broadcasts do
+                    recyclerView.scrollToPosition(adapter.itemCount - 1)
+                }
             }
             return isVisible
         }

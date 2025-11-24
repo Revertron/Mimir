@@ -125,9 +125,7 @@ class GroupInviteActivity : BaseActivity() {
 
         // Set from info - try to get contact name, fall back to hex string
         val contactName = getStorage().getContactNameByPubkey(fromPubkey)
-        val senderDisplay = if (contactName.isNotEmpty()) {
-            contactName
-        } else {
+        val senderDisplay = contactName.ifEmpty {
             Hex.toHexString(fromPubkey).take(16)
         }
         findViewById<AppCompatTextView>(R.id.from_info).text =
@@ -184,17 +182,6 @@ class GroupInviteActivity : BaseActivity() {
                 // TODO: The mediator should send the actual owner pubkey in the invite
                 val ownerPubkey = fromPubkey
 
-                // Save chat to database (avatar is already saved as file from invite)
-                storage.saveGroupChat(
-                    chatId,
-                    chatName,
-                    chatDescription,
-                    chatAvatarPath, // Use the file path from the invite
-                    mediatorPubkey,
-                    ownerPubkey,
-                    sharedKey
-                )
-
                 // Tell mediator we're accepting the invite
                 // This will cause mediator to add us to members table and ask for our info
                 val mediatorClient = (application as? App)?.mediatorManager?.getOrCreateClient(mediatorPubkey)
@@ -202,6 +189,17 @@ class GroupInviteActivity : BaseActivity() {
                     try {
                         mediatorClient.respondToInvite(inviteId, 1) // 1 = accept
                         Log.i(TAG, "Sent acceptance to mediator for invite $inviteId")
+
+                        // Save chat to database (avatar is already saved as file from invite)
+                        storage.saveGroupChat(
+                            chatId,
+                            chatName,
+                            chatDescription,
+                            chatAvatarPath, // Use the file path from the invite
+                            mediatorPubkey,
+                            ownerPubkey,
+                            sharedKey
+                        )
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to send invite acceptance to mediator", e)
                         throw e
