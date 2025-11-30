@@ -17,13 +17,9 @@ import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.AppBarLayout
-import com.google.android.material.appbar.CollapsingToolbarLayout
 import com.revertron.mimir.storage.GroupMemberInfo
 import com.revertron.mimir.ui.GroupMemberAdapter
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
-import kotlin.math.abs
 
 class GroupInfoActivity : BaseActivity(), View.OnClickListener {
 

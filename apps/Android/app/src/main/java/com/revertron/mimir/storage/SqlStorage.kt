@@ -18,6 +18,7 @@ import com.revertron.mimir.formatDuration
 import com.revertron.mimir.getImageExtensionOrNull
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.loadRoundedAvatar
+import com.revertron.mimir.net.SystemMessage
 import com.revertron.mimir.randomString
 import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
@@ -86,6 +87,93 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 }
             } else {
                 "<Empty>"
+            }
+        }
+
+        /**
+         * Gets human-readable text for the message with group chat support.
+         * For system messages (type 1000), parses the event and returns a descriptive string.
+         *
+         * @param context Android context for string resources
+         * @param storage SqlStorage instance for looking up member names
+         * @param chatId Group chat ID (0 for P2P chats)
+         */
+        fun getText(context: Context, storage: SqlStorage, chatId: Long): String {
+            return if (data != null) {
+                when (type) {
+                    1 -> {
+                        val json = JSONObject(String(data))
+                        val text = json.getString("text")
+                        if (text.isEmpty()) {
+                            json.getString("name")
+                        } else {
+                            text
+                        }
+                    }
+                    2 -> {
+                        val callDuration = edit - time
+                        val text = formatDuration(callDuration)
+                        context.getString(R.string.audio_call_item, text)
+                    }
+                    1000 -> {
+                        // System message - parse and format
+                        val sysMsg = com.revertron.mimir.net.parseSystemMessage(data)
+                        if (sysMsg != null) {
+                            formatSystemMessage(sysMsg, storage, chatId)
+                        } else {
+                            context.getString(R.string.system_message)
+                        }
+                    }
+                    else -> {
+                        String(data)
+                    }
+                }
+            } else {
+                "<Empty>"
+            }
+        }
+
+        private fun formatSystemMessage(msg: SystemMessage, storage: SqlStorage, chatId: Long): String {
+            return when (msg) {
+                is SystemMessage.UserAdded -> {
+                    val targetName = storage.getGroupMemberInfo(chatId, msg.targetUser)?.nickname
+                        ?: Hex.toHexString(msg.targetUser).take(8)
+                    val actorName = storage.getGroupMemberInfo(chatId, msg.actor)?.nickname
+                        ?: Hex.toHexString(msg.actor).take(8)
+                    "$targetName accepted invite from $actorName"
+                }
+                is SystemMessage.UserLeft -> {
+                    val userName = storage.getGroupMemberInfo(chatId, msg.user)?.nickname
+                        ?: Hex.toHexString(msg.user).take(8)
+                    "$userName left the chat"
+                }
+                is SystemMessage.UserBanned -> {
+                    val targetName = storage.getGroupMemberInfo(chatId, msg.targetUser)?.nickname
+                        ?: Hex.toHexString(msg.targetUser).take(8)
+                    val actorName = storage.getGroupMemberInfo(chatId, msg.actor)?.nickname
+                        ?: Hex.toHexString(msg.actor).take(8)
+                    "$actorName banned $targetName from the chat"
+                }
+                is SystemMessage.ChatDeleted -> {
+                    val actorName = storage.getGroupMemberInfo(chatId, msg.actor)?.nickname
+                        ?: Hex.toHexString(msg.actor).take(8)
+                    "$actorName deleted the chat"
+                }
+                is SystemMessage.ChatInfoChanged -> {
+                    val actorName = storage.getGroupMemberInfo(chatId, msg.actor)?.nickname
+                        ?: Hex.toHexString(msg.actor).take(8)
+                    "$actorName updated chat info"
+                }
+                is SystemMessage.PermsChanged -> {
+                    val targetName = storage.getGroupMemberInfo(chatId, msg.targetUser)?.nickname
+                        ?: Hex.toHexString(msg.targetUser).take(8)
+                    val actorName = storage.getGroupMemberInfo(chatId, msg.actor)?.nickname
+                        ?: Hex.toHexString(msg.actor).take(8)
+                    "$actorName changed permissions for $targetName"
+                }
+                is SystemMessage.Unknown -> {
+                    "System event: 0x${msg.eventCode.toString(16)}"
+                }
             }
         }
     }
@@ -1826,23 +1914,21 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             }
             writableDatabase.update("group_chats", updateValues, "chat_id = ?", arrayOf(chatId.toLong().toString()))
 
-            // Don't notify or show notifications for system messages (senderId == -1)
-            if (senderId != -1L) {
-                // Increment unread count for incoming messages
-                if (incoming) {
-                    incrementGroupUnreadCount(chatId)
-                }
+            // Increment unread count for incoming non-system messages
+            if (senderId != -1L && incoming) {
+                incrementGroupUnreadCount(chatId)
+            }
 
-                // Notify listeners - track if any listener processed it
-                var processed = false
-                for (listener in listeners) {
-                    processed = processed or listener.onGroupMessageReceived(chatId, id, senderId)
-                }
+            // Notify listeners - track if any listener processed it
+            var processed = false
+            for (listener in listeners) {
+                processed = processed or listener.onGroupMessageReceived(chatId, id, senderId)
+            }
 
-                // Only show notification if not processed by any listener (i.e., chat not open)
-                if (!processed) {
-                    notificationManager.onGroupMessageReceived(chatId, id, senderId)
-                }
+            // Only show notification if not processed by any listener (i.e., chat not open)
+            // Don't show notifications for system messages
+            if (!processed && senderId != -1L) {
+                notificationManager.onGroupMessageReceived(chatId, id, senderId)
             }
         }
         return id
@@ -2308,6 +2394,84 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             loadRoundedAvatar(context, file.absolutePath, size, corners)
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /**
+     * Updates the updated_at timestamp for a group chat.
+     * This is used to track when members were last synced, allowing us to
+     * ignore old system messages that occurred before the latest sync.
+     */
+    fun updateGroupChatTimestamp(chatId: Long) {
+        val now = getUtcTime()
+        val values = ContentValues().apply {
+            put("updated_at", now)
+        }
+        writableDatabase.update("group_chats", values, "chat_id = ?", arrayOf(chatId.toString()))
+        Log.d(TAG, "Updated chat $chatId timestamp to $now")
+    }
+
+    /**
+     * Gets the updated_at timestamp for a group chat.
+     * Returns 0 if chat not found.
+     */
+    fun getGroupChatTimestamp(chatId: Long): Long {
+        return try {
+            val cursor = readableDatabase.query(
+                "group_chats",
+                arrayOf("updated_at"),
+                "chat_id = ?",
+                arrayOf(chatId.toString()),
+                null, null, null
+            )
+            val timestamp = if (cursor.moveToNext()) {
+                cursor.getLong(0)
+            } else {
+                0L
+            }
+            cursor.close()
+            timestamp
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting chat timestamp for $chatId", e)
+            0L
+        }
+    }
+
+    /**
+     * Deletes a member from the members_{chatId} table.
+     * Also deletes their avatar file if it exists.
+     */
+    fun deleteGroupMember(chatId: Long, pubkey: ByteArray) {
+        require(pubkey.size == 32) { "pubkey must be 32 bytes" }
+        val membersTable = "members_$chatId"
+
+        try {
+            // Get avatar path before deleting
+            val memberInfo = getGroupMemberInfo(chatId, pubkey)
+            val avatarPath = memberInfo?.avatarPath
+
+            // Delete from members table
+            val deleted = writableDatabase.delete(
+                membersTable,
+                "pubkey = ?",
+                arrayOf(pubkey.toHexString())
+            )
+
+            if (deleted > 0) {
+                Log.i(TAG, "Deleted member ${pubkey.toHexString().substring(0, 16)}... from chat $chatId")
+
+                // Delete avatar file if it exists
+                if (avatarPath != null && avatarPath.isNotEmpty()) {
+                    val avatarsDir = File(context.filesDir, "avatars_$chatId")
+                    val avatarFile = File(avatarsDir, avatarPath)
+                    if (avatarFile.exists()) {
+                        avatarFile.delete()
+                        Log.i(TAG, "Deleted avatar file for member")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting member from chat $chatId", e)
         }
     }
 

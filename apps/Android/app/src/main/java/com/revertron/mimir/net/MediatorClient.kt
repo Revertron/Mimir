@@ -423,6 +423,10 @@ class MediatorClient(
                 }
             }
 
+            // Update the chat's updated_at timestamp to track when members were last synced
+            // This allows us to ignore old system messages (like "user left") that occurred before this sync
+            storage.updateGroupChatTimestamp(chatId)
+
             Log.i(TAG, "Finished saving ${members.size} member(s) for chat $chatId")
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching members for chat $chatId", e)
@@ -526,6 +530,7 @@ class MediatorClient(
         var guid = 0L
         var author: ByteArray? = null
         var blob: ByteArray? = null
+        var timestamp = System.currentTimeMillis()
 
         while (offset < resp.payload.size) {
             val tag = resp.payload[offset++]
@@ -539,11 +544,12 @@ class MediatorClient(
                 TAG_MESSAGE_ID -> msgId = value.readLong(0)
                 TAG_MESSAGE_GUID -> guid = value.readLong(0)
                 TAG_PUBKEY -> author = value
+                TAG_TIMESTAMP -> timestamp = value.readLong(0)
                 TAG_MESSAGE_BLOB -> {
                     blob = value
                     // Message complete - add to list
                     if (author != null) {
-                        messages.add(MessagePayload(msgId, guid, author, blob ?: ByteArray(0)))
+                        messages.add(MessagePayload(msgId, guid, timestamp, author, blob))
                         // Reset for next message
                         author = null
                         blob = null
@@ -878,6 +884,7 @@ class MediatorClient(
                     val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
                     val msgId = tlvs.getTLVLong(TAG_MESSAGE_ID)
                     val guid = tlvs.getTLVLong(TAG_MESSAGE_GUID)
+                    val timestamp = tlvs.getTLVLong(TAG_TIMESTAMP)
                     val author = tlvs.getTLVBytes(TAG_PUBKEY)
                     val data = tlvs.getTLVBytesOrNull(TAG_MESSAGE_BLOB) ?: ByteArray(0)
 
@@ -885,10 +892,10 @@ class MediatorClient(
                     if (author.contentEquals(mediatorPubkey)) {
                         // System message: unencrypted, format is [event_code(1)][...event data...]
                         Log.d(TAG, "Received system message for chat $chatId: event_code=${if (data.isNotEmpty()) data[0].toInt() and 0xFF else 0}")
-                        listener.onSystemMessage(chatId, msgId, guid, data)
+                        listener.onSystemMessage(chatId, msgId, guid, timestamp, data)
                     } else {
                         // Regular user message
-                        listener.onPushMessage(chatId, msgId, guid, author, data)
+                        listener.onPushMessage(chatId, msgId, guid, timestamp, author, data)
                     }
                     continue
                 }
@@ -946,7 +953,7 @@ class MediatorClient(
                                 }
                             }.start()
                         } else {
-                            Log.d(TAG, "No member info update needed for chat $chatId")
+                            Log.d(TAG, "No our member info update needed for chat $chatId")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error handling member info request", e)
@@ -1087,6 +1094,7 @@ class MediatorClient(
     data class MessagePayload(
         val messageId: Long,
         val guid: Long,
+        val timestamp: Long,
         val author: ByteArray,
         val data: ByteArray
     )
@@ -1098,7 +1106,7 @@ class MediatorClient(
         /**
          * Server push with new message.
          */
-        fun onPushMessage(chatId: Long, messageId: Long, guid: Long, author: ByteArray, data: ByteArray)
+        fun onPushMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: ByteArray, data: ByteArray)
 
         /**
          * Server push with system message (mediator-generated events).
@@ -1117,9 +1125,10 @@ class MediatorClient(
          * @param chatId The group chat ID
          * @param messageId Server-assigned message ID
          * @param guid Message GUID
+         * @param timestamp The time of message
          * @param body Unencrypted system message body
          */
-        fun onSystemMessage(chatId: Long, messageId: Long, guid: Long, body: ByteArray)
+        fun onSystemMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: ByteArray)
 
         /**
          * Server push with new invite.

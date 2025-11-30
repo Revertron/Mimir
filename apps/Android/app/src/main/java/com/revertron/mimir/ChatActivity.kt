@@ -374,7 +374,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     }
 
     override fun onClick(view: View) {
-        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.END)
+        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         popup.inflate(R.menu.menu_context_message)
         popup.setForceShowIcon(true)
         popup.setOnMenuItemClickListener {

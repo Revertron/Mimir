@@ -474,3 +474,190 @@ fun readAndDismiss(dis: DataInputStream, size: Long) {
         size -= read
     }
 }
+
+/**
+ * System message event codes (from MediatorClient)
+ */
+const val SYS_USER_ADDED: Byte = 0x01
+const val SYS_USER_ENTERED: Byte = 0x02  // reserved
+const val SYS_USER_LEFT: Byte = 0x03
+const val SYS_USER_BANNED: Byte = 0x04
+const val SYS_CHAT_DELETED: Byte = 0x05
+const val SYS_CHAT_INFO_CHANGE: Byte = 0x06
+const val SYS_PERMS_CHANGED: Byte = 0x07
+
+/**
+ * Represents a parsed system message from the mediator.
+ * System messages are unencrypted and have a specific format:
+ * [event_code(1)][...event-specific data...]
+ */
+sealed class SystemMessage {
+    abstract val eventCode: Byte
+
+    /**
+     * User was added to the chat.
+     * Format: [event_code(1)][target_user(32)][actor(32)][random(32)]
+     */
+    data class UserAdded(
+        val targetUser: ByteArray,
+        val actor: ByteArray,
+        val random: ByteArray
+    ) : SystemMessage() {
+        override val eventCode: Byte = SYS_USER_ADDED
+    }
+
+    /**
+     * User left the chat.
+     * Format: [event_code(1)][user(32)][random(32)]
+     */
+    data class UserLeft(
+        val user: ByteArray,
+        val random: ByteArray
+    ) : SystemMessage() {
+        override val eventCode: Byte = SYS_USER_LEFT
+    }
+
+    /**
+     * User was banned from the chat.
+     * Format: [event_code(1)][target_user(32)][actor(32)][random(32)]
+     */
+    data class UserBanned(
+        val targetUser: ByteArray,
+        val actor: ByteArray,
+        val random: ByteArray
+    ) : SystemMessage() {
+        override val eventCode: Byte = SYS_USER_BANNED
+    }
+
+    /**
+     * Chat was deleted.
+     * Format: [event_code(1)][actor(32)][random(32)]
+     */
+    data class ChatDeleted(
+        val actor: ByteArray,
+        val random: ByteArray
+    ) : SystemMessage() {
+        override val eventCode: Byte = SYS_CHAT_DELETED
+    }
+
+    /**
+     * Chat info (name, description, avatar) was changed.
+     * Format: [event_code(1)][actor(32)][random(32)]
+     */
+    data class ChatInfoChanged(
+        val actor: ByteArray,
+        val random: ByteArray
+    ) : SystemMessage() {
+        override val eventCode: Byte = SYS_CHAT_INFO_CHANGE
+    }
+
+    /**
+     * User permissions were changed.
+     * Format: [event_code(1)][target_user(32)][actor(32)][random(32)]
+     */
+    data class PermsChanged(
+        val targetUser: ByteArray,
+        val actor: ByteArray,
+        val random: ByteArray
+    ) : SystemMessage() {
+        override val eventCode: Byte = SYS_PERMS_CHANGED
+    }
+
+    /**
+     * Unknown system message type.
+     */
+    data class Unknown(
+        override val eventCode: Byte,
+        val rawData: ByteArray
+    ) : SystemMessage()
+}
+
+/**
+ * Parses system message payload into a SystemMessage object.
+ *
+ * @param data The raw system message payload from mediator
+ * @return Parsed SystemMessage or null if data is invalid
+ */
+fun parseSystemMessage(data: ByteArray): SystemMessage? {
+    if (data.isEmpty()) {
+        Log.w(TAG, "System message data is empty")
+        return null
+    }
+
+    val eventCode = data[0]
+
+    return try {
+        when (eventCode) {
+            SYS_USER_ADDED -> {
+                if (data.size < 97) { // 1 + 32 + 32 + 32
+                    Log.w(TAG, "SYS_USER_ADDED message too short: ${data.size}")
+                    return null
+                }
+                val targetUser = data.copyOfRange(1, 33)
+                val actor = data.copyOfRange(33, 65)
+                val random = data.copyOfRange(65, 97)
+                SystemMessage.UserAdded(targetUser, actor, random)
+            }
+
+            SYS_USER_LEFT -> {
+                if (data.size < 65) { // 1 + 32 + 32
+                    Log.w(TAG, "SYS_USER_LEFT message too short: ${data.size}")
+                    return null
+                }
+                val user = data.copyOfRange(1, 33)
+                val random = data.copyOfRange(33, 65)
+                SystemMessage.UserLeft(user, random)
+            }
+
+            SYS_USER_BANNED -> {
+                if (data.size < 97) { // 1 + 32 + 32 + 32
+                    Log.w(TAG, "SYS_USER_BANNED message too short: ${data.size}")
+                    return null
+                }
+                val targetUser = data.copyOfRange(1, 33)
+                val actor = data.copyOfRange(33, 65)
+                val random = data.copyOfRange(65, 97)
+                SystemMessage.UserBanned(targetUser, actor, random)
+            }
+
+            SYS_CHAT_DELETED -> {
+                if (data.size < 65) { // 1 + 32 + 32
+                    Log.w(TAG, "SYS_CHAT_DELETED message too short: ${data.size}")
+                    return null
+                }
+                val actor = data.copyOfRange(1, 33)
+                val random = data.copyOfRange(33, 65)
+                SystemMessage.ChatDeleted(actor, random)
+            }
+
+            SYS_CHAT_INFO_CHANGE -> {
+                if (data.size < 65) { // 1 + 32 + 32
+                    Log.w(TAG, "SYS_CHAT_INFO_CHANGE message too short: ${data.size}")
+                    return null
+                }
+                val actor = data.copyOfRange(1, 33)
+                val random = data.copyOfRange(33, 65)
+                SystemMessage.ChatInfoChanged(actor, random)
+            }
+
+            SYS_PERMS_CHANGED -> {
+                if (data.size < 97) { // 1 + 32 + 32 + 32
+                    Log.w(TAG, "SYS_PERMS_CHANGED message too short: ${data.size}")
+                    return null
+                }
+                val targetUser = data.copyOfRange(1, 33)
+                val actor = data.copyOfRange(33, 65)
+                val random = data.copyOfRange(65, 97)
+                SystemMessage.PermsChanged(targetUser, actor, random)
+            }
+
+            else -> {
+                Log.w(TAG, "Unknown system message event code: 0x${eventCode.toString(16)}")
+                SystemMessage.Unknown(eventCode, data)
+            }
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Error parsing system message", e)
+        null
+    }
+}

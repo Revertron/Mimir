@@ -32,13 +32,14 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.net.MediatorManager
+import com.revertron.mimir.net.SystemMessage
+import com.revertron.mimir.net.parseSystemMessage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.GroupChat
 import com.revertron.mimir.ui.MessageAdapter
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 
@@ -99,19 +100,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                         mainHandler.post {
                             // Message sent successfully, refresh UI
                             adapter.notifyDataSetChanged()
-                            recyclerView.scrollToPosition(adapter.itemCount - 1)
-                        }
-                    }
-                }
-                "ACTION_GROUP_MESSAGE_RECEIVED" -> {
-                    val chatId = intent.getLongExtra("chat_id", 0)
-                    val localId = intent.getLongExtra("local_id", -1L)
-
-                    if (chatId == groupChat.chatId && localId > 0) {
-                        Log.i(TAG, "Message received for chat $chatId: localId=$localId")
-                        mainHandler.post {
-                            // New message received, refresh UI
-                            adapter.addMessageId(localId, true)
                             recyclerView.scrollToPosition(adapter.itemCount - 1)
                         }
                     }
@@ -198,7 +186,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     private fun registerBroadcastReceivers() {
         val filter = IntentFilter().apply {
             addAction("ACTION_MEDIATOR_MESSAGE_SENT")
-            addAction("ACTION_GROUP_MESSAGE_RECEIVED")
             addAction("ACTION_MEDIATOR_LEFT_CHAT")
             addAction("ACTION_MEDIATOR_ERROR")
         }
@@ -550,11 +537,35 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 if (message != null) {
                     adapter.addMessageId(id, message.incoming) // Add the message ID like broadcasts do
                     recyclerView.scrollToPosition(adapter.itemCount - 1)
+
+                    // Check if this is a system message that affects member count
+                    if (message.type == 1000 && message.data != null) {
+                        val sysMsg = parseSystemMessage(message.data)
+                        when (sysMsg) {
+                            is SystemMessage.UserAdded,
+                            is SystemMessage.UserLeft,
+                            is SystemMessage.UserBanned -> {
+                                // Member list changed - update member count
+                                // (Member deletion from table is handled by MediatorManager)
+                                updateMemberCount()
+                            }
+                            else -> {
+                                // Other system messages don't affect member count
+                            }
+                        }
+                    }
                 }
             }
             return isVisible
         }
         return false
+    }
+
+    private fun updateMemberCount() {
+        val memberCount = getStorage().getGroupChatMembersCount(groupChat.chatId)
+        groupChat = groupChat.copy(memberCount = memberCount)
+        findViewById<AppCompatTextView>(R.id.subtitle).text =
+            getString(R.string.member_count, memberCount)
     }
 
     override fun onGroupChatChanged(chatId: Long): Boolean {
@@ -647,8 +658,8 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     // Click handlers
 
     override fun onClick(view: View) {
-        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.END)
-        popup.inflate(R.menu.menu_context_message) // Same menu resource
+        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+        popup.inflate(R.menu.menu_context_message)
         popup.setForceShowIcon(true)
         popup.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {

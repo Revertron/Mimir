@@ -67,7 +67,7 @@ class MessageAdapter(
             R.layout.message_outgoing_layout
         }
         val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
-        view.setOnClickListener(onClick)
+        view.findViewById<View>(R.id.message).setOnClickListener(onClick)
         //TODO make item background reflect touches
         view.findViewById<View>(R.id.reply_panel).setOnClickListener(onReplyClick)
         view.findViewById<View>(R.id.picture).setOnClickListener(onPictureClick)
@@ -122,7 +122,12 @@ class MessageAdapter(
             holder.name.visibility = View.GONE
             holder.avatar?.visibility = View.GONE
         }
-        holder.message.text = message.getText(holder.itemView.context)
+        // Use overloaded getText with chatId for group chats to format system messages properly
+        holder.message.text = if (groupChat) {
+            message.getText(holder.itemView.context, storage, chatId)
+        } else {
+            message.getText(holder.itemView.context)
+        }
         holder.message.setCompoundDrawables(null, null, null ,null)
         holder.sent.visibility = if (message.incoming) View.GONE else View.VISIBLE
         when (message.type) {
@@ -162,7 +167,6 @@ class MessageAdapter(
                 holder.picturePanel.visibility = View.GONE
             }
             1000 -> {
-                holder.message.text = holder.name.context.getString(R.string.system_message)
                 holder.picture.setImageDrawable(null)
                 holder.picturePanel.visibility = View.GONE
             }
@@ -171,8 +175,12 @@ class MessageAdapter(
                 holder.picturePanel.visibility = View.GONE
             }
         }
+        // System messages (type 1000) are now handled by getText() method above
+        // which provides comprehensive event descriptions
+
         holder.time.text = formatTime(message.time)
-        holder.itemView.tag = message.id
+        // Sorry for this
+        holder.itemView.findViewById<View>(R.id.message).tag = message.id
         holder.sent.tag = message.delivered
 
         if (message.replyTo != 0L) {

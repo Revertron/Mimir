@@ -475,6 +475,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         chatId: Long,
         messageId: Long,
         guid: Long,
+        timestamp: Long,
         author: ByteArray,
         encryptedData: ByteArray,
         storage: SqlStorage,
@@ -493,22 +494,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     messageId,
                     guid,
                     author,
-                    System.currentTimeMillis(), // Use current time for system messages
+                    timestamp, // Use current time for system messages
                     1000, // System messages are type 1000
                     true, // Mark as system message
                     encryptedData // This is actually unencrypted system message data
                 )
-
-                // Broadcast to activities if requested
-                if (broadcast && localId > 0) {
-                    val intent = Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
-                        putExtra("chat_id", chatId)
-                        putExtra("message_id", messageId)
-                        putExtra("local_id", localId)
-                        putExtra("sender", author)
-                    }
-                    LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(intent)
-                }
 
                 Log.i(TAG, "System message saved with local ID: $localId")
                 return localId
@@ -539,17 +529,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     false, // Not a system message
                     errorMessage
                 )
-
-                // Broadcast to activities if requested
-                if (broadcast && localId > 0) {
-                    val intent = Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
-                        putExtra("chat_id", chatId)
-                        putExtra("message_id", messageId)
-                        putExtra("local_id", localId)
-                        putExtra("sender", author)
-                    }
-                    LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(intent)
-                }
 
                 return localId
             }
@@ -634,17 +613,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 message.replyTo
             )
 
-            // Broadcast to activities if requested
-            if (broadcast && localId > 0) {
-                val intent = Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
-                    putExtra("chat_id", chatId)
-                    putExtra("message_id", messageId)
-                    putExtra("local_id", localId)
-                    putExtra("sender", author)
-                }
-                LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(intent)
-            }
-
             Log.i(TAG, "Message saved with local ID: $localId")
             return localId
         } catch (e: Exception) {
@@ -716,6 +684,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                                 chatId,
                                 msgPayload.messageId,
                                 msgPayload.guid,
+                                msgPayload.timestamp,
                                 msgPayload.author,
                                 msgPayload.data,
                                 storage,
@@ -902,7 +871,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 putExtra("chat_id", chatId)
                 putExtra("name", name)
                 putExtra("description", description)
-                putExtra("mediator_address", Hex.toHexString(mediatorPubkey))
+                putExtra("mediator_address", mediatorPubkey)
             }
             LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
         } catch (e: Exception) {
@@ -973,7 +942,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         // Register global message listener for all chats
         // We use a single global listener that routes messages based on chatId
         globalMessageListener = object : MediatorManager.ChatMessageListener {
-            override fun onChatMessage(chatId: Long, messageId: Long, guid: Long, author: ByteArray, data: ByteArray) {
+            override fun onChatMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: ByteArray, data: ByteArray) {
                 Log.i(TAG, "Message received for chat $chatId: msgId=$messageId, guid=$guid")
 
                 Thread {
@@ -982,10 +951,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         chatId,
                         messageId,
                         guid,
+                        timestamp,
                         author,
                         data,
-                        storage,
-                        broadcast = true
+                        storage
                     )
                 }.start()
             }

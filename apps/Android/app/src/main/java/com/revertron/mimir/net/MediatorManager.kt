@@ -406,26 +406,62 @@ class MediatorManager(
             }
         }
 
-        override fun onPushMessage(chatId: Long, messageId: Long, guid: Long, author: ByteArray, data: ByteArray) {
+        override fun onPushMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: ByteArray, data: ByteArray) {
             Log.d(TAG, "Received message for chat $chatId (msgId=$messageId, guid=$guid)")
 
             // Dispatch to all registered listeners for this chat
             chatListeners[chatId]?.forEach { listener ->
                 try {
-                    listener.onChatMessage(chatId, messageId, guid, author, data)
+                    listener.onChatMessage(chatId, messageId, guid, timestamp, author, data)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in chat listener for chat $chatId", e)
                 }
             }
         }
 
-        override fun onSystemMessage(chatId: Long, messageId: Long, guid: Long, body: ByteArray) {
+        override fun onSystemMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: ByteArray) {
             if (body.isEmpty()) {
                 Log.w(TAG, "Got empty system message!")
                 return
             }
             val systemMessage = body[0]
-            Log.i(TAG, "Got system message: $systemMessage")
+            Log.i(TAG, "Got system message: $systemMessage for chat $chatId")
+
+            // Parse system message to handle member management
+            val sysMsg = parseSystemMessage(body)
+            val lastMemberSync = storage.getGroupChatTimestamp(chatId)
+
+            // Only process member-affecting system messages that occurred after the last member sync
+            // This prevents race conditions where old "user left" messages arrive during sync
+            // and incorrectly remove recently re-added members
+            if (timestamp >= lastMemberSync) {
+                when (sysMsg) {
+                    is SystemMessage.UserLeft -> {
+                        // User left - delete from members table
+                        storage.deleteGroupMember(chatId, sysMsg.user)
+                        Log.i(TAG, "Removed member from chat $chatId due to UserLeft system message")
+                    }
+                    else -> {
+                        // Other system messages don't require immediate action here
+                        // (UserAdded/UserBanned are handled via member info sync)
+                    }
+                }
+            } else {
+                Log.d(TAG, "Ignoring old system message (timestamp=$timestamp < lastMemberSync=$lastMemberSync)")
+            }
+
+            // System messages are always incoming (from mediator) with type 1000
+            // Use mediator as the author
+            storage.addGroupMessage(
+                chatId = chatId,
+                serverMsgId = messageId,
+                guid = guid,
+                author = getDefaultMediatorPubkey(),
+                timestamp = timestamp,
+                type = 1000, // System message type
+                system = true,
+                data = body
+            )
         }
 
         override fun onPushInvite(
@@ -566,7 +602,7 @@ class MediatorManager(
      * Interface for listening to chat messages.
      */
     interface ChatMessageListener {
-        fun onChatMessage(chatId: Long, messageId: Long, guid: Long, author: ByteArray, data: ByteArray)
+        fun onChatMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: ByteArray, data: ByteArray)
     }
 
     /**
