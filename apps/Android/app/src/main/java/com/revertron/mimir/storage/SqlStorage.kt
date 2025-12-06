@@ -2437,6 +2437,35 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
+    fun updateGroupMemberOnlineStatus(chatId: Long, pubkey: ByteArray, online: Boolean): Boolean {
+        val membersTable = "members_$chatId"
+        val values = ContentValues().apply {
+            put("online", if (online) 1 else 0)
+        }
+        val updated = writableDatabase.update(
+            membersTable,
+            values,
+            "pubkey = ?",
+            arrayOf(Hex.toHexString(pubkey))
+        )
+        return updated > 0
+    }
+
+    fun updateGroupMemberStatus(chatId: Long, pubkey: ByteArray, permissions: Int, online: Boolean): Boolean {
+        val membersTable = "members_$chatId"
+        val values = ContentValues().apply {
+            put("permissions", permissions)
+            put("online", if (online) 1 else 0)
+        }
+        val updated = writableDatabase.update(
+            membersTable,
+            values,
+            "pubkey = ?",
+            arrayOf(Hex.toHexString(pubkey))
+        )
+        return updated > 0
+    }
+
     /**
      * Deletes a member from the members_{chatId} table.
      * Also deletes their avatar file if it exists.

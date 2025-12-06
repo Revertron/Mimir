@@ -15,6 +15,7 @@
     <color name="dark_gray">#FF303030</color>
     <color name="mimir_dark">#FF49c29c</color>
     <color name="mimir_light">#FF63fac0</color>
+    <color name="status_online">#FF108F10</color>
 
     <color name="message_outgoing_light_normal">#FFA0C0FF</color>
     <color name="message_outgoing_light_pressed">#FF80A0FF</color>

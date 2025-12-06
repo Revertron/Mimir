@@ -139,7 +139,10 @@ class ConnectionHandler(
                 }
 
                 // Handle keep-alive and connection timeout
-                if (!handleKeepAlive(rand.nextInt().absoluteValue % 20000)) {
+                // Jitter should be proportional to ping interval to avoid negative intervals during calls
+                val isInCall = callStatus == CallStatus.Calling || callStatus == CallStatus.InCall || callStatus == CallStatus.Receiving
+                val maxJitter = if (isInCall) 500 else 20000  // 0.5s jitter during calls, 20s otherwise
+                if (!handleKeepAlive(rand.nextInt().absoluteValue % maxJitter)) {
                     break
                 }
 
@@ -179,6 +182,7 @@ class ConnectionHandler(
                 val bytes = baos.toByteArray()
                 connection.write(bytes)
                 Log.i(TAG, "Call offer sent")
+                lastActiveTime = System.currentTimeMillis()
                 callStatus = CallStatus.Calling
                 listener.onCallStatusChanged(callStatus, peer)
             }
@@ -496,8 +500,11 @@ class ConnectionHandler(
         val isInCall = callStatus == CallStatus.Calling || callStatus == CallStatus.InCall || callStatus == CallStatus.Receiving
 
         // Check for connection timeout based on call status
+        // During calls, use the most recent activity (either pong or meaningful message)
+        // This allows both call setup messages and ongoing pings to keep the connection alive
         val timeoutMs = if (isInCall) CALL_TIMEOUT_MS else CONNECTION_TIMEOUT_MS
-        if (now - lastActiveTime >= timeoutMs) {
+        val lastActivity = if (isInCall) maxOf(lastPongTime, lastActiveTime) else lastActiveTime
+        if (now - lastActivity >= timeoutMs) {
             Log.w(TAG, "Connection with $address timed out (no activity for ${timeoutMs / 1000}s)")
             return false
         }

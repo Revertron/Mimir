@@ -53,7 +53,7 @@ class ConnectionInputStream(private val conn: Connection, bufferSize: Int = 4096
         count = 0
         while (true) {
             val read = try {
-                conn.readWithTimeout(buf, 200).toInt()
+                conn.readWithTimeout(buf, 500).toInt()
             } catch (e: Exception) {
                 if (e.message?.contains("deadline exceeded") == true) {
                     continue    // no data yet; retry

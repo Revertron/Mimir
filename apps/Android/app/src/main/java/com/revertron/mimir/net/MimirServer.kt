@@ -22,7 +22,7 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 
-private const val CONNECTION_TRIES = 3
+private const val CONNECTION_TRIES = 1
 private const val CONNECTION_PERIOD = 1000L
 
 //TODO Get from DNS TXT record
@@ -190,15 +190,15 @@ class MimirServer(
 
     private fun startAnnounceThread(pubkey: ByteArray, privkey: ByteArray, peer: Peer, receiver: ResolverReceiver) {
         Thread {
-            var lastTrackersPing = System.currentTimeMillis()
+            //var lastTrackersPing = System.currentTimeMillis()
             while (working.get()) {
                 sleep(5000)
                 try {
                     val online = haveNetwork(context)
-                    if (online && System.currentTimeMillis() - lastTrackersPing >= 180000) {
+                    /*if (online && System.currentTimeMillis() - lastTrackersPing >= 180000) {
                         resolver.pingTrackers()
                         lastTrackersPing = System.currentTimeMillis()
-                    }
+                    }*/
 
                     val expiredTtl = getUtcTime() >= lastAnnounceTime + announceTtl
                     if (App.app.online && online && (expiredTtl || forceAnnounce)) {

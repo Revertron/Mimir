@@ -225,40 +225,48 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         toolbarSubtitle.text = countText
     }
 
+    private fun refreshMemberStatus() {
+        val mediatorClient = App.app.mediatorManager?.getOrCreateClient()
+        if (mediatorClient != null) {
+            Thread {
+                try {
+                    val members = mediatorClient.getMembers(chatId)
+                    // Update database with permissions and online status
+                    for (member in members) {
+                        getStorage().updateGroupMemberStatus(chatId, member.pubkey, member.permissions, member.online)
+                    }
+                    // Reload UI
+                    runOnUiThread {
+                        loadMembers()
+                        updateOnlineCount()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to fetch member status", e)
+                }
+            }.start()
+        }
+    }
+
+    private fun updateOnlineCount() {
+        val members = getStorage().getGroupMembers(chatId)
+        onlineCount = members.count { it.online }
+        updateMemberCount()
+    }
+
     private fun loadMembers() {
         Thread {
             val members = getStorage().getGroupMembers(chatId).toMutableList()
 
-            /*if (BuildConfig.DEBUG) {
-                // Add 20 fake members for testing scroll
-                val fakeNames = listOf(
-                    "Alice Johnson", "Bob Smith", "Charlie Brown", "Diana Prince",
-                    "Edward Norton", "Fiona Green", "George Miller", "Hannah Montana",
-                    "Ivan Petrov", "Julia Roberts", "Kevin Hart", "Laura Palmer",
-                    "Michael Scott", "Natasha Romanoff", "Oliver Queen", "Patricia Hill",
-                    "Quentin Blake", "Rachel Green", "Samuel Jackson", "Tina Turner"
-                )
+            // Permission flags (must match mediator.go and GroupMemberAdapter)
+            val PERM_OWNER = 0x80
+            val PERM_ADMIN = 0x40
+            val PERM_MOD = 0x20
 
-                for (i in 0..19) {
-                    val fakePubkey = ByteArray(32) { (i * 13 + it).toByte() }
-                    members.add(
-                        GroupMemberInfo(
-                            pubkey = fakePubkey,
-                            nickname = fakeNames[i],
-                            info = "Test user $i",
-                            avatarPath = null,
-                            permissions = if (i % 7 == 0) 1 else 0, // Every 7th is admin
-                            joinedAt = System.currentTimeMillis() - (i * 86400000L),
-                            banned = false
-                        )
-                    )
-                }
-            }*/
-
-            // Sort members: owner first, then admins, then regular members
+            // Sort members: online first, then owner, then admins/moderators, then everyone else
             val sortedMembers = members.sortedWith(compareBy(
-                { !it.pubkey.contentEquals(ownerPubkey) }, // Owner first
-                { it.permissions == 0 }, // Admins second
+                { !it.online }, // Online members first
+                { (it.permissions and PERM_OWNER) == 0 }, // Owner first among online/offline groups
+                { (it.permissions and (PERM_ADMIN or PERM_MOD)) == 0 }, // Admins/moderators second
                 { it.nickname ?: Hex.toHexString(it.pubkey) } // Then by name
             ))
 
@@ -325,6 +333,11 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
             "Invite sent to $recipientName",
             Toast.LENGTH_SHORT
         ).show()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshMemberStatus()
     }
 
     override fun onClick(v: View?) {

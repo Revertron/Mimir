@@ -345,7 +345,11 @@ class NotificationHelper(private val context: Context) : StorageListener {
             }
 
             val notificationId = if (inCall) ONGOING_CALL_ID else INCOMING_CALL_ID
-            notification.flags = notification.flags or Notification.FLAG_INSISTENT
+            // Only set FLAG_INSISTENT for incoming calls to make them repeat sound/vibration
+            // Ongoing calls should be silent
+            if (!inCall) {
+                notification.flags = notification.flags or Notification.FLAG_INSISTENT
+            }
 
             if (hasPostNotificationsPermission(context)) {
                 val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

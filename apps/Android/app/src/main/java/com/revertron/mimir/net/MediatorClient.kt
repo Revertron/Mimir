@@ -840,9 +840,14 @@ class MediatorClient(
 
     fun pingLoop() {
         while (running) {
-            sleep(100)
+            sleep(5000)
             if (!App.app.online || !running) {
                 Log.i(TAG, "We are offline, stopping client")
+                stopClient()
+                break
+            }
+            if (!connection.isAlive) {
+                Log.d(TAG, "Connection is broken, stopping client")
                 stopClient()
                 break
             }

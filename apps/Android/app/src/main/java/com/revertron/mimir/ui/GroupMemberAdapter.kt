@@ -22,6 +22,16 @@ class GroupMemberAdapter(
     private val onClick: View.OnClickListener?
 ) : RecyclerView.Adapter<GroupMemberAdapter.ViewHolder>() {
 
+    companion object {
+        // Permission flags (must match mediator.go)
+        private const val PERM_OWNER = 0x80
+        private const val PERM_ADMIN = 0x40
+        private const val PERM_MOD = 0x20
+        private const val PERM_USER = 0x10
+        private const val PERM_READ_ONLY = 0x08
+        private const val PERM_BANNED = 0x01
+    }
+
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val avatar: AppCompatImageView = view.findViewById(R.id.avatar)
         val memberName: AppCompatTextView = view.findViewById(R.id.member_name)
@@ -47,21 +57,34 @@ class GroupMemberAdapter(
             ?: Hex.toHexString(member.pubkey).take(16)
         holder.memberName.text = displayName
 
-        // Set member status (for now, just show "last seen recently" or "online" as placeholder)
-        // TODO: Implement real online status tracking
-        holder.memberStatus.text = context.getString(R.string.last_seen_recently)
+        // Show real online status
+        if (member.online) {
+            holder.memberStatus.text = context.getString(R.string.online)
+            holder.memberStatus.setTextColor(context.getColor(R.color.status_online)) // Add green color
+        } else {
+            holder.memberStatus.text = context.getString(R.string.last_seen_recently)
+        }
 
-        // Set member role badge
+        // Set member role badge based on permission flags
         when {
-            member.pubkey.contentEquals(ownerPubkey) -> {
+            (member.permissions and PERM_OWNER) != 0 -> {
                 holder.memberRole.visibility = View.VISIBLE
                 holder.memberRole.text = context.getString(R.string.owner)
             }
-            member.permissions > 0 -> {
+            (member.permissions and PERM_ADMIN) != 0 -> {
                 holder.memberRole.visibility = View.VISIBLE
                 holder.memberRole.text = context.getString(R.string.admin)
             }
+            (member.permissions and PERM_MOD) != 0 -> {
+                holder.memberRole.visibility = View.VISIBLE
+                holder.memberRole.text = context.getString(R.string.moderator)
+            }
+            (member.permissions and PERM_READ_ONLY) != 0 -> {
+                holder.memberRole.visibility = View.VISIBLE
+                holder.memberRole.text = context.getString(R.string.read_only)
+            }
             else -> {
+                // Regular user (PERM_USER) - no badge needed
                 holder.memberRole.visibility = View.GONE
             }
         }

@@ -189,6 +189,8 @@
     <string name="last_seen_recently">Замечен недавно</string>
     <string name="owner">Владелец</string>
     <string name="admin">Админ</string>
+    <string name="moderator">Модератор</string>
+    <string name="read_only">Только чтение</string>
     <string name="member_count_online">%1$d участников, %2$d в сети</string>
     <string name="members_only">%d участников</string>
     <string name="system_message">Системное сообщение</string>

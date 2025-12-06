@@ -118,6 +118,10 @@ class MediatorManager(
         }
     }
 
+    fun getOrCreateClient(): MediatorClient {
+        return getOrCreateClient(getDefaultMediatorPubkey())
+    }
+
     /**
      * Get or create a MediatorClient for the given mediator public key.
      * Reuses existing connection if available.
@@ -144,6 +148,7 @@ class MediatorManager(
             ReconnectionInfo(keyPair = keyPair)
         }.apply {
             this.keyPair = keyPair
+            this.reset()
         }
 
         try {
