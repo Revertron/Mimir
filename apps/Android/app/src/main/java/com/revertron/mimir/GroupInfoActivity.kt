@@ -344,12 +344,11 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         // Handle member item click
         val member = v?.tag as? GroupMemberInfo
         if (member != null) {
-            // TODO: Show member profile or actions dialog
-            Toast.makeText(
-                this,
-                "Member: ${member.nickname ?: Hex.toHexString(member.pubkey).take(16)}",
-                Toast.LENGTH_SHORT
-            ).show()
+            // Open ContactActivity for this member
+            val intent = Intent(this, ContactActivity::class.java)
+            intent.putExtra("pubkey", member.pubkey)
+            intent.putExtra("name", member.nickname ?: Hex.toHexString(member.pubkey).take(16))
+            startActivity(intent, animFromRight.toBundle())
         }
     }
 
