@@ -514,6 +514,17 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
     }
 
+    fun getContactInfo(contactId: Long): String? {
+        val cursor = this.readableDatabase.query("contacts", arrayOf("info"), "id = ?", arrayOf("$contactId"), null, null, null)
+        return if (cursor.moveToNext()) {
+            cursor.getString(0)
+        } else {
+            null
+        }.also {
+            cursor.close()
+        }
+    }
+
     fun updateContactInfo(contactId: Long, info: String) {
         val values = ContentValues().apply {
             put("info", info)
@@ -1257,6 +1268,15 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         val utcTime = getUtcTime()
         val values = ContentValues().apply {
             put("avatar", path)
+            put("updated", utcTime)
+        }
+        return this.writableDatabase.update("accounts", values, "id = ?", arrayOf("$id")) > 0
+    }
+
+    fun updateAccountInfo(id: Int, info: String): Boolean {
+        val utcTime = getUtcTime()
+        val values = ContentValues().apply {
+            put("info", info)
             put("updated", utcTime)
         }
         return this.writableDatabase.update("accounts", values, "id = ?", arrayOf("$id")) > 0

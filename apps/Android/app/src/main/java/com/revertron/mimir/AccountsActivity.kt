@@ -24,6 +24,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
     val accountNumber = 1 //TODO make multi account
     lateinit var accountInfo: AccountInfo
     lateinit var myNameEdit: AppCompatEditText
+    lateinit var myDescriptionEdit: AppCompatEditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +50,9 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
         myNameEdit = findViewById(R.id.contact_name)
         myNameEdit.setText(name)
+
+        myDescriptionEdit = findViewById(R.id.account_description)
+        myDescriptionEdit.setText(accountInfo.info)
 
         val pubKeyEdit = findViewById<AppCompatEditText>(R.id.contact_public_key)
         pubKeyEdit.setText(public)
@@ -99,6 +103,8 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
     override fun onStop() {
         val newName = myNameEdit.text.toString()
         getStorage().updateName(accountNumber, newName)
+        val newDescription = myDescriptionEdit.text.toString()
+        getStorage().updateAccountInfo(accountNumber, newDescription)
         super.onStop()
     }
 

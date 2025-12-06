@@ -42,6 +42,15 @@ class ContactActivity: BaseActivity() {
         // Set contact name in header
         findViewById<AppCompatTextView>(R.id.contact_name).text = name
 
+        // Set contact description if available
+        val contactInfo = getStorage().getContactInfo(id)
+        if (!contactInfo.isNullOrEmpty()) {
+            findViewById<View>(R.id.description_section).visibility = View.VISIBLE
+            findViewById<AppCompatTextView>(R.id.description_text).text = contactInfo
+        } else {
+            findViewById<View>(R.id.description_section).visibility = View.GONE
+        }
+
         // Set public key
         val public = Hex.toHexString(pubkey)
         val publicKeyView = findViewById<AppCompatTextView>(R.id.contact_public_key)
@@ -53,10 +62,6 @@ class ContactActivity: BaseActivity() {
         findViewById<AppCompatTextView>(R.id.contact_link_text).text = link
         val link2 = "https://$host/u/$public/$encoded"
         findViewById<AppCompatTextView>(R.id.contact_link2_text).text = link2
-
-        // TODO: Add description functionality when implemented
-        // For now, keep description section hidden
-        findViewById<View>(R.id.description_section).visibility = View.GONE
 
         // Message button
         findViewById<View>(R.id.btn_message).setOnClickListener {

@@ -85,6 +85,26 @@
                 android:hint="@string/my_name_hint" />
 
             <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/description_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginLeft="16dp"
+                android:layout_marginRight="16dp"
+                android:text="@string/description" />
+
+            <androidx.appcompat.widget.AppCompatEditText
+                android:id="@+id/account_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="16dp"
+                android:layout_marginRight="16dp"
+                android:layout_marginTop="8dp"
+                android:hint="@string/description"
+                android:maxLines="3"
+                android:inputType="textMultiLine|textCapSentences" />
+
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/contact_key_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
