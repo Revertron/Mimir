@@ -203,8 +203,8 @@ class MediatorClient(
     /** Creates a chat. Satisfies the server's signature filter: sig[0]==0 && sig[1]==0. */
     fun createChat(name: String, description: String, avatar: ByteArray? = null): Long {
 
-        require(name.toByteArray(Charsets.UTF_8).size <= 20) { "name > 20 bytes" }
-        require(description.toByteArray(Charsets.UTF_8).size <= 200) { "description > 200 bytes" }
+        require(name.length <= 20) { "name > 20 bytes" }
+        require(description.length <= 200) { "description > 200 bytes" }
         val avatarBytes = avatar ?: ByteArray(0)
         require(avatarBytes.size <= 200 * 1024) { "avatar > 200KB" }
 

@@ -229,14 +229,14 @@ class NewChatActivity : BaseActivity() {
             return
         }
 
-        if (name.toByteArray(Charsets.UTF_8).size > MAX_NAME_LENGTH) {
+        if (name.length > MAX_NAME_LENGTH) {
             Toast.makeText(this, R.string.group_name_too_long, Toast.LENGTH_SHORT).show()
             nameEdit.requestFocus()
             return
         }
 
         // Validate description
-        if (description.toByteArray(Charsets.UTF_8).size > MAX_DESCRIPTION_LENGTH) {
+        if (description.length > MAX_DESCRIPTION_LENGTH) {
             Toast.makeText(this, R.string.group_description_too_long, Toast.LENGTH_SHORT).show()
             descriptionEdit.requestFocus()
             return
