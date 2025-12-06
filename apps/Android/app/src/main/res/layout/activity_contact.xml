@@ -2,22 +2,60 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    tools:context=".ContactActivity">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
-        app:title="@string/contact_info"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:minHeight="?attr/actionBarSize"
         android:theme="@style/MimirToolbar"
-        android:elevation="4dp"
+        android:elevation="0dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent" />
+        app:layout_constraintRight_toRightOf="parent">
 
-    <ScrollView
+        <!-- Custom title and subtitle in toolbar (initially hidden) -->
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/toolbar_text_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="20dp"
+            android:alpha="0">
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/toolbar_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:maxWidth="250dp" />
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/toolbar_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/white"
+                android:alpha="0.7"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:maxWidth="250dp" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+    </androidx.appcompat.widget.Toolbar>
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scroll_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         app:layout_constraintTop_toBottomOf="@id/toolbar"
@@ -30,126 +68,327 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-            <FrameLayout
-                android:layout_width="160dp"
-                android:layout_height="160dp"
-                android:layout_marginTop="24dp"
-                android:layout_marginLeft="16dp"
-                android:layout_marginRight="16dp"
-                android:layout_gravity="center_horizontal">
+            <!-- Header Section with Avatar and Name -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/header_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:paddingTop="24dp"
+                android:paddingBottom="16dp"
+                android:background="?attr/colorPrimaryVariant">
 
-                <androidx.appcompat.widget.AppCompatImageView
+                <!-- Contact Avatar -->
+                <FrameLayout
+                    android:layout_width="120dp"
+                    android:layout_height="120dp"
+                    android:layout_gravity="center_horizontal">
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/avatar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:adjustViewBounds="true"
+                        style="@style/Avatar"
+                        android:clipToOutline="true"
+                        android:background="@drawable/bg_rounded"
+                        app:srcCompat="@drawable/button_rounded_white" />
+                </FrameLayout>
+
+                <!-- Contact Name -->
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/contact_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/white"
+                    tools:text="John Doe" />
+
+                <!-- Status/Public Key Preview -->
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/contact_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textSize="14sp"
+                    android:textColor="@color/white"
+                    android:alpha="0.7"
+                    tools:text="online" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Action Buttons Row -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingVertical="16dp"
+                android:paddingHorizontal="16dp"
+                android:gravity="center">
+
+                <!-- Message Button -->
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:id="@+id/btn_message"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="12dp"
+                    android:background="@drawable/button_rounded">
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_message_plus_outline" />
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/message"
+                        android:textSize="12sp" />
+                </androidx.appcompat.widget.LinearLayoutCompat>
+
+                <!-- Mute Button -->
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:id="@+id/btn_mute"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="12dp"
+                    android:background="@drawable/button_rounded">
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/mute_icon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_volume_off" />
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:id="@+id/mute_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/mute"
+                        android:textSize="12sp" />
+                </androidx.appcompat.widget.LinearLayoutCompat>
+
+                <!-- Block Button -->
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:id="@+id/btn_block"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="12dp"
+                    android:background="@drawable/button_rounded">
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/block_icon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_block_user" />
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:id="@+id/block_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/block_contact"
+                        android:textSize="12sp" />
+                </androidx.appcompat.widget.LinearLayoutCompat>
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Description Section -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/description_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/description"
+                    android:textSize="14sp"
+                    android:alpha="0.7" />
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/description_text"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:id="@+id/avatar"
-                    android:adjustViewBounds="true"
-                    style="@style/Avatar"
-                    android:clipToOutline="true"
-                    android:background="@drawable/bg_rounded"
-                    app:srcCompat="@drawable/button_rounded_white" />
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textSize="16sp"
+                    android:autoLink="web"
+                    tools:text="This is my contact description." />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?android:attr/listDivider"
+                android:layout_marginVertical="8dp" />
+
+            <!-- Public Key Section -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/public_key_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp"
+                android:background="@drawable/contact_background">
+
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:id="@+id/contact_public_key"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="16sp"
+                        android:ellipsize="middle"
+                        android:singleLine="true"
+                        tools:text="abc123def456789..." />
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/contact_public_key"
+                        android:textSize="14sp"
+                        android:alpha="0.7" />
+                </androidx.appcompat.widget.LinearLayoutCompat>
 
                 <androidx.appcompat.widget.AppCompatImageView
-                    android:id="@+id/camera_button"
-                    android:visibility="gone"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/copy_key_button"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="8dp"
+                    android:src="@drawable/ic_copy"
+                    android:alpha="0.7" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?android:attr/listDivider"
+                android:layout_marginVertical="8dp" />
+
+            <!-- Share Contact Link Section -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/share_link_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp"
+                android:background="@drawable/contact_background">
+
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    app:srcCompat="@drawable/ic_camera_plus_outline"
-                    android:layout_gravity="left|bottom"
-                    android:padding="4dp" />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:id="@+id/contact_link_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="16sp"
+                        android:ellipsize="middle"
+                        android:singleLine="true"
+                        tools:text="mimir://mm/u/abc123def456" />
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/share_contact"
+                        android:textSize="14sp"
+                        android:alpha="0.7" />
+                </androidx.appcompat.widget.LinearLayoutCompat>
 
                 <androidx.appcompat.widget.AppCompatImageView
-                    android:id="@+id/delete_button"
-                    android:visibility="gone"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/qr_code_button"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="8dp"
+                    android:src="@drawable/ic_qrcode"
+                    android:alpha="0.7" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Share Contact Link Section -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/share_link2_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="12dp"
+                android:background="@drawable/contact_background">
+
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    app:srcCompat="@drawable/ic_image_remove_outline"
-                    android:layout_gravity="right|bottom"
-                    android:padding="4dp" />
-            </FrameLayout>
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-            <androidx.appcompat.widget.AppCompatTextView
-                android:id="@+id/contact_name_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:layout_marginLeft="16dp"
-                android:layout_marginRight="16dp"
-                android:text="@string/contact_name_label" />
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:id="@+id/contact_link2_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="16sp"
+                        android:ellipsize="middle"
+                        android:singleLine="true"
+                        tools:text="https://go.mimir.im/u/abc123def456" />
 
-            <androidx.appcompat.widget.AppCompatEditText
-                android:id="@+id/contact_name"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="16dp"
-                android:layout_marginRight="16dp"
-                android:layout_marginTop="8dp"
-                android:hint="@string/contact_name_hint" />
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/share_contact"
+                        android:textSize="14sp"
+                        android:alpha="0.7" />
+                </androidx.appcompat.widget.LinearLayoutCompat>
 
-            <androidx.appcompat.widget.AppCompatTextView
-                android:id="@+id/contact_key_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:layout_marginLeft="16dp"
-                android:layout_marginRight="16dp"
-                android:text="@string/contact_public_key" />
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/qr_code2_button"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="8dp"
+                    android:src="@drawable/ic_copy"
+                    android:alpha="0.7" />
 
-            <androidx.appcompat.widget.AppCompatEditText
-                android:id="@+id/contact_public_key"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="16dp"
-                android:layout_marginRight="16dp"
-                android:layout_marginTop="8dp"
-                android:editable="false" />
-
-            <androidx.appcompat.widget.AppCompatTextView
-                android:id="@+id/links_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:layout_marginLeft="16dp"
-                android:layout_marginRight="16dp"
-                android:text="@string/share_contact" />
-
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/button_copy"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="16dp"
-                android:layout_marginLeft="12dp"
-                android:layout_marginRight="12dp"
-                android:text="@string/copy_contact_id"
-                android:gravity="left|center_vertical"
-                android:drawableLeft="@drawable/ic_copy"
-                android:drawablePadding="8dp" />
-
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/button_link"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="16dp"
-                android:layout_marginLeft="12dp"
-                android:layout_marginRight="12dp"
-                android:text="@string/copy_contact_link"
-                android:gravity="left|center_vertical"
-                android:drawableLeft="@drawable/ic_link"
-                android:drawablePadding="8dp" />
-
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/button_qr"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="16dp"
-                android:layout_marginLeft="12dp"
-                android:layout_marginRight="12dp"
-                android:layout_marginBottom="16dp"
-                android:text="@string/show_contact_qr_code"
-                android:gravity="left|center_vertical"
-                android:drawableLeft="@drawable/ic_qrcode"
-                android:drawablePadding="8dp" />
+            </androidx.appcompat.widget.LinearLayoutCompat>
 
         </androidx.appcompat.widget.LinearLayoutCompat>
-    </ScrollView>
+
+    </androidx.core.widget.NestedScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

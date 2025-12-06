@@ -25,9 +25,8 @@
     <string name="cancel">Cancel</string>
     <string name="message">Message</string>
     <string name="my_public_key">My public key:</string>
-    <string name="contact_public_key">Public key:</string>
+    <string name="contact_public_key">Public key</string>
     <string name="my_name_title">My name:</string>
-    <string name="contact_name_label">Name:</string>
     <string name="contact_info">Contact info</string>
     <string name="save_button">Save</string>
     <string name="account">Account</string>
@@ -142,7 +141,7 @@
     <string name="copy_link_to_my_id">Copy link to my ID</string>
     <string name="show_qr_code_of_my_contact">Show QR-code of my contact</string>
     <string name="share_my_contact">Share my contact:</string>
-    <string name="share_contact">Share contact:</string>
+    <string name="share_contact">Share contact</string>
     <string name="show_contact_qr_code">Show contact QR-code</string>
     <string name="error_loading_image">Error loading image!</string>
     <string name="avatar_too_large">Avatar is too large!</string>

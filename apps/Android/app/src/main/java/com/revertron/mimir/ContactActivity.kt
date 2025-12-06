@@ -2,12 +2,13 @@ package com.revertron.mimir
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.Toolbar
 import org.bouncycastle.util.encoders.Hex
 import java.net.URLEncoder
@@ -25,6 +26,7 @@ class ContactActivity: BaseActivity() {
         val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.title = getString(R.string.contact_info)
 
         pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
         name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
@@ -37,40 +39,82 @@ class ContactActivity: BaseActivity() {
             avatarView.setImageDrawable(avatar)
         }
 
-        findViewById<AppCompatEditText>(R.id.contact_name).setText(name)
-        val pubKeyEdit = findViewById<AppCompatEditText>(R.id.contact_public_key)
+        // Set contact name in header
+        findViewById<AppCompatTextView>(R.id.contact_name).text = name
+
+        // Set public key
         val public = Hex.toHexString(pubkey)
-        pubKeyEdit.setText(public)
+        val publicKeyView = findViewById<AppCompatTextView>(R.id.contact_public_key)
+        publicKeyView.text = public
 
-        findViewById<View>(R.id.button_copy).setOnClickListener {
-            val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = ClipData.newPlainText("mimir public key", pubKeyEdit.text)
-            clipboard.setPrimaryClip(clip)
-            Toast.makeText(this@ContactActivity,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+        // Set contact link
+        val encoded = URLEncoder.encode(name, "UTF-8")
+        val link = "mimir://mm/u/$public/$encoded"
+        findViewById<AppCompatTextView>(R.id.contact_link_text).text = link
+        val link2 = "https://$host/u/$public/$encoded"
+        findViewById<AppCompatTextView>(R.id.contact_link2_text).text = link2
+
+        // TODO: Add description functionality when implemented
+        // For now, keep description section hidden
+        findViewById<View>(R.id.description_section).visibility = View.GONE
+
+        // Message button
+        findViewById<View>(R.id.btn_message).setOnClickListener {
+            val intent = Intent(this, ChatActivity::class.java)
+            intent.putExtra("pubkey", pubkey)
+            intent.putExtra("name", name)
+            intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            startActivity(intent, animFromRight.toBundle())
+            finish()
         }
 
-        val buttonLink = findViewById<View>(R.id.button_link)
-        buttonLink.setOnClickListener {
-            val encoded = URLEncoder.encode(name, "UTF-8")
-            val link = "https://$host/u/${pubKeyEdit.text}/$encoded"
+        // Mute button
+        findViewById<View>(R.id.btn_mute).setOnClickListener {
+            // TODO: Implement mute functionality
+            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+        }
+
+        // Block button
+        findViewById<View>(R.id.btn_block).setOnClickListener {
+            // TODO: Implement block functionality
+            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+        }
+
+        // Copy public key button
+        findViewById<View>(R.id.copy_key_button).setOnClickListener {
+            val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("mimir public key", public)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this@ContactActivity, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+        }
+
+        // Copy public key section (entire section clickable)
+        findViewById<View>(R.id.public_key_section).setOnClickListener {
+            val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("mimir public key", public)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this@ContactActivity, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+        }
+
+        // Copy contact link section (entire section clickable)
+        findViewById<View>(R.id.share_link_section).setOnClickListener {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("mimir link", link)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this@ContactActivity,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@ContactActivity, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
         }
 
-        buttonLink.setOnLongClickListener {
-            val encoded = URLEncoder.encode(name, "UTF-8")
-            val link = "mimir://mm/u/${pubKeyEdit.text}/$encoded"
+        // Copy contact link section (entire section clickable)
+        findViewById<View>(R.id.share_link2_section).setOnClickListener {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = ClipData.newPlainText("mimir link", link)
+            val clip = ClipData.newPlainText("mimir link", link2)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this@ContactActivity,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
-            true
+            Toast.makeText(this@ContactActivity, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
         }
 
-        val qrCode = findViewById<View>(R.id.button_qr)
-        qrCode.setOnClickListener {
+        // QR code button
+        val qrCodeButton = findViewById<View>(R.id.qr_code_button)
+        qrCodeButton.setOnClickListener {
             showQrCodeDialog(this, name, public)
         }
     }

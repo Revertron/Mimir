@@ -115,7 +115,7 @@
 
                 <data android:scheme="http" />
                 <data android:scheme="https" />
-                <data android:host="x.mimir-app.net" /><!-- Don't forget to change it in Utils.kt -->
+                <data android:host="go.mimir.im" /><!-- Don't forget to change it in Utils.kt -->
             </intent-filter>
         </activity>
 

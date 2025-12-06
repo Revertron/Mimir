@@ -188,7 +188,7 @@ fun getLogcatLastMinutes(minutes: Long): List<String> {
  * It is used in intent-filter in AndroidManifest, keep it in sync
  */
 fun getMimirUriHost(): String {
-    return "x.mimir-app.net"
+    return "go.mimir.im"
 }
 
 fun isDefaultForDomain(context: Context, domain: String): Boolean {
