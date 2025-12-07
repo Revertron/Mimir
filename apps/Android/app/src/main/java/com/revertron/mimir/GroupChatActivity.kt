@@ -273,7 +273,8 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             this,
             onClickOnReply(),
             onClickOnPicture(),
-            fontSize
+            fontSize,
+            onClickOnAvatar()
         )
 
         recyclerView = findViewById(R.id.messages_list)
@@ -686,6 +687,23 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val intent = Intent(this, PictureActivity::class.java)
         intent.data = uri
         startActivity(intent)
+    }
+
+    private fun onClickOnAvatar() = fun(it: View) {
+        val contactId = it.tag as? Long
+        if (contactId != null) {
+            // Get member info from storage
+            val user = getStorage().getMemberInfo(contactId, groupChat.chatId, 48, 6)
+            val pubKey = getStorage().getMemberPubkey(contactId, groupChat.chatId)
+
+            if (pubKey != null) {
+                // Open ContactActivity with member's info
+                val intent = Intent(this, ContactActivity::class.java)
+                intent.putExtra("pubkey", pubKey)
+                intent.putExtra("name", user?.first ?: Hex.toHexString(pubKey).take(16))
+                startActivity(intent, animFromRight.toBundle())
+            }
+        }
     }
 
     private fun handleReply(view: View): Boolean {

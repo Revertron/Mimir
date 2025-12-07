@@ -31,7 +31,8 @@ class MessageAdapter(
     private val onClick: View.OnClickListener,
     private val onReplyClick: View.OnClickListener,
     private val onPictureClick: View.OnClickListener,
-    private val fontSize: Int
+    private val fontSize: Int,
+    private val onAvatarClick: View.OnClickListener? = null
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
@@ -73,6 +74,9 @@ class MessageAdapter(
         view.findViewById<View>(R.id.picture).setOnClickListener(onPictureClick)
         if (!groupChat) {
             view.findViewById<View>(R.id.avatar)?.visibility = View.GONE
+        } else if (onAvatarClick != null) {
+            // Set click listener for avatar in group chats
+            view.findViewById<View>(R.id.avatar)?.setOnClickListener(onAvatarClick)
         }
 
         return ViewHolder(view, viewType == 0 && groupChat)
@@ -110,6 +114,9 @@ class MessageAdapter(
                             holder.avatar?.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
                         }
                     }
+
+                    // Set the contact ID as tag for onClick handler
+                    holder.avatar?.tag = message.contact
                 } else {
                     holder.name.visibility = View.GONE
                     holder.avatar?.visibility = View.GONE
