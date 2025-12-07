@@ -332,6 +332,7 @@ class MediatorManager(
                 // Check again if we're still online before attempting
                 if (!App.app.online) {
                     Log.i(TAG, "Aborting reconnect to $pubkeyHex - went offline during delay")
+                    info.reset()
                     return@thread
                 }
 

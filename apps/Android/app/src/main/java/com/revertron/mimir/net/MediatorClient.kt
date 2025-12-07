@@ -844,11 +844,13 @@ class MediatorClient(
             if (!App.app.online || !running) {
                 Log.i(TAG, "We are offline, stopping client")
                 stopClient()
+                listener.onDisconnected(MediatorException("Client went offline"))
                 break
             }
             if (!connection.isAlive) {
                 Log.d(TAG, "Connection is broken, stopping client")
                 stopClient()
+                listener.onDisconnected(MediatorException("Connection not alive"))
                 break
             }
             if (System.currentTimeMillis() - lastActivityTime > PING_DEADLINE_MS) {
@@ -857,10 +859,12 @@ class MediatorClient(
                     if (!sendPing()) {
                         Log.i(TAG, "Connection broken")
                         stopClient()
+                        listener.onDisconnected(MediatorException("Ping failed"))
                     }
                 } catch (e: MediatorException) {
                     Log.i(TAG, "Connection broken: $e")
                     stopClient()
+                    listener.onDisconnected(e)
                 }
             }
         }
@@ -1030,6 +1034,9 @@ class MediatorClient(
             }
         } catch (e: Exception) {
             pending.remove(reqId)
+            Log.e(TAG, "Write failed, stopping client", e)
+            stopClient()
+            listener.onDisconnected(MediatorException("Write failed", e))
             throw MediatorException("Write failed", e)
         }
 
