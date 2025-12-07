@@ -683,6 +683,20 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
+    fun setGroupMessageDelivered(chatId: Long, guid: Long, delivered: Boolean) {
+        val messagesTable = "messages_$chatId"
+        val values = ContentValues().apply {
+            put("delivered", delivered)
+        }
+        if (this.writableDatabase.update(messagesTable, values, "guid = ?", arrayOf("$guid")) > 0) {
+            Log.i(TAG, "Group message with guid $guid in chat $chatId delivered = $delivered")
+            // Notify listeners to update UI
+            for (listener in listeners) {
+                listener.onGroupChatChanged(chatId)
+            }
+        }
+    }
+
     fun getMessageIds(userId: Long): List<Pair<Long, Boolean>> {
         val list = mutableListOf<Pair<Long, Boolean>>()
         val cursor = readableDatabase.query("messages", arrayOf("id", "incoming"), "contact = ?", arrayOf("$userId"), null, null, "id")
@@ -822,6 +836,53 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             }
         }
         cursor.close()
+        return result
+    }
+
+    fun getUndeliveredGroupMessages(chatId: Long): List<GroupMessage> {
+        val result = mutableListOf<GroupMessage>()
+        val messagesTable = "messages_$chatId"
+
+        try {
+            val cursor = readableDatabase.query(
+                messagesTable,
+                arrayOf("id", "guid", "senderId", "timestamp", "type", "data", "replyTo"),
+                "incoming = 0 AND delivered = 0",
+                null,
+                null,
+                null,
+                "id"
+            )
+
+            while (cursor.moveToNext()) {
+                val localId = cursor.getLong(0)
+                val guid = cursor.getLong(1)
+                val senderId = cursor.getLong(2)
+                val timestamp = cursor.getLong(3)
+                val type = cursor.getInt(4)
+                val data = cursor.getBlob(5)
+                val replyTo = cursor.getLong(6)
+
+                result.add(
+                    GroupMessage(
+                        localId = localId,
+                        msgId = null,
+                        guid = guid,
+                        senderId = senderId,
+                        timestamp = timestamp,
+                        type = type,
+                        data = data,
+                        delivered = false,
+                        read = false,
+                        replyTo = replyTo
+                    )
+                )
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting undelivered messages for chat $chatId", e)
+        }
+
         return result
     }
 
@@ -1921,7 +1982,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("type", type)
             put("system", system)
             put("data", data)
-            put("delivered", true) // Group messages are delivered via mediator
+            // Incoming messages are already delivered, outgoing messages are pending until sent to mediator
+            put("delivered", incoming)
             put("read", false)
             put("replyTo", replyTo)
         }

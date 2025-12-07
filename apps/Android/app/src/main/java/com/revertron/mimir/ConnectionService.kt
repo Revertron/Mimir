@@ -418,6 +418,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             // Update server message id for later sync
             storage.updateGroupMessageServerId(chatId, guid, messageId)
 
+            // Mark message as delivered after successful send to mediator
+            storage.setGroupMessageDelivered(chatId, guid, true)
+
             val broadcastIntent = Intent("ACTION_MEDIATOR_MESSAGE_SENT").apply {
                 putExtra("chat_id", chatId)
                 putExtra("message_id", messageId)
@@ -427,6 +430,47 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         } catch (e: Exception) {
             Log.e(TAG, "Error sending message", e)
             broadcastMediatorError("send", e.message ?: "Unknown error")
+        }
+    }
+
+    private fun resendUndeliveredMessages(chatId: Long, storage: SqlStorage) {
+        try {
+            val undeliveredMessages = storage.getUndeliveredGroupMessages(chatId)
+            if (undeliveredMessages.isEmpty()) {
+                Log.i(TAG, "No undelivered messages to resend for chat $chatId")
+                return
+            }
+
+            Log.i(TAG, "Resending ${undeliveredMessages.size} undelivered message(s) for chat $chatId")
+
+            for (message in undeliveredMessages) {
+                try {
+                    // Convert message data to String for sendGroupChatMessage
+                    val messageData = message.data?.let { String(it, Charsets.UTF_8) } ?: ""
+
+                    // Re-send the message
+                    sendGroupChatMessage(
+                        chatId,
+                        storage,
+                        message.guid,
+                        message.replyTo,
+                        message.timestamp,
+                        message.type,
+                        messageData
+                    )
+
+                    Log.i(TAG, "Resent message guid=${message.guid} for chat $chatId")
+
+                    // Add small delay to avoid flooding
+                    Thread.sleep(100)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error resending message guid=${message.guid} for chat $chatId", e)
+                }
+            }
+
+            Log.i(TAG, "Finished resending undelivered messages for chat $chatId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resending undelivered messages for chat $chatId", e)
         }
     }
 
@@ -447,10 +491,12 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }
             LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
 
-            // Sync missed messages after successful subscription (pass server last ID from subscribe response)
             Thread {
                 Thread.sleep(1000)
+                // Sync missed messages after successful subscription (pass server last ID from subscribe response)
                 syncMissedMessages(chatId, client, storage, serverLastId)
+                // Re-send any undelivered messages after successful subscription
+                resendUndeliveredMessages(chatId, storage)
             }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Error subscribing to chat", e)
@@ -797,7 +843,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                                         mediatorManager?.registerMessageListener(chat.chatId, it)
                                     }
                                     Thread {
+                                        // Sync missed messages from server first
                                         syncMissedMessages(chat.chatId, client, storage, serverLastId)
+                                        // Then re-send any undelivered messages
+                                        resendUndeliveredMessages(chat.chatId, storage)
                                     }.start()
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to subscribe to chat ${chat.chatId} on mediator ${mediatorHex.take(8)}", e)

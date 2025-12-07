@@ -102,18 +102,24 @@ class MessageAdapter(
                     holder.name.text = user.first
                     holder.name.visibility = View.VISIBLE
 
+                    val pubKey = storage.getMemberPubkey(message.contact, chatId)
+                    val avatarColor = if (pubKey != null) {
+                        getAvatarColor(pubKey)
+                    } else {
+                        0x808080
+                    }
                     if (user.second != null) {
                         holder.avatar?.clearColorFilter()
                         holder.avatar?.setImageDrawable(user.second)
                     } else {
                         // Use default avatar with color based on pubkey
                         holder.avatar?.setImageResource(R.drawable.button_rounded_white)
-                        val pubKey = storage.getMemberPubkey(message.contact, chatId)
                         pubKey?.let {
-                            val avatarColor = getAvatarColor(pubKey)
                             holder.avatar?.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
                         }
                     }
+                    // Apply the same color to the nickname
+                    holder.name.setTextColor(avatarColor)
 
                     // Set the contact ID as tag for onClick handler
                     holder.avatar?.tag = message.contact
