@@ -79,7 +79,7 @@ class MediatorManager(
 
     /**
      * Tracks reconnection state for a mediator.
-     * Uses exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (max)
+     * Uses exponential backoff: 4s, 8s, 16s, 32s, 60s (max)
      */
     private data class ReconnectionInfo(
         var attemptCount: Int = 0,
@@ -88,7 +88,7 @@ class MediatorManager(
         var reconnectThread: Thread? = null
     ) {
         companion object {
-            private const val BASE_DELAY_MS = 1000L // 1 second
+            private const val BASE_DELAY_MS = 4000L // 4 seconds
             private const val MAX_DELAY_MS = 60000L // 60 seconds
             private const val MAX_ATTEMPTS = 30 // After 30 attempts, stop and wait for manual reconnect
         }
