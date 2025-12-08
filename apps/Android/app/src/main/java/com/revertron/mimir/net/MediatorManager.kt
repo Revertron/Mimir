@@ -79,7 +79,7 @@ class MediatorManager(
 
     /**
      * Tracks reconnection state for a mediator.
-     * Uses exponential backoff: 4s, 8s, 16s, 32s, 60s (max)
+     * Uses exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (max)
      */
     private data class ReconnectionInfo(
         var attemptCount: Int = 0,
@@ -88,7 +88,7 @@ class MediatorManager(
         var reconnectThread: Thread? = null
     ) {
         companion object {
-            private const val BASE_DELAY_MS = 4000L // 4 seconds
+            private const val BASE_DELAY_MS = 2000L // 2 seconds
             private const val MAX_DELAY_MS = 60000L // 60 seconds
             private const val MAX_ATTEMPTS = 30 // After 30 attempts, stop and wait for manual reconnect
         }
@@ -144,11 +144,22 @@ class MediatorManager(
         connectionStatus[pubkeyHex] = ConnectionState.CONNECTING
 
         // Store keypair for potential reconnection
-        reconnectionInfo.getOrPut(pubkeyHex) {
+        val info = reconnectionInfo.getOrPut(pubkeyHex) {
             ReconnectionInfo(keyPair = keyPair)
         }.apply {
             this.keyPair = keyPair
-            this.reset()
+        }
+
+        // If this is a reconnection attempt (attemptCount > 0), explicitly close any
+        // cached connection in the Go library to ensure we get a fresh connection.
+        // This is critical after device hibernation when QUIC connections become stale.
+        if (info.attemptCount > 0) {
+            Log.d(TAG, "Reconnection attempt detected, closing any cached connection to $pubkeyHex")
+            try {
+                messenger.closeConnection(mediatorPubkey)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error closing cached connection: $e")
+            }
         }
 
         try {

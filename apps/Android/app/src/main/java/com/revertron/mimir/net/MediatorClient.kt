@@ -141,7 +141,12 @@ class MediatorClient(
     override fun start() {
         try {
             // 1) Connection initialization: [version:1][protoType:1]
-            connection.write(byteArrayOf(VERSION, PROTO_CLIENT))
+            try {
+                connection.write(byteArrayOf(VERSION, PROTO_CLIENT))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to write protocol selector to connection", e)
+                throw MediatorException("Failed to write protocol selector", e)
+            }
 
             super.start()
 
@@ -183,20 +188,36 @@ class MediatorClient(
     /** Performs GET_NONCE + AUTH; called automatically on start(). */
     fun authenticate(): Boolean {
         // GET_NONCE(pubkey) -> nonce(32)
-        val nonce = getNonce(pubkey) ?: return false
+        val nonce = getNonce(pubkey)
+        if (nonce == null) {
+            Log.e(TAG, "Failed to get nonce from mediator (timeout or connection issue)")
+            return false
+        }
 
         // AUTH(pubkey, nonce, signature) - Build TLV payload
-        val sig = Sign.sign(keyPair.private, nonce) ?: return false
+        val sig = Sign.sign(keyPair.private, nonce)
+        if (sig == null) {
+            Log.e(TAG, "Failed to sign nonce (cryptography error)")
+            return false
+        }
+
         val payload = ByteArrayOutputStream().apply {
             writeTLV(TAG_PUBKEY, pubkey)
             writeTLV(TAG_NONCE, nonce)
             writeTLV(TAG_SIGNATURE, sig)
         }.toByteArray()
-        val resp = request(CMD_AUTH, payload) ?: return false
-        if (resp.status != STATUS_OK) {
-            Log.w(TAG, "AUTH error: ${resp.errorString()}")
+        val resp = request(CMD_AUTH, payload)
+        if (resp == null) {
+            Log.e(TAG, "Authentication request timeout (no response from mediator)")
             return false
         }
+
+        if (resp.status != STATUS_OK) {
+            Log.e(TAG, "Authentication rejected by mediator: ${resp.errorString()}")
+            return false
+        }
+
+        Log.i(TAG, "Authentication successful")
         return true
     }
 
@@ -1072,15 +1093,21 @@ class MediatorClient(
             writeTLV(TAG_PUBKEY, pubkey)
         }.toByteArray()
 
-        val resp = request(CMD_GET_NONCE, payload) ?: return null
+        val resp = request(CMD_GET_NONCE, payload)
+        if (resp == null) {
+            Log.e(TAG, "getNonce: Request timeout (no response)")
+            return null
+        }
+
         if (resp.status != STATUS_OK) {
-            Log.w(TAG, "GET_NONCE error: ${resp.errorString()}")
+            Log.e(TAG, "getNonce: Server error: ${resp.errorString()}")
             return null
         }
 
         // Parse TLV response
         val tlvs = resp.payload.parseTLVs()
-        return tlvs.getTLVBytes(TAG_NONCE)
+        val nonce = tlvs.getTLVBytes(TAG_NONCE)
+        return nonce
     }
 
     private fun closeQuietly() {
