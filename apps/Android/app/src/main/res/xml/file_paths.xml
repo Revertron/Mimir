@@ -4,4 +4,6 @@
     <files-path name="shared" path="." />
     <!-- Share or downloads -->
     <external-path name="downloads" path="Download/" />
+    <!-- Share files from cache directory (for logs export) -->
+    <cache-path name="cache" path="." />
 </paths>

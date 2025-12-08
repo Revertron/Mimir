@@ -120,6 +120,15 @@
     <string name="logs">Logs</string>
     <string name="share_logs">Share logs</string>
     <string name="no_logs_to_share">No logs to share</string>
+    <string name="export_logs">Export logs</string>
+    <string name="select_log_interval">Select log interval</string>
+    <string name="interval_10_minutes">10 minutes</string>
+    <string name="interval_30_minutes">30 minutes</string>
+    <string name="interval_60_minutes">60 minutes</string>
+    <string name="interval_24_hours">24 hours</string>
+    <string name="exporting_logs">Exporting logs…</string>
+    <string name="logs_exported">Logs exported successfully</string>
+    <string name="error_exporting_logs">Error exporting logs: %s</string>
     <string name="configure_peers_description">Configure peers for connection to the Yggdrasil Network.</string>
     <string name="automatic_updates_checking">Automatic updates checking</string>
     <string name="automatic_updates_checking_desc">Check for updates automatically every hour.</string>
