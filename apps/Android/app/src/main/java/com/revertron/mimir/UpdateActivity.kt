@@ -1,8 +1,10 @@
 package com.revertron.mimir
 
+import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +16,7 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -21,6 +24,40 @@ import java.util.concurrent.Executors
 import androidx.core.net.toUri
 
 class UpdateActivity: BaseActivity() {
+
+    private lateinit var progressBar: ProgressBar
+    private lateinit var downloadButton: AppCompatButton
+    private var isServiceDownloading = false
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                UpdateService.ACTION_DOWNLOAD_STARTED -> {
+                    progressBar.visibility = View.VISIBLE
+                    progressBar.isIndeterminate = false
+                    downloadButton.isEnabled = false
+                }
+                UpdateService.ACTION_DOWNLOAD_PROGRESS -> {
+                    val progress = intent.getIntExtra(UpdateService.EXTRA_PROGRESS, 0)
+                    progressBar.progress = progress
+                }
+                UpdateService.ACTION_DOWNLOAD_COMPLETE -> {
+                    progressBar.visibility = View.GONE
+                    downloadButton.isEnabled = true
+                    isServiceDownloading = false
+                    Toast.makeText(this@UpdateActivity, "Download complete", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+                UpdateService.ACTION_DOWNLOAD_ERROR -> {
+                    val error = intent.getStringExtra(UpdateService.EXTRA_ERROR_MESSAGE)
+                    progressBar.visibility = View.GONE
+                    downloadButton.isEnabled = true
+                    isServiceDownloading = false
+                    Toast.makeText(this@UpdateActivity, error ?: "Download failed", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,35 +72,51 @@ class UpdateActivity: BaseActivity() {
         val description = findViewById<AppCompatTextView>(R.id.changelogs_text)
         description.text = intent.getStringExtra("desc")
 
-        val progressBar = findViewById<ProgressBar>(R.id.progress_bar)
+        progressBar = findViewById(R.id.progress_bar)
         progressBar.visibility = View.GONE
 
         val apkUrl = intent.getStringExtra("apk")!!
-        val downloadButton = findViewById<AppCompatButton>(R.id.download_button)
-        downloadButton.setOnClickListener { button ->
-            ApkInstaller.download(this, apkUrl!!, object : DownloadListener {
-                override fun onDownloadStarted() {
-                    runOnUiThread { progressBar.visibility = View.VISIBLE }
-                }
-
-                override fun onDownloadProgress(percent: Int) {
-                    runOnUiThread { progressBar.progress = percent }
-                }
-
-                override fun onDownloadFinished(error: String?) {
-                    runOnUiThread {
-                        progressBar.visibility = View.GONE
-                        error?.let {
-                            Toast.makeText(this@UpdateActivity, it, Toast.LENGTH_LONG).show()
-                            openUrl(this@UpdateActivity, apkUrl)
-                        }
-                    }
-                }
-            })
+        downloadButton = findViewById(R.id.download_button)
+        downloadButton.setOnClickListener {
+            // Start UpdateService for background download
+            isServiceDownloading = true
+            UpdateService.startDownload(this, apkUrl, version ?: "Unknown")
+            Toast.makeText(this, R.string.downloading_update, Toast.LENGTH_SHORT).show()
         }
         downloadButton.setOnLongClickListener {
             openUrl(this@UpdateActivity, apkUrl)
             true
+        }
+
+        // Register broadcast receiver for download progress
+        registerDownloadReceiver()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        registerDownloadReceiver()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterDownloadReceiver()
+    }
+
+    private fun registerDownloadReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(UpdateService.ACTION_DOWNLOAD_STARTED)
+            addAction(UpdateService.ACTION_DOWNLOAD_PROGRESS)
+            addAction(UpdateService.ACTION_DOWNLOAD_COMPLETE)
+            addAction(UpdateService.ACTION_DOWNLOAD_ERROR)
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(downloadReceiver, filter)
+    }
+
+    private fun unregisterDownloadReceiver() {
+        try {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(downloadReceiver)
+        } catch (e: Exception) {
+            // Receiver might not be registered
         }
     }
 

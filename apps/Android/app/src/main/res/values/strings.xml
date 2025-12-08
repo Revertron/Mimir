@@ -105,6 +105,10 @@
     <string name="check_for_updates">Check for updates</string>
     <string name="already_last_version">No new version available.</string>
     <string name="error_checking_updates">Error checking for updates: %s</string>
+    <string name="channel_name_update_download">Update downloads</string>
+    <string name="channel_description_update_download">Shows progress when downloading app updates</string>
+    <string name="downloading_update_progress">Downloading update %1$s (%2$d%%)</string>
+    <string name="download_failed">Download failed</string>
     <string name="configure_peers">Configure peers</string>
     <string name="use_default_peers">Use default peers</string>
     <string name="custom_peers">Custom Peers</string>
