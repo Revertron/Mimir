@@ -68,8 +68,10 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         }
 
         // Get current user's public key
-        App.app.mediatorManager?.apply {
-            currentUserPubkey = getPublicKey()
+        if (App.app.mediatorManager != null) {
+            currentUserPubkey = App.app.mediatorManager!!.getPublicKey()
+        } else {
+            finish()
         }
 
         // Load group chat info from database

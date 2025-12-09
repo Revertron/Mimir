@@ -2490,7 +2490,6 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("updated_at", now)
         }
         writableDatabase.update("group_chats", values, "chat_id = ?", arrayOf(chatId.toString()))
-        Log.d(TAG, "Updated chat $chatId timestamp to $now")
     }
 
     /**

@@ -314,9 +314,23 @@ class MediatorManager(
             return
         }
 
+        // Check if there's already an active connection
+        clients[pubkeyHex]?.let { existingClient ->
+            if (existingClient.isRunning()) {
+                Log.i(TAG, "Not scheduling reconnect to $pubkeyHex - already connected")
+                return
+            }
+        }
+
         // Get or create reconnection info
         val info = reconnectionInfo.getOrPut(pubkeyHex) {
             ReconnectionInfo(keyPair = keyPair)
+        }
+
+        // Check if there's already a reconnection thread running
+        if (info.reconnectThread != null && info.reconnectThread!!.isAlive) {
+            Log.i(TAG, "Not scheduling reconnect to $pubkeyHex - reconnection already in progress")
+            return
         }
 
         // Store keypair for future reconnection attempts
@@ -328,7 +342,7 @@ class MediatorManager(
             return
         }
 
-        // Cancel any existing reconnect thread
+        // Cancel any existing reconnect thread (should be redundant now, but kept for safety)
         info.cancelReconnect()
 
         // Calculate delay with exponential backoff

@@ -448,7 +448,7 @@ class MediatorClient(
             // This allows us to ignore old system messages (like "user left") that occurred before this sync
             storage.updateGroupChatTimestamp(chatId)
 
-            Log.i(TAG, "Finished saving ${members.size} member(s) for chat $chatId")
+            //Log.i(TAG, "Finished saving ${members.size} member(s) for chat $chatId")
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching members for chat $chatId", e)
         }
@@ -733,7 +733,7 @@ class MediatorClient(
      * @return List of ALL members with selective info updates
      */
     fun getMembersInfo(chatId: Long, sinceTimestamp: Long = 0): List<MemberInfo> {
-        Log.i(TAG, "getMembersInfo: chatId=$chatId, sinceTimestamp=$sinceTimestamp")
+        //Log.i(TAG, "getMembersInfo: chatId=$chatId, sinceTimestamp=$sinceTimestamp")
 
         // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
@@ -746,7 +746,7 @@ class MediatorClient(
         val resp = request(CMD_GET_MEMBERS_INFO, payload) ?: throw MediatorException("getMembersInfo timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getMembersInfo failed")
 
-        Log.d(TAG, "getMembersInfo response payload size: ${resp.payload.size} bytes")
+        //Log.d(TAG, "getMembersInfo response payload size: ${resp.payload.size} bytes")
 
         // Parse TLV response: TAG_COUNT + repeated members (each member has TAG_USER_PUBKEY, TAG_MEMBER_INFO, TAG_TIMESTAMP)
         val members = mutableListOf<MemberInfo>()
@@ -788,7 +788,7 @@ class MediatorClient(
                 }
             }
         }
-        Log.i(TAG, "Retrieved ${members.size} member(s) info for chat $chatId, ${members.count { it.encryptedInfo != null }}")
+        //Log.i(TAG, "Retrieved ${members.size} member(s) info for chat $chatId, ${members.count { it.encryptedInfo != null }}")
         return members
     }
 

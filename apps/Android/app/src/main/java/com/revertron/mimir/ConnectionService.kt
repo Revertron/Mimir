@@ -193,11 +193,13 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 Log.i(TAG, "Resending unsent messages")
                 mimirServer?.sendMessages()
 
-                Thread {
-                    Thread.sleep(2000)
-                    // Reconnect to mediators and resubscribe to chats when coming online
-                    connectAndSubscribeToAllChats(storage)
-                }.start()
+                if (mediatorManager != null) {
+                    Thread {
+                        Thread.sleep(2000)
+                        // Reconnect to mediators and resubscribe to chats when coming online
+                        connectAndSubscribeToAllChats(storage)
+                    }.start()
+                }
 
                 if (updateAfter == 0L) {
                     handler.postDelayed(1000) {
