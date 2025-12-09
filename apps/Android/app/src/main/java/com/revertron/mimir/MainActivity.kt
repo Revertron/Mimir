@@ -430,7 +430,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
         // Convert group chats to ChatListItems
         chatItems.addAll(groupChats.map { groupChat ->
-            val avatar = storage.getGroupChatAvatar(groupChat.chatId)
+            val avatar = storage.getGroupChatAvatar(groupChat.chatId, 48, 6)
             // Check if current user is the owner
             val isOwner = myPubKey.contentEquals(groupChat.ownerPubkey)
 

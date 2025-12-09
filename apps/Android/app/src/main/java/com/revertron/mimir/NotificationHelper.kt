@@ -904,7 +904,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
 
         // Build message text with caching for multiple messages
         val messageText = synchronized(groupMessageCache) {
-            var text = message.getText(context)
+            var text = message.getText(context, App.app.storage, chatId)
 
             // Truncate long messages
             text = if (text.length > MAX_MESSAGE_PREVIEW_LENGTH) {

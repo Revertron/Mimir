@@ -30,6 +30,8 @@
             android:textStyle="bold"
             android:ellipsize="end"
             android:maxLines="1"
+            android:clickable="false"
+            android:focusable="false"
             tools:text="Some contact name" />
 
         <androidx.appcompat.widget.AppCompatTextView
@@ -38,6 +40,8 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:ellipsize="end"
+            android:clickable="false"
+            android:focusable="false"
             tools:text="Some previous message with very long text that consists of many many characters" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>

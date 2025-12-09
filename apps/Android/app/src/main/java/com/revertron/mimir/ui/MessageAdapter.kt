@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.storage.SqlStorage
+import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 import java.io.File
 import java.text.DateFormat
@@ -94,20 +95,21 @@ class MessageAdapter(
 
         if (groupChat) {
             if (message.incoming) {
+                holder.avatar?.visibility = View.VISIBLE
                 val user = users.getOrPut(message.contact, {
                     // TODO make default values
                     storage.getMemberInfo(message.contact, chatId, 48, 6)
                 })
+                val pubKey = storage.getMemberPubkey(message.contact, chatId)
+                val avatarColor = if (pubKey != null) {
+                    getAvatarColor(pubKey)
+                } else {
+                    0x808080
+                }
                 if (user != null) {
                     holder.name.text = user.first
                     holder.name.visibility = View.VISIBLE
 
-                    val pubKey = storage.getMemberPubkey(message.contact, chatId)
-                    val avatarColor = if (pubKey != null) {
-                        getAvatarColor(pubKey)
-                    } else {
-                        0x808080
-                    }
                     if (user.second != null) {
                         holder.avatar?.clearColorFilter()
                         holder.avatar?.setImageDrawable(user.second)
@@ -123,6 +125,13 @@ class MessageAdapter(
 
                     // Set the contact ID as tag for onClick handler
                     holder.avatar?.tag = message.contact
+                } else if (message.type < 1000) {
+                    holder.name.text = holder.name.context.getString(R.string.unknown_nickname)
+                    // Use default avatar with color based on pubkey
+                    holder.avatar?.setImageResource(R.drawable.button_rounded_white)
+                    holder.avatar?.let {
+                        holder.avatar?.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
+                    }
                 } else {
                     holder.name.visibility = View.GONE
                     holder.avatar?.visibility = View.GONE
@@ -238,11 +247,13 @@ class MessageAdapter(
         } else {
             holder.sent.setImageResource(R.drawable.ic_message_not_sent)
         }
-        val layoutParams = holder.itemView.layoutParams as RecyclerView.LayoutParams
+        // Apply top margin to the message view (not itemView) for the first message
+        val messageView = holder.itemView.findViewById<View>(R.id.message)
+        val messageLayoutParams = messageView.layoutParams as ViewGroup.MarginLayoutParams
         if (position == 0) {
-            layoutParams.updateMargins(top = layoutParams.bottomMargin)
+            messageLayoutParams.updateMargins(top = messageLayoutParams.bottomMargin)
         } else {
-            layoutParams.updateMargins(top = 0)
+            messageLayoutParams.updateMargins(top = 0)
         }
         if (!groupChat) {
             storage.setMessageRead(chatId, message.id, true)
@@ -300,5 +311,32 @@ class MessageAdapter(
             }
         }
         return -1
+    }
+
+    /**
+     * Clears the cached member info, forcing it to be reloaded from storage.
+     * This should be called when member info might have been updated (e.g., avatar changes).
+     */
+    fun refreshMemberCache() {
+        users.clear()
+        notifyDataSetChanged()
+    }
+
+    /**
+     * Refreshes cached info for a specific member by their ID.
+     */
+    fun refreshMember(memberId: Long) {
+        users.remove(memberId)
+        // Find and refresh all messages from this member
+        for ((index, message) in messageIds.withIndex()) {
+            val msg = if (groupChat) {
+                storage.getGroupMessage(chatId, message.first)
+            } else {
+                storage.getMessage(message.first)
+            }
+            if (msg?.contact == memberId) {
+                notifyItemChanged(index)
+            }
+        }
     }
 }

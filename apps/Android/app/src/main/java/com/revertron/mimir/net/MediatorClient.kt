@@ -914,7 +914,7 @@ class MediatorClient(
                     val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
                     val msgId = tlvs.getTLVLong(TAG_MESSAGE_ID)
                     val guid = tlvs.getTLVLong(TAG_MESSAGE_GUID)
-                    val timestamp = tlvs.getTLVLong(TAG_TIMESTAMP)
+                    val timestamp = tlvs.getTLVLong(TAG_TIMESTAMP) * 1000 // Convert seconds to milliseconds
                     val author = tlvs.getTLVBytes(TAG_PUBKEY)
                     val data = tlvs.getTLVBytesOrNull(TAG_MESSAGE_BLOB) ?: ByteArray(0)
 
@@ -939,7 +939,7 @@ class MediatorClient(
                         val inviteId = tlvs.getTLVLong(TAG_INVITE_ID)
                         val chatId = tlvs.getTLVLong(TAG_CHAT_ID)
                         val fromPubkey = tlvs.getTLVBytes(TAG_PUBKEY)
-                        val timestamp = tlvs.getTLVLong(TAG_TIMESTAMP)
+                        val timestamp = tlvs.getTLVLong(TAG_TIMESTAMP) * 1000 // Convert seconds to milliseconds
                         val name = tlvs.getTLVString(TAG_CHAT_NAME)
                         val desc = tlvs[TAG_CHAT_DESC]?.toString(Charsets.UTF_8) ?: ""
                         val avatar = tlvs.getTLVBytesOrNull(TAG_CHAT_AVATAR)

@@ -39,7 +39,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 11
+        const val DATABASE_VERSION = 12
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
@@ -267,6 +267,10 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         if (newVersion > oldVersion && newVersion > 10) {
             migrateGroupMessageReplyToColumn(db)
         }
+
+        if (newVersion > oldVersion && newVersion == 12) {
+            addGoneColumnToMembersTables(db)
+        }
     }
 
     private fun migrateGroupMessageIncomingColumn(db: SQLiteDatabase) {
@@ -338,6 +342,24 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         Log.i(TAG, "Added 'online' column to $membersTable")
                     } catch (e: SQLiteException) {
                         Log.w(TAG, "Failed to add 'online' column to $membersTable", e)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun addGoneColumnToMembersTables(db: SQLiteDatabase) {
+        db.query("group_chats", arrayOf("chat_id"), null, null, null, null, null).use { chats ->
+            while (chats.moveToNext()) {
+                val chatId = chats.getLong(0)
+                val membersTable = "members_$chatId"
+
+                if (!hasColumn(db, membersTable, "gone")) {
+                    try {
+                        db.execSQL("ALTER TABLE $membersTable ADD COLUMN gone BOOL DEFAULT 0")
+                        Log.i(TAG, "Added 'gone' column to $membersTable")
+                    } catch (e: SQLiteException) {
+                        Log.w(TAG, "Failed to add 'gone' column to $membersTable", e)
                     }
                 }
             }
@@ -1187,7 +1209,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             val name = cursor.getString(2)
             val avatar = cursor.getStringOrNull(3)
             val drawable = if (!avatar.isNullOrEmpty()) {
-                loadRoundedAvatar(context, avatar)
+                loadRoundedAvatar(context, avatar, 48, 6)
             } else {
                 null
             }
@@ -1457,7 +1479,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 joined_at INTEGER NOT NULL,
                 updated INTEGER NOT NULL DEFAULT 0,
                 banned BOOL DEFAULT 0,
-                online BOOL DEFAULT 0
+                online BOOL DEFAULT 0,
+                gone BOOL DEFAULT 0
             )
         """.trimIndent())
 
@@ -1612,14 +1635,14 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
-     * Gets count of members of a particular chat
+     * Gets count of active members (not banned, not gone) of a particular chat
      */
     fun getGroupChatMembersCount(chatId: Long): Int {
         val messagesTable = "members_$chatId"
 
         return try {
             val cursor = readableDatabase.rawQuery(
-                "SELECT COUNT(id) FROM $messagesTable WHERE banned == 0",
+                "SELECT COUNT(id) FROM $messagesTable WHERE banned == 0 AND gone == 0",
                 null
             )
             val count = if (cursor.moveToNext() && !cursor.isNull(0)) {
@@ -1937,7 +1960,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     /**
      * Adds a message to a group chat.
      */
-    fun addGroupMessage(chatId: Long, serverMsgId: Long?, guid: Long, author: ByteArray, timestamp: Long, type: Int, system: Boolean, data: ByteArray, replyTo: Long = 0L): Long {
+    fun addGroupMessage(chatId: Long, serverMsgId: Long?, guid: Long, author: ByteArray, timestamp: Long, type: Int, system: Boolean, data: ByteArray, replyTo: Long = 0L, fromSync: Boolean = false): Long {
         // Get chat info to retrieve mediator's pubkey
         val chatInfo = getGroupChat(chatId)
         if (chatInfo == null) {
@@ -1982,8 +2005,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("type", type)
             put("system", system)
             put("data", data)
-            // Incoming messages are already delivered, outgoing messages are pending until sent to mediator
-            put("delivered", incoming)
+            // Incoming messages are always delivered
+            // Outgoing messages: delivered if synced from server (already sent), pending if newly created locally
+            put("delivered", incoming || fromSync)
             put("read", false)
             put("replyTo", replyTo)
         }
@@ -2233,19 +2257,20 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         require(pubkey.size == 32) { "pubkey must be 32 bytes" }
         val membersTable = "members_$chatId"
 
-        // Check if member exists
+        // Check if member exists (including gone members)
         val cursor = readableDatabase.query(
             membersTable,
-            arrayOf("avatar"),
+            arrayOf("avatar", "gone"),
             "pubkey = ?",
             arrayOf(pubkey.toHexString()),
             null, null, null
         )
 
-        val existingAvatarPath = if (cursor.moveToNext()) {
-            cursor.getStringOrNull(0)
-        } else {
-            null
+        var existingAvatarPath: String? = null
+        var isGone = false
+        if (cursor.moveToNext()) {
+            existingAvatarPath = cursor.getStringOrNull(0)
+            isGone = cursor.getInt(1) != 0
         }
         cursor.close()
 
@@ -2303,7 +2328,21 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             values.put("joined_at", now)
             values.put("permissions", 16)
             values.put("banned", 0)
+            values.put("gone", 0)
             writableDatabase.insert(membersTable, null, values)
+        } else if (isGone) {
+            // Member exists but is marked as gone - reactivate them
+            val reactivateValues = ContentValues().apply {
+                put("gone", 0)
+                put("joined_at", now) // Update join time to current time
+            }
+            writableDatabase.update(
+                membersTable,
+                reactivateValues,
+                "pubkey = ?",
+                arrayOf(pubkey.toHexString())
+            )
+            Log.i(TAG, "Reactivated gone member ${pubkey.toHexString().substring(0, 16)}... in chat $chatId")
         }
 
         return avatarPath
@@ -2430,7 +2469,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
-     * Gets all members for a group chat.
+     * Gets all members for a group chat, excluding members who have left (gone=1).
      */
     fun getGroupMembers(chatId: Long): List<GroupMemberInfo> {
         val membersTable = "members_$chatId"
@@ -2439,7 +2478,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         val cursor = readableDatabase.query(
             membersTable,
             arrayOf("pubkey", "nickname", "info", "avatar", "permissions", "joined_at", "banned", "online"),
-            null, null, null, null,
+            "gone = 0", null, null, null,
             "joined_at ASC"
         )
 
@@ -2548,40 +2587,32 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
-     * Deletes a member from the members_{chatId} table.
-     * Also deletes their avatar file if it exists.
+     * Marks a member as gone (soft delete) in the members_{chatId} table.
+     * Preserves member records for historical message display.
+     * Does not delete avatar files since they may be needed for old messages.
      */
     fun deleteGroupMember(chatId: Long, pubkey: ByteArray) {
         require(pubkey.size == 32) { "pubkey must be 32 bytes" }
         val membersTable = "members_$chatId"
 
         try {
-            // Get avatar path before deleting
-            val memberInfo = getGroupMemberInfo(chatId, pubkey)
-            val avatarPath = memberInfo?.avatarPath
+            // Set gone=1 instead of deleting
+            val values = ContentValues().apply {
+                put("gone", 1)
+            }
 
-            // Delete from members table
-            val deleted = writableDatabase.delete(
+            val updated = writableDatabase.update(
                 membersTable,
+                values,
                 "pubkey = ?",
                 arrayOf(pubkey.toHexString())
             )
 
-            if (deleted > 0) {
-                Log.i(TAG, "Deleted member ${pubkey.toHexString().substring(0, 16)}... from chat $chatId")
-
-                // Delete avatar file if it exists
-                if (avatarPath != null && avatarPath.isNotEmpty()) {
-                    val avatarsDir = File(context.filesDir, "avatars_$chatId")
-                    val avatarFile = File(avatarsDir, avatarPath)
-                    if (avatarFile.exists()) {
-                        avatarFile.delete()
-                        Log.i(TAG, "Deleted avatar file for member")
-                    }
-                }
+            if (updated > 0) {
+                Log.i(TAG, "Marked member ${pubkey.toHexString().substring(0, 16)}... as gone in chat $chatId")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting member from chat $chatId", e)
+            Log.e(TAG, "Error marking member as gone in chat $chatId", e)
         }
     }
 

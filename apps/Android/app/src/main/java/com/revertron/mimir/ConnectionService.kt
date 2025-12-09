@@ -517,6 +517,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
      * @param encryptedData The encrypted message data
      * @param storage The storage instance
      * @param broadcast Whether to broadcast the message to activities (true for real-time, false for sync)
+     * @param fromSync Whether this message is being synced from server (true) or received real-time (false)
      * @return Local message ID if successful, 0 if skipped/failed
      */
     private fun parseAndSaveGroupMessage(
@@ -527,7 +528,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         author: ByteArray,
         encryptedData: ByteArray,
         storage: SqlStorage,
-        broadcast: Boolean = true
+        broadcast: Boolean = true,
+        fromSync: Boolean = false
     ): Long {
         try {
             // Check if this is a system message from the mediator (not encrypted)
@@ -545,7 +547,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     timestamp, // Use current time for system messages
                     1000, // System messages are type 1000
                     true, // Mark as system message
-                    encryptedData // This is actually unencrypted system message data
+                    encryptedData, // This is actually unencrypted system message data
+                    fromSync = fromSync
                 )
 
                 Log.i(TAG, "System message saved with local ID: $localId")
@@ -575,7 +578,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     System.currentTimeMillis(), // Use current time since we can't decrypt the real timestamp
                     0, // Text message type
                     false, // Not a system message
-                    errorMessage
+                    errorMessage,
+                    fromSync = fromSync
                 )
 
                 return localId
@@ -658,7 +662,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 message.type,
                 false, // not a system message
                 m,
-                message.replyTo
+                message.replyTo,
+                fromSync = fromSync
             )
 
             Log.i(TAG, "Message saved with local ID: $localId")
@@ -727,7 +732,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     // Process each message
                     for (msgPayload in messages) {
                         try {
-                            // Use shared parsing logic with broadcast disabled (sync messages)
+                            // Use shared parsing logic with broadcast disabled and fromSync=true (sync messages)
                             val localId = parseAndSaveGroupMessage(
                                 chatId,
                                 msgPayload.messageId,
@@ -736,7 +741,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                                 msgPayload.author,
                                 msgPayload.data,
                                 storage,
-                                broadcast = false
+                                broadcast = false,
+                                fromSync = true
                             )
 
                             if (localId > 0) {

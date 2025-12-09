@@ -711,13 +711,8 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         val message = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return false
 
         // Get the author's name from the message
-        val authorName = if (message.incoming) {
-            // For incoming messages, get the sender's name
-            val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
-            user?.first ?: getString(R.string.unknown_nickname)
-        } else {
-            getString(R.string.unknown_nickname)
-        }
+        val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
+        val authorName = user?.first ?: getString(R.string.unknown_nickname)
 
         replyName.text = authorName // NOT groupChat.name!
         replyText.text = message.getText(this)
@@ -781,6 +776,13 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     override fun onStart() {
         super.onStart()
         isVisible = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh member cache in case avatars or member info was updated
+        // (e.g., after returning from GroupInfoActivity)
+        adapter.refreshMemberCache()
     }
 
     override fun onStop() {
