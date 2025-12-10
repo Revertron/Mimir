@@ -1,56 +1,27 @@
 package com.revertron.mimir
 
-import android.Manifest
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
-import android.graphics.PorterDuff
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.ContextThemeWrapper
-import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.widget.AppCompatEditText
-import androidx.appcompat.widget.AppCompatImageButton
-import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
-import androidx.appcompat.widget.LinearLayoutCompat
-import androidx.appcompat.widget.PopupMenu
-import androidx.appcompat.widget.Toolbar
-import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import androidx.preference.PreferenceManager
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.net.SystemMessage
 import com.revertron.mimir.net.parseSystemMessage
-import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.GroupChat
 import com.revertron.mimir.ui.MessageAdapter
-import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
-import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
-import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
 import org.bouncycastle.util.encoders.Hex
-import org.json.JSONObject
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Group chat activity using ConnectionService for server-mediated group messaging.
@@ -66,7 +37,7 @@ import java.util.Locale
  * follows the same pattern as NewChatActivity by delegating all mediator operations to
  * ConnectionService and receiving responses via LocalBroadcast.
  */
-class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
+class GroupChatActivity : BaseChatActivity() {
 
     companion object {
         const val TAG = "GroupChatActivity"
@@ -77,26 +48,11 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         const val EXTRA_MEDIATOR_ADDRESS = "mediator_address"
 
         private const val REQUEST_SELECT_CONTACT = 100
-        private const val PICK_IMAGE_REQUEST_CODE = 123
-        private const val TAKE_PHOTO_REQUEST_CODE = 124
     }
 
     private lateinit var groupChat: GroupChat
-    private lateinit var replyPanel: LinearLayoutCompat
-    private lateinit var replyName: AppCompatTextView
-    private lateinit var replyText: AppCompatTextView
-    private lateinit var attachmentPanel: ConstraintLayout
-    private lateinit var attachmentPreview: AppCompatImageView
-    private lateinit var attachmentMenu: LinearLayoutCompat
-    private lateinit var adapter: MessageAdapter
-    private lateinit var recyclerView: RecyclerView
-
     private var mediatorAddress: ByteArray? = null
     private lateinit var publicKey: ByteArray
-    private var replyTo = 0L
-    private var attachmentJson: JSONObject? = null
-    private var currentPhotoUri: Uri? = null
-    private var isVisible: Boolean = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val mediatorReceiver = object : BroadcastReceiver() {
@@ -145,17 +101,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_group_chat)
-
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        toolbar.setOnMenuItemClickListener(this)
-        toolbar.setOnClickListener {
-            openGroupInfo()
-        }
-
-        // Extract group chat info from intent
+        // Extract group chat info before calling super.onCreate()
         val chatId = intent.getLongExtra(EXTRA_CHAT_ID, 0)
         val chatName = intent.getStringExtra(EXTRA_CHAT_NAME)
         val chatDescription = intent.getStringExtra(EXTRA_CHAT_DESCRIPTION) ?: ""
@@ -190,115 +136,36 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             isOwner = isOwner
         )
 
-        setupUI()
+        super.onCreate(savedInstanceState)
+
+        // Set title, subtitle, and avatar
+        setToolbarTitle(groupChat.name)
+        setToolbarSubtitle(getString(R.string.member_count, groupChat.memberCount))
+        setupAvatar(groupChat.avatar)
+
+        // Setup message list
         setupMessageList()
-        registerBroadcastReceivers()
+
+        // Setup broadcast receivers
+        setupBroadcastReceivers()
     }
 
-    private fun registerBroadcastReceivers() {
-        val filter = IntentFilter().apply {
-            addAction("ACTION_MEDIATOR_MESSAGE_SENT")
-            addAction("ACTION_MEDIATOR_LEFT_CHAT")
-            addAction("ACTION_MEDIATOR_ERROR")
-        }
-        LocalBroadcastManager.getInstance(this).registerReceiver(mediatorReceiver, filter)
-    }
+    // BaseChatActivity abstract method implementations
 
-    private fun setupUI() {
-        // Setup title and subtitle
-        findViewById<AppCompatTextView>(R.id.title).text = groupChat.name
-        findViewById<AppCompatTextView>(R.id.subtitle).text =
-            getString(R.string.member_count, groupChat.memberCount)
+    override fun getLayoutResId(): Int = R.layout.activity_group_chat
 
-        supportActionBar?.title = ""
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+    override fun getChatId(): Long = groupChat.chatId
 
-        // Setup avatar
-        val avatar = findViewById<AppCompatImageView>(R.id.avatar)
-        if (groupChat.avatar != null) {
-            avatar.clearColorFilter()
-            avatar.setImageDrawable(groupChat.avatar)
-        } else {
-            avatar.setImageResource(R.drawable.button_rounded_white)
-            // Use chat ID for color generation
-            val avatarColor = getAvatarColor(groupChat.chatId.toString().toByteArray())
-            avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
-        }
+    override fun getChatName(): String = groupChat.name
 
-        // Setup reply panel
-        replyPanel = findViewById(R.id.reply_panel)
-        replyPanel.visibility = View.GONE
-        replyName = findViewById(R.id.reply_contact_name)
-        replyText = findViewById(R.id.reply_text)
-        findViewById<AppCompatImageView>(R.id.reply_close).setOnClickListener {
-            replyPanel.visibility = View.GONE
-            replyTo = 0L
-        }
+    override fun isGroupChat(): Boolean = true
 
-        // Setup message input
-        val editText = findViewById<AppCompatEditText>(R.id.message_edit)
-        val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
-        sendButton.setOnClickListener {
-            val text = editText.text.toString().trim()
-            if (text.isNotEmpty() || attachmentJson != null) {
-                editText.text?.clear()
-                sendGroupMessage(text, replyTo)
-                replyPanel.visibility = View.GONE
-                replyText.text = ""
-                replyTo = 0L
-            }
-        }
+    override fun getAvatarColorSeed(): ByteArray = groupChat.chatId.toString().toByteArray()
 
-        // Setup attachment menu
-        attachmentMenu = findViewById(R.id.attachment_menu)
-        attachmentMenu.visibility = View.GONE
-
-        // Setup attachment button
-        findViewById<AppCompatImageButton>(R.id.attach_button).setOnClickListener {
-            toggleAttachmentMenu()
-        }
-
-        findViewById<LinearLayoutCompat>(R.id.menu_item_image).setOnClickListener {
-            hideAttachmentMenu()
-            selectAndSendPicture()
-        }
-
-        findViewById<LinearLayoutCompat>(R.id.menu_item_photo).setOnClickListener {
-            hideAttachmentMenu()
-            checkAndRequestCameraPermission()
-        }
-
-        findViewById<LinearLayoutCompat>(R.id.menu_item_file).setOnClickListener {
-            hideAttachmentMenu()
-            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
-        }
-
-        // Setup attachment panel
-        attachmentPanel = findViewById(R.id.attachment)
-        attachmentPanel.visibility = View.GONE
-        attachmentPreview = findViewById(R.id.attachment_image)
-        val attachmentCancel = findViewById<AppCompatImageView>(R.id.attachment_cancel)
-        attachmentCancel.setOnClickListener {
-            attachmentPreview.setImageDrawable(null)
-            attachmentPanel.visibility = View.GONE
-            attachmentJson?.getString("name")?.apply {
-                deleteFileAndPreview(this@GroupChatActivity, this)
-            }
-            attachmentJson = null
-        }
-    }
-
-    private fun setupMessageList() {
-        // For group chats, pass the chat ID directly (not negated)
-        // MessageAdapter will use this to look up messages from the messages_<chatId> table
-        val chatId = groupChat.chatId.toLong()
-
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val fontSize = prefs.getInt(KEY_MESSAGE_FONT_SIZE, 15)
-
-        adapter = MessageAdapter(
+    override fun createMessageAdapter(fontSize: Int): MessageAdapter {
+        return MessageAdapter(
             getStorage(),
-            chatId,
+            groupChat.chatId,
             groupChat = true, // Enable group-chat mode to show sender names
             groupChat.name,
             this,
@@ -307,26 +174,25 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             fontSize,
             onClickOnAvatar()
         )
-
-        recyclerView = findViewById(R.id.messages_list)
-        recyclerView.adapter = adapter
-        recyclerView.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
-
-        // Scroll to first unread message if any, otherwise scroll to end
-        val firstUnreadId = getStorage().getFirstUnreadGroupMessageId(groupChat.chatId)
-        if (firstUnreadId != null) {
-            val position = adapter.getMessageIdPosition(firstUnreadId)
-            if (position >= 0) {
-                recyclerView.post {
-                    recyclerView.scrollToPosition(position)
-                }
-            }
-        }
-
-        getStorage().listeners.add(this)
     }
 
-    private fun sendGroupMessage(text: String, replyTo: Long) {
+    override fun getFirstUnreadMessageId(): Long? {
+        return getStorage().getFirstUnreadGroupMessageId(groupChat.chatId)
+    }
+
+    override fun deleteMessageById(messageId: Long) {
+        getStorage().deleteGroupMessage(groupChat.chatId, messageId)
+    }
+
+    override fun getMessageForReply(messageId: Long): Pair<String, String>? {
+        val message = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return null
+        // Get the author's name from the message
+        val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
+        val authorName = user?.first ?: getString(R.string.unknown_nickname)
+        return Pair(authorName, message.getText(this))
+    }
+
+    override fun sendMessage(text: String, replyTo: Long) {
         Thread {
             try {
                 val sendTime = System.currentTimeMillis()
@@ -379,10 +245,8 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 // Clean up attachment UI
                 if (attachmentJson != null) {
                     runOnUiThread {
-                        attachmentPanel.visibility = View.GONE
-                        attachmentPreview.setImageDrawable(null)
+                        clearAttachment()
                     }
-                    attachmentJson = null
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending group message", e)
@@ -391,6 +255,38 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                 }
             }
         }.start()
+    }
+
+    override fun setupBroadcastReceivers() {
+        val filter = IntentFilter().apply {
+            addAction("ACTION_MEDIATOR_MESSAGE_SENT")
+            addAction("ACTION_MEDIATOR_LEFT_CHAT")
+            addAction("ACTION_MEDIATOR_ERROR")
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(mediatorReceiver, filter)
+    }
+
+    override fun onToolbarClick() {
+        openGroupInfo()
+    }
+
+    // Click handlers
+
+    private fun onClickOnAvatar() = fun(it: View) {
+        val contactId = it.tag as? Long
+        if (contactId != null) {
+            // Get member info from storage
+            val user = getStorage().getMemberInfo(contactId, groupChat.chatId, 48, 6)
+            val pubKey = getStorage().getMemberPubkey(contactId, groupChat.chatId)
+
+            if (pubKey != null) {
+                // Open ContactActivity with member's info
+                val intent = Intent(this, ContactActivity::class.java)
+                intent.putExtra("pubkey", pubKey)
+                intent.putExtra("name", user?.first ?: Hex.toHexString(pubKey).take(16))
+                startActivity(intent, animFromRight.toBundle())
+            }
+        }
     }
 
     // Menu handling
@@ -425,17 +321,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         }
 
         return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                // Use navigateUpFromSameTask to ensure MainActivity is shown
-                onBackPressed()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -588,7 +473,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                     }
                 }
             }
-            return isVisible
+            return isChatVisible
         }
         return false
     }
@@ -629,24 +514,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                     }
                 }
             }
-            PICK_IMAGE_REQUEST_CODE -> {
-                if (resultCode == RESULT_OK && data != null && data.data != null) {
-                    val selectedPictureUri = data.data!!
-                    getImageFromUri(selectedPictureUri)
-                } else {
-                    Log.e(TAG, "Error getting picture")
-                }
-            }
-            TAKE_PHOTO_REQUEST_CODE -> {
-                if (resultCode == RESULT_OK) {
-                    currentPhotoUri?.let { uri ->
-                        Log.i(TAG, "Photo captured: $uri")
-                        getImageFromUri(uri)
-                    } ?: run {
-                        Log.e(TAG, "Error: Photo URI is null")
-                    }
-                }
-            }
         }
     }
 
@@ -668,137 +535,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         ).show()
     }
 
-    // Image attachment handling
-
-    private fun selectAndSendPicture() {
-        val intent = Intent(Intent.ACTION_PICK)
-        intent.type = "image/*"
-        startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
-    }
-
-    private fun getImageFromUri(uri: Uri) {
-        val fileSize = uri.length(this)
-        if (fileSize > PICTURE_MAX_SIZE) {
-            Toast.makeText(this, getString(R.string.too_big_picture_resizing), Toast.LENGTH_LONG).show()
-        }
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val resize = prefs.getInt(KEY_IMAGES_FORMAT, 0)
-        val imageSize = ImageSize.fromInt(resize)
-        val quality = prefs.getInt(KEY_IMAGES_QUALITY, 95)
-        // TODO move usage of this function to another Thread
-        val message = prepareFileForMessage(this, uri, imageSize, quality)
-        Log.i(TAG, "File message for $uri is $message")
-        if (message != null) {
-            val fileName = message.getString("name")
-            val preview = getImagePreview(this, fileName, 320, 85)
-            attachmentPreview.setImageBitmap(preview)
-            attachmentPanel.visibility = View.VISIBLE
-            attachmentJson = message
-        }
-    }
-
-    // Click handlers
-
-    override fun onClick(view: View) {
-        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-        popup.inflate(R.menu.menu_context_message)
-        popup.setForceShowIcon(true)
-        popup.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.menu_copy -> handleCopy(view)
-                R.id.menu_reply -> handleReply(view)
-                R.id.menu_forward -> handleForward(view)
-                R.id.menu_delete -> handleDelete(view)
-                else -> false
-            }
-        }
-        popup.show()
-    }
-
-    private fun onClickOnReply() = fun(it: View) {
-        val id = it.tag as Long
-        val position = adapter.getMessageIdPosition(id)
-        if (position >= 0) {
-            recyclerView.smoothScrollToPosition(position)
-        }
-    }
-
-    private fun onClickOnPicture() = fun(it: View) {
-        val uri = it.tag as Uri
-        val intent = Intent(this, PictureActivity::class.java)
-        intent.data = uri
-        startActivity(intent)
-    }
-
-    private fun onClickOnAvatar() = fun(it: View) {
-        val contactId = it.tag as? Long
-        if (contactId != null) {
-            // Get member info from storage
-            val user = getStorage().getMemberInfo(contactId, groupChat.chatId, 48, 6)
-            val pubKey = getStorage().getMemberPubkey(contactId, groupChat.chatId)
-
-            if (pubKey != null) {
-                // Open ContactActivity with member's info
-                val intent = Intent(this, ContactActivity::class.java)
-                intent.putExtra("pubkey", pubKey)
-                intent.putExtra("name", user?.first ?: Hex.toHexString(pubKey).take(16))
-                startActivity(intent, animFromRight.toBundle())
-            }
-        }
-    }
-
-    private fun handleReply(view: View): Boolean {
-        val messageId = view.tag as Long
-        val message = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return false
-
-        // Get the author's name from the message
-        val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
-        val authorName = user?.first ?: getString(R.string.unknown_nickname)
-
-        replyName.text = authorName // NOT groupChat.name!
-        replyText.text = message.getText(this)
-        replyPanel.visibility = View.VISIBLE
-        replyTo = message.guid
-
-        return false
-    }
-
-    private fun handleCopy(view: View): Boolean {
-        val textview = view.findViewById<AppCompatTextView>(R.id.text)
-        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Mimir message", textview.text)
-        clipboard.setPrimaryClip(clip)
-        Toast.makeText(this, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
-        return true
-    }
-
-    private fun handleForward(view: View): Boolean {
-        // TODO: Implement forward functionality
-        Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
-        return false
-    }
-
-    private fun handleDelete(view: View): Boolean {
-        showDeleteMessageConfirmDialog(view.tag as Long)
-        return true
-    }
-
-    private fun showDeleteMessageConfirmDialog(messageId: Long) {
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        AlertDialog.Builder(wrapper)
-            .setTitle(getString(R.string.delete_message_dialog_title))
-            .setMessage(R.string.delete_message_dialog_text)
-            .setIcon(R.drawable.ic_delete)
-            .setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
-                getStorage().deleteGroupMessage(groupChat.chatId, messageId)
-                adapter.deleteMessageId(messageId)
-            }
-            .setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
-                dialog.cancel()
-            }
-            .show()
-    }
-
     // Group Info
 
     private fun openGroupInfo() {
@@ -814,11 +550,6 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
 
     // Lifecycle
 
-    override fun onStart() {
-        super.onStart()
-        isVisible = true
-    }
-
     override fun onResume() {
         super.onResume()
         // Refresh member cache in case avatars or member info was updated
@@ -826,96 +557,8 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         adapter.refreshMemberCache()
     }
 
-    override fun onStop() {
-        super.onStop()
-        isVisible = false
-    }
-
     override fun onDestroy() {
-        super.onDestroy()
-        getStorage().listeners.remove(this)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
-    }
-
-    private fun toggleAttachmentMenu() {
-        if (attachmentMenu.visibility == View.VISIBLE) {
-            hideAttachmentMenu()
-        } else {
-            showAttachmentMenu()
-        }
-    }
-
-    private fun showAttachmentMenu() {
-        attachmentMenu.visibility = View.VISIBLE
-        attachmentMenu.translationY = attachmentMenu.height.toFloat()
-        attachmentMenu.animate()
-            .translationY(0f)
-            .setDuration(200)
-            .start()
-    }
-
-    private fun hideAttachmentMenu() {
-        attachmentMenu.animate()
-            .translationY(attachmentMenu.height.toFloat())
-            .setDuration(200)
-            .withEndAction {
-                attachmentMenu.visibility = View.GONE
-            }
-            .start()
-    }
-
-    private val cameraPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
-            if (isGranted) {
-                takePhoto()
-            } else {
-                Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-    private fun checkAndRequestCameraPermission() {
-        when {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
-                takePhoto()
-            }
-            else -> {
-                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-            }
-        }
-    }
-
-    private fun takePhoto() {
-        val photoFile = createImageFile()
-        photoFile?.let {
-            currentPhotoUri = FileProvider.getUriForFile(
-                this,
-                "${applicationContext.packageName}.file_provider",
-                it
-            )
-
-            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
-            intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, currentPhotoUri)
-            startActivityForResult(intent, TAKE_PHOTO_REQUEST_CODE)
-        } ?: run {
-            Toast.makeText(this, "Error creating photo file", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun createImageFile(): File? {
-        return try {
-            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val imageFileName = "JPEG_${timeStamp}_"
-            val storageDir = cacheDir
-            File.createTempFile(imageFileName, ".jpg", storageDir)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating image file", e)
-            null
-        }
-    }
-
-    override fun finish() {
-        super.finish()
-        @Suppress("DEPRECATION")
-        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+        super.onDestroy()
     }
 }

@@ -1,66 +1,37 @@
 package com.revertron.mimir
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.BroadcastReceiver
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.PorterDuff
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import android.view.*
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.widget.*
-import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import androidx.preference.PreferenceManager
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.net.PeerStatus
-import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
-import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
-import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
-import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
 import org.bouncycastle.util.encoders.Hex
-import org.json.JSONObject
-import java.io.File
 import java.lang.Thread.sleep
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 
-class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
+class ChatActivity : BaseChatActivity() {
 
     companion object {
         const val TAG = "ChatActivity"
-        const val PICK_IMAGE_REQUEST_CODE = 123
-        const val TAKE_PHOTO_REQUEST_CODE = 124
     }
 
-    lateinit var contact: Contact
-    lateinit var replyPanel: LinearLayoutCompat
-    lateinit var replyName: AppCompatTextView
-    private lateinit var replyText: AppCompatTextView
-    private lateinit var attachmentPanel: ConstraintLayout
-    private lateinit var attachmentPreview: AppCompatImageView
-    private lateinit var attachmentMenu: LinearLayoutCompat
-    private var attachmentJson: JSONObject? = null
-    private var currentPhotoUri: Uri? = null
-    private var isVisible: Boolean = false
-    var replyTo = 0L
+    private lateinit var contact: Contact
 
     private val peerStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
@@ -75,157 +46,115 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_chat)
-
-        val toolbar = findViewById<View>(R.id.toolbar) as Toolbar
-        setSupportActionBar(toolbar)
-        toolbar.setOnClickListener {
-            val intent = Intent(this, ContactActivity::class.java)
-            intent.putExtra("pubkey", contact.pubkey)
-            intent.putExtra("name", contact.name)
-            startActivity(intent, animFromRight.toBundle())
-        }
-
+        // Extract contact info before calling super.onCreate()
         val pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         val id = getStorage().getContactId(pubkey)
         val avatarPic = getStorage().getContactAvatar(id)
         contact = Contact(id, pubkey, name, null, 0, avatarPic)
 
-        findViewById<AppCompatTextView>(R.id.title).text = contact.name
-        supportActionBar?.title = ""
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        super.onCreate(savedInstanceState)
 
-        val avatar = findViewById<AppCompatImageView>(R.id.avatar)
-        if (contact.avatar != null) {
-            avatar.clearColorFilter()
-            avatar.setImageDrawable(contact.avatar)
-        } else {
-            avatar.setImageResource(R.drawable.button_rounded_white)
-            val avatarColor = getAvatarColor(contact.pubkey)
-            avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
-        }
+        // Set title and avatar
+        setToolbarTitle(contact.name)
+        setupAvatar(contact.avatar)
 
-        replyPanel = findViewById(R.id.reply_panel)
-        replyPanel.visibility = View.GONE
-        replyName = findViewById(R.id.reply_contact_name)
-        replyText = findViewById(R.id.reply_text)
-        findViewById<AppCompatImageView>(R.id.reply_close).setOnClickListener {
-            replyPanel.visibility = View.GONE
-            replyTo = 0L
-        }
-
-        val editText = findViewById<AppCompatEditText>(R.id.message_edit)
-        val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
-        sendButton.setOnClickListener {
-            val text: String = editText.text.toString().trim()
-            if (text.isNotEmpty() || attachmentJson != null) {
-                editText.text?.clear()
-                sendMessage(contact.pubkey, text, replyTo)
-                replyPanel.visibility = View.GONE
-                replyText.text = ""
-                replyTo = 0L
-            }
-        }
-        attachmentMenu = findViewById(R.id.attachment_menu)
-        attachmentMenu.visibility = View.GONE
-
-        findViewById<AppCompatImageButton>(R.id.attach_button).setOnClickListener {
-            toggleAttachmentMenu()
-        }
-
-        findViewById<LinearLayoutCompat>(R.id.menu_item_image).setOnClickListener {
-            hideAttachmentMenu()
-            selectAndSendPicture()
-        }
-
-        findViewById<LinearLayoutCompat>(R.id.menu_item_photo).setOnClickListener {
-            hideAttachmentMenu()
-            checkAndRequestCameraPermission()
-        }
-
-        findViewById<LinearLayoutCompat>(R.id.menu_item_file).setOnClickListener {
-            hideAttachmentMenu()
-            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
-        }
-
-        attachmentPanel = findViewById(R.id.attachment)
-        attachmentPanel.visibility = View.GONE
-        attachmentPreview = findViewById(R.id.attachment_image)
-        val attachmentCancel = findViewById<AppCompatImageView>(R.id.attachment_cancel)
-        attachmentCancel.setOnClickListener {
-            attachmentPreview.setImageDrawable(null)
-            attachmentPanel.visibility = View.GONE
-            attachmentJson?.getString("name")?.apply {
-                deleteFileAndPreview(this@ChatActivity, this)
-            }
-            attachmentJson = null
-        }
-
+        // Handle shared image if any
         val image = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
         if (image != null) {
             getImageFromUri(image)
         }
 
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val fontSize = prefs.getInt(KEY_MESSAGE_FONT_SIZE, 15)
+        // Setup message list
+        setupMessageList()
 
-        val adapter = MessageAdapter(getStorage(), contact.id, groupChat = false, contact.name, this, onClickOnReply(), onClickOnPicture(), fontSize)
-        val recycler = findViewById<RecyclerView>(R.id.messages_list)
-        recycler.adapter = adapter
-        recycler.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
+        // Setup broadcast receivers
+        setupBroadcastReceivers()
 
-        // Scroll to first unread message if any, otherwise scroll to end
-        val firstUnreadId = getStorage().getFirstUnreadMessageId(contact.id)
-        if (firstUnreadId != null) {
-            val position = adapter.getMessageIdPosition(firstUnreadId)
-            if (position >= 0) {
-                recycler.post {
-                    recycler.scrollToPosition(position)
-                }
-            }
-        }
-
-        getStorage().listeners.add(this)
-
+        // Show initial connection state
         showOnlineState(PeerStatus.Connecting)
-        LocalBroadcastManager.getInstance(this).registerReceiver(peerStatusReceiver, IntentFilter("ACTION_PEER_STATUS"))
         fetchStatus(this, contact.pubkey)
 
+        // Connect to peer
         Thread {
             sleep(500)
             connect(this@ChatActivity, contact.pubkey)
         }.start()
     }
 
-    override fun onStart() {
-        super.onStart()
-        isVisible = true
+    // BaseChatActivity abstract method implementations
+
+    override fun getLayoutResId(): Int = R.layout.activity_chat
+
+    override fun getChatId(): Long = contact.id
+
+    override fun getChatName(): String = contact.name
+
+    override fun isGroupChat(): Boolean = false
+
+    override fun getAvatarColorSeed(): ByteArray = contact.pubkey
+
+    override fun createMessageAdapter(fontSize: Int): MessageAdapter {
+        return MessageAdapter(
+            getStorage(),
+            contact.id,
+            groupChat = false,
+            contact.name,
+            this,
+            onClickOnReply(),
+            onClickOnPicture(),
+            fontSize
+        )
     }
 
-    override fun onStop() {
-        super.onStop()
-        isVisible = false
+    override fun getFirstUnreadMessageId(): Long? {
+        return getStorage().getFirstUnreadMessageId(contact.id)
     }
 
-    private fun onClickOnReply() = fun(it: View) {
-        //TODO animate target view
-        val id = it.tag as Long
-        val recycler = findViewById<RecyclerView>(R.id.messages_list)
-        val adapter = recycler.adapter as MessageAdapter
-        val position = adapter.getMessageIdPosition(id)
-        if (position >= 0) {
-            recycler.smoothScrollToPosition(position)
+    override fun deleteMessageById(messageId: Long) {
+        getStorage().deleteMessage(messageId)
+    }
+
+    override fun getMessageForReply(messageId: Long): Pair<String, String>? {
+        val message = getStorage().getMessage(messageId)
+        return if (message != null) {
+            Pair(contact.name, message.getText(this))
+        } else {
+            null
         }
     }
 
-    private fun onClickOnPicture() = fun(it: View) {
-        val uri = it.tag as Uri
-        val intent = Intent(this, PictureActivity::class.java)
-        intent.data = uri
-        startActivity(intent)
+    override fun sendMessage(text: String, replyTo: Long) {
+        val intent = Intent(this, ConnectionService::class.java)
+        intent.putExtra("command", "send")
+        intent.putExtra("pubkey", contact.pubkey)
+        intent.putExtra("replyTo", replyTo)
+        if (attachmentJson != null) {
+            intent.putExtra("type", 1)
+            attachmentJson!!.put("text", text)
+            intent.putExtra("message", attachmentJson.toString())
+            clearAttachment()
+        } else {
+            intent.putExtra("message", text)
+        }
+        startService(intent)
     }
+
+    override fun setupBroadcastReceivers() {
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            peerStatusReceiver,
+            IntentFilter("ACTION_PEER_STATUS")
+        )
+    }
+
+    override fun onToolbarClick() {
+        val intent = Intent(this, ContactActivity::class.java)
+        intent.putExtra("pubkey", contact.pubkey)
+        intent.putExtra("name", contact.name)
+        startActivity(intent, animFromRight.toBundle())
+    }
+
+    // Menu handling
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         super.onCreateOptionsMenu(menu)
@@ -235,24 +164,47 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            android.R.id.home -> {
-                onBackPressed()
-                return true
-            }
             R.id.contact_call -> {
                 checkAndRequestAudioPermission()
+                return true
             }
             R.id.clear_history -> {
-
+                // TODO: Implement clear history
+                return true
             }
-
             else -> {
-                Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+                if (item.itemId != android.R.id.home) {
+                    Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+                }
             }
         }
-
         return super.onOptionsItemSelected(item)
     }
+
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        Log.i(TAG, "Clicked on ${item?.itemId}")
+        return true
+    }
+
+    // Audio call functionality
+
+    private fun checkAndRequestAudioPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> {
+                makeCall()
+            }
+            else -> {
+                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    private val audioPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                makeCall()
+            }
+        }
 
     private fun makeCall() {
         val intent = Intent(this, ConnectionService::class.java)
@@ -275,50 +227,9 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         startActivity(callIntent, animFromRight.toBundle())
     }
 
-    override fun onDestroy() {
-        getStorage().listeners.remove(this)
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
-        super.onDestroy()
-    }
+    // Peer status display
 
-    override fun finish() {
-        super.finish()
-        @Suppress("DEPRECATION")
-        overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        Log.i(TAG, "Clicked on ${item?.itemId}")
-        return true
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        when (requestCode) {
-            PICK_IMAGE_REQUEST_CODE -> {
-                if (resultCode == RESULT_OK) {
-                    if (data == null || data.data == null) {
-                        Log.e(TAG, "Error getting picture")
-                        return
-                    }
-                    val selectedPictureUri = data.data!!
-                    getImageFromUri(selectedPictureUri)
-                }
-            }
-            TAKE_PHOTO_REQUEST_CODE -> {
-                if (resultCode == RESULT_OK) {
-                    currentPhotoUri?.let { uri ->
-                        Log.i(TAG, "Photo captured: $uri")
-                        getImageFromUri(uri)
-                    } ?: run {
-                        Log.e(TAG, "Error: Photo URI is null")
-                    }
-                }
-            }
-        }
-    }
-
-    fun showOnlineState(status: PeerStatus) {
+    private fun showOnlineState(status: PeerStatus) {
         val imageView = findViewById<AppCompatImageView>(R.id.status_image)
         when (status) {
             PeerStatus.NotConnected -> imageView.setImageResource(R.drawable.status_badge_red)
@@ -328,60 +239,14 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         }
     }
 
-    private fun getImageFromUri(uri: Uri) {
-        val fileSize = uri.length(this)
-        if (fileSize > PICTURE_MAX_SIZE) {
-            Toast.makeText(this, getString(R.string.too_big_picture_resizing), Toast.LENGTH_LONG).show()
-        }
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val resize = prefs.getInt(KEY_IMAGES_FORMAT, 0)
-        val imageSize = ImageSize.fromInt(resize)
-        val quality = prefs.getInt(KEY_IMAGES_QUALITY, 95)
-        // TODO move usage of this function to another Thread
-        val message = prepareFileForMessage(this, uri, imageSize, quality)
-        Log.i(TAG, "File message for $uri is $message")
-        if (message != null) {
-            val fileName = message.getString("name")
-            val preview = getImagePreview(this, fileName, 320, 85)
-            attachmentPreview.setImageBitmap(preview)
-            attachmentPanel.visibility = View.VISIBLE
-            attachmentJson = message
-        }
-    }
-
-    private fun sendMessage(pubkey: ByteArray, text: String, replyTo: Long) {
-        val intent = Intent(this, ConnectionService::class.java)
-        intent.putExtra("command", "send")
-        intent.putExtra("pubkey", pubkey)
-        intent.putExtra("replyTo", replyTo)
-        if (attachmentJson != null) {
-            intent.putExtra("type", 1)
-            attachmentJson!!.put("text", text)
-            intent.putExtra("message", attachmentJson.toString())
-            attachmentPanel.visibility = View.GONE
-            // TODO check for leaks
-            attachmentPreview.setImageDrawable(null)
-            attachmentJson = null
-        } else {
-            intent.putExtra("message", text)
-        }
-        startService(intent)
-    }
-
-    private fun selectAndSendPicture() {
-        val intent = Intent(Intent.ACTION_PICK)
-        intent.type = "image/*"
-        startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
-    }
+    // StorageListener implementation
 
     override fun onMessageSent(id: Long, contactId: Long) {
         runOnUiThread {
             Log.i(TAG, "Message $id sent to $contactId")
             if (contact.id == contactId) {
-                val recycler = findViewById<RecyclerView>(R.id.messages_list)
-                val adapter = recycler.adapter as MessageAdapter
                 adapter.addMessageId(id, false)
-                recycler.smoothScrollToPosition(adapter.itemCount)
+                recyclerView.smoothScrollToPosition(adapter.itemCount)
             }
         }
     }
@@ -389,8 +254,6 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     override fun onMessageDelivered(id: Long, delivered: Boolean) {
         Log.i(TAG, "Message $id delivered = $delivered")
         runOnUiThread {
-            val recycler = findViewById<RecyclerView>(R.id.messages_list)
-            val adapter = recycler.adapter as MessageAdapter
             adapter.setMessageDelivered(id, delivered)
             startDeliveredSound()
         }
@@ -401,73 +264,15 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         if (contact.id == contactId) {
             runOnUiThread {
                 Log.i(TAG, "Adding message")
-                val recycler = findViewById<RecyclerView>(R.id.messages_list)
-                val adapter = recycler.adapter as MessageAdapter
                 adapter.addMessageId(id, true)
-                if (isVisible) {
+                if (isChatVisible) {
                     //TODO scroll only if was already at the bottom
-                    recycler.smoothScrollToPosition(adapter.itemCount)
+                    recyclerView.smoothScrollToPosition(adapter.itemCount)
                 }
             }
-            return isVisible
+            return isChatVisible
         }
         return false
-    }
-
-    override fun onClick(view: View) {
-        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-        popup.inflate(R.menu.menu_context_message)
-        popup.setForceShowIcon(true)
-        popup.setOnMenuItemClickListener {
-            when (it.itemId) {
-                R.id.menu_copy -> {
-                    val textview = view.findViewById<AppCompatTextView>(R.id.text)
-                    val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("Mimir message", textview.text)
-                    clipboard.setPrimaryClip(clip)
-                    Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
-                    true
-                }
-                R.id.menu_reply -> {
-                    val id = (view.tag as Long)
-                    val message = getStorage().getMessage(id)
-                    replyName.text = contact.name
-                    replyText.text = message?.getText(this)
-                    replyPanel.visibility = View.VISIBLE
-                    replyTo = message?.guid ?: 0L
-                    Log.i(TAG, "Replying to guid $replyTo")
-                    false
-                }
-                R.id.menu_forward -> { false }
-                R.id.menu_delete -> {
-                    showDeleteMessageConfirmDialog(view.tag as Long)
-                    true
-                }
-                else -> {
-                    Log.w(TAG, "Not implemented handler for menu item ${it.itemId}")
-                    false
-                }
-            }
-        }
-        popup.show()
-    }
-
-    private fun showDeleteMessageConfirmDialog(messageId: Long) {
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
-        builder.setTitle(getString(R.string.delete_message_dialog_title))
-        builder.setMessage(R.string.delete_message_dialog_text)
-        builder.setIcon(R.drawable.ic_delete)
-        builder.setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
-            (application as App).storage.deleteMessage(messageId)
-            val recycler = findViewById<RecyclerView>(R.id.messages_list)
-            val adapter = recycler.adapter as MessageAdapter
-            adapter.deleteMessageId(messageId)
-        }
-        builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
-            dialog.cancel()
-        }
-        builder.show()
     }
 
     private fun startDeliveredSound() {
@@ -484,107 +289,10 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         mediaPlayer.start()
     }
 
-    private fun toggleAttachmentMenu() {
-        if (attachmentMenu.visibility == View.VISIBLE) {
-            hideAttachmentMenu()
-        } else {
-            showAttachmentMenu()
-        }
-    }
+    // Lifecycle
 
-    private fun showAttachmentMenu() {
-        attachmentMenu.visibility = View.VISIBLE
-        attachmentMenu.translationY = attachmentMenu.height.toFloat()
-        attachmentMenu.animate()
-            .translationY(0f)
-            .setDuration(200)
-            .start()
-    }
-
-    private fun hideAttachmentMenu() {
-        attachmentMenu.animate()
-            .translationY(attachmentMenu.height.toFloat())
-            .setDuration(200)
-            .withEndAction {
-                attachmentMenu.visibility = View.GONE
-            }
-            .start()
-    }
-
-    private fun checkAndRequestAudioPermission() {
-        when {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> {
-                // Already have that permission
-                makeCall()
-            }
-
-            /*shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
-                // If the user already declined such requests we need to show some text in dialog, rationale
-            }*/
-
-            else -> {
-                // Ask for microphone permission
-                requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            }
-        }
-    }
-
-
-    private val requestPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
-            if (isGranted) {
-                makeCall()
-            } else {
-                // User declined permission :(
-            }
-        }
-
-    private val cameraPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
-            if (isGranted) {
-                takePhoto()
-            } else {
-                Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-    private fun checkAndRequestCameraPermission() {
-        when {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
-                takePhoto()
-            }
-            else -> {
-                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-            }
-        }
-    }
-
-    private fun takePhoto() {
-        val photoFile = createImageFile()
-        photoFile?.let {
-            currentPhotoUri = FileProvider.getUriForFile(
-                this,
-                "${applicationContext.packageName}.file_provider",
-                it
-            )
-
-            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
-            intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, currentPhotoUri)
-            startActivityForResult(intent, TAKE_PHOTO_REQUEST_CODE)
-        } ?: run {
-            Toast.makeText(this, "Error creating photo file", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun createImageFile(): File? {
-        return try {
-            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val imageFileName = "JPEG_${timeStamp}_"
-            val storageDir = cacheDir
-            File.createTempFile(imageFileName, ".jpg", storageDir)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating image file", e)
-            null
-        }
+    override fun onDestroy() {
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
+        super.onDestroy()
     }
 }

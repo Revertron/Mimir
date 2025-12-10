@@ -12,7 +12,7 @@ import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.Toolbar
-import com.revertron.mimir.ChatActivity.Companion.PICK_IMAGE_REQUEST_CODE
+import com.revertron.mimir.BaseChatActivity.Companion.PICK_IMAGE_REQUEST_CODE
 import com.revertron.mimir.storage.AccountInfo
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
