@@ -289,7 +289,7 @@ class MessageAdapter(
         for ((index, message) in messageIds.withIndex()) {
             if (message.first == messageId) {
                 messageIds.removeAt(index)
-                notifyItemChanged(index)
+                notifyItemRemoved(index)
                 break
             }
         }
