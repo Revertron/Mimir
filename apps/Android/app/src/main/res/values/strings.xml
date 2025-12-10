@@ -49,6 +49,7 @@
     <string name="not_yet_implemented">Not yet implemented</string>
     <string name="too_big_picture">Picture file must be less or equal to 5 Mb</string>
     <string name="too_big_picture_resizing">Picture is bigger then 5 Mb, resizing</string>
+    <string name="file_too_large">File is too large. Maximum size is 10 MB.</string>
     <string name="contact_added">New contact added</string>
     <string name="contact_already_added">Contact with that key already added</string>
     <string name="you_cant_add_yourself">You can\'t add your own account</string>

@@ -429,6 +429,12 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             val fileSize = message.optLong("size", 0)
             val mimeType = message.optString("mimeType", "application/octet-stream")
 
+            // Validate file size (already checked in prepareGeneralFileForMessage, but double-check here)
+            if (fileSize > MAX_FILE_SIZE) {
+                Toast.makeText(this, getString(R.string.file_too_large), Toast.LENGTH_LONG).show()
+                return
+            }
+
             // Update UI for file attachment
             attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
             attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE

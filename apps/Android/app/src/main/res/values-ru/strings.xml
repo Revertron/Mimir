@@ -48,6 +48,7 @@
     <string name="not_yet_implemented">Ещё не реализовано</string>
     <string name="too_big_picture">Файл картинки не может быть больше 5 мегабайт</string>
     <string name="too_big_picture_resizing">Картинка больше 5 мегабайт, ужимаем</string>
+    <string name="file_too_large">Файл слишком большой. Максимальный размер 10 МБ.</string>
     <string name="contact_added">Добавлен новый контакт</string>
     <string name="contact_already_added">Контакт с этим ключом уже добавлен</string>
     <string name="you_cant_add_yourself">Вы не можете добавить сами себя</string>
