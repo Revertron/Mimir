@@ -54,6 +54,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     app:srcCompat="@drawable/ic_camera_plus_outline"
+                    app:tint="?attr/colorPrimary"
                     android:layout_gravity="left|bottom"
                     android:padding="4dp" />
 

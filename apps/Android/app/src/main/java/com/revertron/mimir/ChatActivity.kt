@@ -130,7 +130,7 @@ class ChatActivity : BaseChatActivity() {
         intent.putExtra("pubkey", contact.pubkey)
         intent.putExtra("replyTo", replyTo)
         if (attachmentJson != null) {
-            intent.putExtra("type", 1)
+            intent.putExtra("type", attachmentType) // 1 = image, 3 = file
             attachmentJson!!.put("text", text)
             intent.putExtra("message", attachmentJson.toString())
             clearAttachment()

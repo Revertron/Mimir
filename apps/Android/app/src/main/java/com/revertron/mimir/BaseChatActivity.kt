@@ -62,6 +62,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     companion object {
         const val PICK_IMAGE_REQUEST_CODE = 123
         const val TAKE_PHOTO_REQUEST_CODE = 124
+        const val PICK_FILE_REQUEST_CODE = 125
     }
 
     // UI Components - Reply Panel
@@ -73,8 +74,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     // UI Components - Attachment
     protected lateinit var attachmentPanel: ConstraintLayout
     protected lateinit var attachmentPreview: AppCompatImageView
+    protected lateinit var attachmentName: AppCompatTextView
+    protected lateinit var attachmentSize: AppCompatTextView
     protected lateinit var attachmentMenu: LinearLayoutCompat
     protected var attachmentJson: JSONObject? = null
+    protected var attachmentType: Int = 1 // 1 = image, 3 = file (DB type)
     protected var currentPhotoUri: Uri? = null
 
     // UI Components - Message List
@@ -232,13 +236,15 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
         findViewById<LinearLayoutCompat>(R.id.menu_item_file).setOnClickListener {
             hideAttachmentMenu()
-            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+            selectAndSendFile()
         }
 
         // Attachment panel
         attachmentPanel = findViewById(R.id.attachment)
         attachmentPanel.visibility = View.GONE
         attachmentPreview = findViewById(R.id.attachment_image)
+        attachmentName = findViewById(R.id.attachment_name)
+        attachmentSize = findViewById(R.id.attachment_size)
         val attachmentCancel = findViewById<AppCompatImageView>(R.id.attachment_cancel)
         attachmentCancel.setOnClickListener {
             attachmentPreview.setImageDrawable(null)
@@ -247,6 +253,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
                 deleteFileAndPreview(this@BaseChatActivity, this)
             }
             attachmentJson = null
+            attachmentType = 1
         }
     }
 
@@ -377,6 +384,13 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
     }
 
+    private fun selectAndSendFile() {
+        val intent = Intent(Intent.ACTION_GET_CONTENT)
+        intent.type = "*/*"
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(intent, PICK_FILE_REQUEST_CODE)
+    }
+
     protected fun getImageFromUri(uri: Uri) {
         val fileSize = uri.length(this)
         if (fileSize > PICTURE_MAX_SIZE) {
@@ -390,11 +404,57 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val message = prepareFileForMessage(this, uri, imageSize, quality)
         Log.i(this::class.simpleName, "File message for $uri is $message")
         if (message != null) {
+            attachmentType = 1
             val fileName = message.getString("name")
+            val fileSize = message.optLong("size", 0)
             val preview = getImagePreview(this, fileName, 320, 85)
+
+            // Update UI for image attachment
             attachmentPreview.setImageBitmap(preview)
+            attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            attachmentName.text = fileName
+            attachmentSize.text = formatFileSize(fileSize)
             attachmentPanel.visibility = View.VISIBLE
             attachmentJson = message
+        }
+    }
+
+    protected fun getFileFromUri(uri: Uri) {
+        // TODO move usage of this function to another Thread
+        val message = prepareGeneralFileForMessage(this, uri)
+        Log.i(this::class.simpleName, "File message for $uri is $message")
+        if (message != null) {
+            attachmentType = 3 // Type 3 for file attachments in DB
+            val fileName = message.optString("originalName", "file")
+            val fileSize = message.optLong("size", 0)
+            val mimeType = message.optString("mimeType", "application/octet-stream")
+
+            // Update UI for file attachment
+            attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
+            attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            attachmentName.text = fileName
+            attachmentSize.text = formatFileSize(fileSize)
+            attachmentPanel.visibility = View.VISIBLE
+            attachmentJson = message
+        }
+    }
+
+    private fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+            else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+        }
+    }
+
+    private fun getFileIconForMimeType(mimeType: String): Int {
+        return when {
+            mimeType.startsWith("application/pdf") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("application/zip") || mimeType.startsWith("application/x-") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("text/") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("audio/") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("video/") -> R.drawable.ic_file_document_outline
+            else -> R.drawable.ic_file_document_outline
         }
     }
 
@@ -419,6 +479,16 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
                     } ?: run {
                         Log.e(this::class.simpleName, "Error: Photo URI is null")
                     }
+                }
+            }
+            PICK_FILE_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    if (data == null || data.data == null) {
+                        Log.e(this::class.simpleName, "Error getting file")
+                        return
+                    }
+                    val selectedFileUri = data.data!!
+                    getFileFromUri(selectedFileUri)
                 }
             }
         }

@@ -1,17 +1,22 @@
 package com.revertron.mimir.ui
 
+import android.content.Context
+import android.content.Intent
 import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.text.util.Linkify
 import android.util.Log
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
@@ -144,6 +149,13 @@ class MessageAdapter(
             holder.name.visibility = View.GONE
             holder.avatar?.visibility = View.GONE
         }
+        // Reset autoLink for non-file messages
+        if (message.type != 3) {
+            holder.message.autoLinkMask = Linkify.WEB_URLS
+        } else {
+            // Disable autoLink to prevent filename from being interpreted as a URL
+            holder.message.autoLinkMask = 0
+        }
         // Use overloaded getText with chatId for group chats to format system messages properly
         holder.message.text = if (groupChat) {
             message.getText(holder.itemView.context, storage, chatId)
@@ -152,8 +164,10 @@ class MessageAdapter(
         }
         holder.message.setCompoundDrawables(null, null, null ,null)
         holder.sent.visibility = if (message.incoming) View.GONE else View.VISIBLE
+
         when (message.type) {
             1 -> {
+                // Ordinary text messages, may contain a picture
                 if (message.data != null) {
                     val string = String(message.data)
                     Log.i("Adapter", "Message: $string")
@@ -179,12 +193,41 @@ class MessageAdapter(
                 }
             }
             2 -> {
+                // Audio call info
                 val icon = ContextCompat.getDrawable(holder.itemView.context, R.drawable.ic_phone_outline_themed)?.apply {
                     setBounds(0, 0, intrinsicWidth, intrinsicHeight)
                 }
                 holder.message.setCompoundDrawables(icon, null, null ,null)
                 holder.message.compoundDrawablePadding = holder.itemView.context.resources.getDimensionPixelSize(R.dimen.icon_padding)
                 holder.sent.visibility = View.GONE
+                holder.picture.setImageDrawable(null)
+                holder.picturePanel.visibility = View.GONE
+            }
+            3 -> {
+                // File attachment - show icon with file info
+                if (message.data != null) {
+                    val string = String(message.data)
+                    val json = JSONObject(string)
+                    val name = json.getString("name")
+                    val filePath = File(holder.itemView.context.filesDir, "files")
+                    val file = File(filePath, name)
+
+                    // Get file icon based on MIME type
+                    val mimeType = json.optString("mimeType", "application/octet-stream")
+                    val icon = ContextCompat.getDrawable(holder.itemView.context, getFileIconForMimeType(mimeType))?.apply {
+                        setBounds(0, 0, intrinsicWidth, intrinsicHeight)
+                    }
+                    holder.message.setCompoundDrawables(icon, null, null, null)
+                    holder.message.compoundDrawablePadding = holder.itemView.context.resources.getDimensionPixelSize(R.dimen.icon_padding)
+                    holder.message.gravity = android.view.Gravity.TOP or android.view.Gravity.START
+
+                    // Set click listener to open file
+                    if (file.exists()) {
+                        holder.message.setOnClickListener {
+                            openFile(holder.itemView.context, file, mimeType)
+                        }
+                    }
+                }
                 holder.picture.setImageDrawable(null)
                 holder.picturePanel.visibility = View.GONE
             }
@@ -337,6 +380,45 @@ class MessageAdapter(
             if (msg?.contact == memberId) {
                 notifyItemChanged(index)
             }
+        }
+    }
+
+    private fun getFileIconForMimeType(mimeType: String): Int {
+        return when {
+            mimeType.startsWith("application/pdf") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("application/zip") || mimeType.startsWith("application/x-") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("text/") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("audio/") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("video/") -> R.drawable.ic_file_document_outline
+            else -> R.drawable.ic_file_document_outline
+        }
+    }
+
+    private fun openFile(context: Context, file: File, mimeType: String) {
+        try {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.file_provider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_VIEW)
+            intent.setDataAndType(uri, mimeType)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            // Always show chooser to let user pick the app
+            val chooserIntent = Intent.createChooser(intent, context.getString(R.string.open_with))
+            chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            try {
+                context.startActivity(chooserIntent)
+            } catch (e: android.content.ActivityNotFoundException) {
+                Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e("MessageAdapter", "Error opening file", e)
+            Toast.makeText(context, "Cannot open file: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 }

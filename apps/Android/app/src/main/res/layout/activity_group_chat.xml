@@ -90,27 +90,62 @@
             android:id="@+id/attachment"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:visibility="gone">
+            android:padding="8dp"
+            android:background="?attr/colorSurface">
 
+            <!-- Image/File Icon on the left -->
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/attachment_image"
-                android:src="@drawable/contact_no_avatar"
-                android:layout_width="0dp"
-                android:layout_height="140dp"
-                android:maxHeight="140dp"
-                android:layout_marginTop="8dp"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:scaleType="centerCrop"
+                android:background="@drawable/button_rounded"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toRightOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"/>
 
+            <!-- File info container -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/attachment_info"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintLeft_toRightOf="@id/attachment_image"
+                app:layout_constraintRight_toLeftOf="@id/attachment_cancel">
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/attachment_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:maxLines="2"
+                    android:ellipsize="middle"
+                    android:text="filename.pdf" />
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/attachment_size"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textSize="12sp"
+                    android:alpha="0.7"
+                    android:text="1.2 MB" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <!-- Cancel button on the right -->
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/attachment_cancel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:padding="4dp"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
-                android:padding="16dp"
                 android:src="@drawable/ic_close" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>

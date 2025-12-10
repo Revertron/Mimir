@@ -31,7 +31,6 @@ import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
-import com.revertron.mimir.ui.Contact
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.DecoderException
 import org.bouncycastle.util.encoders.Hex
@@ -57,6 +56,7 @@ import kotlin.math.abs
 import kotlin.math.min
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
+const val MAX_FILE_SIZE = 10 * 1024 * 1024
 const val UPDATE_SERVER = "https://update.mimir-app.net"
 const val IP_CACHE_DEFAULT_TTL = 900
 
@@ -538,6 +538,116 @@ fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, qual
     return json
 }
 
+/**
+ * Prepares a general file (non-image) for sending.
+ * Enforces a maximum file size limit of MAX_FILE_SIZE (10MB).
+ * Copies the file to app directory and creates JSON metadata.
+ *
+ * @param context Android context
+ * @param uri File URI to prepare
+ * @return JSON object with file metadata (name, size, hash, originalName, mimeType), or null on error
+ */
+fun prepareGeneralFileForMessage(context: Context, uri: Uri): JSONObject? {
+    val tag = "prepareGeneralFile"
+
+    // Get file size
+    val size = uri.length(context)
+    if (size <= 0) {
+        Log.e(tag, "Cannot determine file size")
+        return null
+    }
+
+    // Check file size limit (10MB)
+    if (size > MAX_FILE_SIZE) {
+        Log.e(tag, "File too large: $size bytes (max: $MAX_FILE_SIZE)")
+        Toast.makeText(context, "File is too large. Maximum size is 10 MB.", Toast.LENGTH_LONG).show()
+        return null
+    }
+
+    // Get original file name
+    val originalName = getFileNameFromUri(context, uri) ?: "file"
+
+    // Get MIME type
+    val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+
+    // Copy file to app directory
+    val filesDir = File(context.filesDir, "files")
+    if (!filesDir.exists()) {
+        filesDir.mkdirs()
+    }
+
+    // Generate random filename with original extension
+    val extension = originalName.substringAfterLast('.', "bin")
+    val fileName = randomString(16)
+    val fullName = "$fileName.$extension"
+    val outputFile = File(filesDir, fullName)
+
+    try {
+        val inputStream = context.contentResolver.openInputStream(uri)
+        if (inputStream == null) {
+            Log.e(tag, "Cannot open input stream for URI")
+            return null
+        }
+
+        val outputStream = FileOutputStream(outputFile)
+        inputStream.use { input ->
+            outputStream.use { output ->
+                val copied = input.copyTo(output)
+                if (copied != size) {
+                    Log.e(tag, "Error copying file: expected $size bytes, got $copied")
+                    outputFile.delete()
+                    return null
+                }
+            }
+        }
+
+        // Calculate file hash
+        val hash = getFileHash(outputFile)
+
+        // Create JSON metadata
+        val json = JSONObject()
+        json.put("name", fullName)
+        json.put("size", size)
+        json.put("hash", Hex.toHexString(hash))
+        json.put("originalName", originalName)
+        json.put("mimeType", mimeType)
+
+        Log.i(tag, "Prepared file: $originalName -> $fullName ($size bytes)")
+        return json
+
+    } catch (e: Exception) {
+        Log.e(tag, "Error preparing file", e)
+        outputFile.delete()
+        return null
+    }
+}
+
+/**
+ * Extracts the original file name from a URI.
+ */
+fun getFileNameFromUri(context: Context, uri: Uri): String? {
+    var fileName: String? = null
+
+    // Try to get file name from content resolver
+    if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) {
+                    fileName = cursor.getString(nameIndex)
+                }
+            }
+        }
+    }
+
+    // Fallback to path-based name
+    if (fileName == null) {
+        fileName = uri.path?.substringAfterLast('/')
+    }
+
+    return fileName
+}
+
 fun getFileHash(file: File): ByteArray {
     val messageDigest = MessageDigest.getInstance("SHA-256")
     val inputStream = FileInputStream(file)
@@ -816,24 +926,6 @@ private val lightColors = arrayOf(
     0xFFCDE8FF, // lighter blue
     0xFFB0FFB0  // lighter green
 )
-
-fun getInitials(contact: Contact): String {
-    val name = contact.name.trim()
-    if (name.isEmpty() || name.length < 2) {
-        return Hex.toHexString(contact.pubkey, 0, 1)
-    }
-
-    if (name.length == 2) {
-        return name
-    }
-
-    if (name.contains(" ")) {
-        val pos = name.indexOf(" ") + 1
-        return name.substring(0, 1) + name.substring(pos, pos + 1)
-    }
-
-    return name.substring(0, 2)
-}
 
 enum class State {
     Offline, Online;

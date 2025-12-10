@@ -235,4 +235,8 @@
     <string name="backup_import_restart_title">Нужен перезапуск</string>
     <string name="backup_import_restart_message">Бэкап восстановлен успешно. Приложение должно быть перезапущено для загрузки новых данных.</string>
     <string name="backup_restart_now">Перезапустить</string>
+    <string name="send_image">Картинка</string>
+    <string name="send_photo">Фото</string>
+    <string name="send_file">Файл</string>
+    <string name="open_with">Открыть с помощью:</string>
 </resources>

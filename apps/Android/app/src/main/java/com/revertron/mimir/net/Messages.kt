@@ -19,6 +19,7 @@ const val MSG_TYPE_INFO_RESPONSE = 7
 const val MSG_TYPE_PING = 8
 const val MSG_TYPE_PONG = 9
 const val MSG_TYPE_MESSAGE_TEXT = 1000
+const val MSG_TYPE_MESSAGE_FILE = 1001
 const val MSG_TYPE_CALL_OFFER = 2000
 const val MSG_TYPE_CALL_ANSWER = 2001
 const val MSG_TYPE_CALL_HANG = 2002
@@ -243,13 +244,14 @@ fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stre
     if (message.data.isNotEmpty()) {
         var add = 0
         when (message.type) {
-            1 -> {
+            1, 3 -> {
+                // Type 1: Image, Type 3: File
                 val meta = JSONObject(String(message.data))
                 jsonSize = message.data.size
                 val file = File(filePath, meta.getString("name"))
-                val picture = getFileContents(file.absolutePath)
+                val fileContents = getFileContents(file.absolutePath)
                 //TODO optimize memory
-                data = message.data.plus(picture)
+                data = message.data.plus(fileContents)
                 add = 4
             }
             else -> {

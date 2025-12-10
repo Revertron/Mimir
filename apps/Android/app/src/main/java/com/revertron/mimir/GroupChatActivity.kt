@@ -204,7 +204,7 @@ class GroupChatActivity : BaseChatActivity() {
 
                 if (attachmentJson != null) {
                     // Message with attachment - send only JSON metadata
-                    messageType = 1 // 1 = media attachment
+                    messageType = attachmentType // 1 = image, 3 = file
                     attachmentJson!!.put("text", text)
                     messageData = attachmentJson!!.toString()
                 } else {

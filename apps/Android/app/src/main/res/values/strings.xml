@@ -251,5 +251,6 @@
     <string name="send_image">Image</string>
     <string name="send_photo">Photo</string>
     <string name="send_file">File</string>
+    <string name="open_with">Open with:</string>
 
 </resources>

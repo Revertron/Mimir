@@ -405,8 +405,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 data = messageData.toByteArray()
             )
 
-            // For attachments, writeMessage() needs the file path to read the image
-            val filePath = if (type == 1) File(filesDir, "files").absolutePath else ""
+            // For attachments, writeMessage() needs the file path to read the file/image
+            val filePath = if (type == 1 || type == 3) File(filesDir, "files").absolutePath else ""
             writeMessage(dos, message, filePath)
 
             // Encrypt the serialized message
@@ -602,12 +602,14 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
             var m = ByteArray(0)
             // Handle different message types
-            if (message.type == 1) {
+            if (message.type == 1 || message.type == 3) {
                 // Media attachment: extract file and get text from JSON
-                Log.i(TAG, "Processing media attachment for chat $chatId")
+                // Type 1 = image, Type 2 = general file
+                val typeLabel = if (message.type == 1) "image" else "file"
+                Log.i(TAG, "Processing $typeLabel attachment for chat $chatId")
 
                 try {
-                    // Parse wire format: [jsonSize(u32)][JSON][imageBytes]
+                    // Parse wire format: [jsonSize(u32)][JSON][fileBytes]
                     var offset = 0
 
                     // Read JSON length (first 4 bytes, big-endian)
@@ -621,18 +623,24 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     val originalJson = JSONObject(String(message.data, offset, jsonSize, Charsets.UTF_8))
                     offset += jsonSize
 
-                    // Extract image bytes
-                    val imageBytes = message.data.copyOfRange(offset, message.data.size)
+                    // Extract file bytes
+                    val fileBytes = message.data.copyOfRange(offset, message.data.size)
 
-                    // Generate new filename and save ONLY image bytes
+                    // Generate new filename and save file bytes
                     val fileName = randomString(16)
-                    val ext = getImageExtensionOrNull(imageBytes)
+                    val ext = if (message.type == 1) {
+                        // For images, detect extension from image bytes
+                        getImageExtensionOrNull(fileBytes)
+                    } else {
+                        // For files, use original extension from metadata
+                        originalJson.optString("originalName", "file").substringAfterLast('.', "bin")
+                    }
                     val fullName = "$fileName.$ext"
 
-                    saveFileForMessage(this@ConnectionService, fullName, imageBytes)
-                    Log.i(TAG, "Saved attachment file: $fullName (${imageBytes.size} bytes)")
+                    saveFileForMessage(this@ConnectionService, fullName, fileBytes)
+                    Log.i(TAG, "Saved $typeLabel attachment: $fullName (${fileBytes.size} bytes)")
 
-                    // Update JSON with new filename, keep all other fields (text, size, hash)
+                    // Update JSON with new filename, keep all other fields (text, size, hash, originalName, mimeType)
                     originalJson.put("name", fullName)
                     m = originalJson.toString().toByteArray()
 
@@ -1058,7 +1066,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onMessageReceived(from: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, type: Int, message: ByteArray) {
         val storage = (application as App).storage
-        if (type == 1) {
+        if (type == 1 || type == 3) {
+            // Handle attachments: type 1 = image, type 3 = file
             //TODO fix multiple vulnerabilities
             val bais = ByteArrayInputStream(message)
             val dis = DataInputStream(bais)
