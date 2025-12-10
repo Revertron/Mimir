@@ -358,11 +358,15 @@ class MediatorManager(
                 if (!App.app.online) {
                     Log.i(TAG, "Aborting reconnect to $pubkeyHex - went offline during delay")
                     info.reset()
+                    info.reconnectThread = null
                     return@thread
                 }
 
                 info.incrementAttempt()
                 Log.i(TAG, "Attempting reconnect to $pubkeyHex (attempt ${info.attemptCount})")
+
+                // Clear reconnectThread before attempting connection to allow future reconnects
+                info.reconnectThread = null
 
                 try {
                     // Attempt to reconnect
@@ -387,6 +391,7 @@ class MediatorManager(
                 }
             } catch (e: InterruptedException) {
                 Log.i(TAG, "Reconnect thread for $pubkeyHex was interrupted")
+                info.reconnectThread = null
             }
         }
     }
