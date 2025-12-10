@@ -178,7 +178,7 @@ class MediatorClient(
     override fun run() {
         try {
             readerLoop()
-        } catch (e: IOException) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error reading from pipe: {$e}")
         }
     }
@@ -1021,10 +1021,10 @@ class MediatorClient(
                     Log.w(TAG, "Unmatched response reqId=$reqId status=$status len=$len (maybe late or already timed out)")
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             if (running) {
                 Log.e(TAG, "Reader error", e)
-                listener.onDisconnected(e)
+                listener.onDisconnected(Exception("Reader error: ${e.message}", e))
             }
         } finally {
             running = false

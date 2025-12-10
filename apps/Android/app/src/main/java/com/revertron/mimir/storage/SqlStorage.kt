@@ -1454,7 +1454,13 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     fun generateGuid(time: Long, data: ByteArray): Long {
-        return (data.contentHashCode().toLong() shl 32) xor time
+        val hashCode = data.contentHashCode()
+        // Mix hash and time using polynomial rolling hash approach
+        var result = time
+        result = 31 * result + hashCode
+        result = 31 * result + (time ushr 32).toInt()
+        result = 31 * result + (hashCode ushr 16)
+        return result
     }
 
     // ============ Group Chat Methods ============
