@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/attachment_menu"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:paddingTop="16dp"
+    android:paddingBottom="16dp"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:background="?attr/colorSurface"
+    android:elevation="0dp"
+    android:visibility="visible">
+
+    <!-- Send Image -->
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/menu_item_image"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="8dp"
+            android:background="@drawable/button_rounded"
+            android:src="@drawable/ic_file_image_outline"
+            app:tint="?attr/colorPrimary" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="12sp"
+            android:text="@string/send_image" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <!-- Send Photo -->
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/menu_item_photo"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="8dp"
+            android:background="@drawable/button_rounded"
+            android:src="@drawable/ic_camera_plus_outline"
+            app:tint="?attr/colorPrimary" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="12sp"
+            android:text="@string/send_photo" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <!-- Send File -->
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/menu_item_file"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="8dp"
+            android:background="@drawable/button_rounded"
+            android:src="@drawable/ic_file_document_outline"
+            app:tint="?attr/colorPrimary" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="12sp"
+            android:text="@string/send_file" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+</androidx.appcompat.widget.LinearLayoutCompat>

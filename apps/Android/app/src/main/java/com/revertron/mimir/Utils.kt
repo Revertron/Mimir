@@ -435,6 +435,48 @@ private fun rotateBitmapAccordingToExif(bitmap: Bitmap, uri: Uri, contentResolve
 }
 
 /**
+ * Checks if the image at the given URI needs EXIF rotation correction.
+ * Returns true if the EXIF orientation is anything other than NORMAL or UNDEFINED.
+ */
+private fun checkIfNeedsRotation(context: Context, uri: Uri): Boolean {
+    return try {
+        val exif = context.contentResolver.openInputStream(uri)?.use { ExifInterface(it) }
+        val orientation = exif?.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        ) ?: ExifInterface.ORIENTATION_NORMAL
+
+        orientation != ExifInterface.ORIENTATION_NORMAL &&
+        orientation != ExifInterface.ORIENTATION_UNDEFINED
+    } catch (_: Throwable) {
+        false
+    }
+}
+
+/**
+ * Corrects the EXIF rotation of an image by decoding it, rotating according to EXIF data,
+ * and re-encoding it as JPEG. Returns the corrected image as a byte array.
+ */
+private fun Uri.correctExifRotation(context: Context, quality: Int): ByteArray {
+    val contentResolver = context.contentResolver
+
+    // Decode the image
+    val bitmap = contentResolver.openInputStream(this)?.use {
+        BitmapFactory.decodeStream(it)
+    } ?: throw IllegalArgumentException("Cannot decode $this")
+
+    // Rotate according to EXIF orientation
+    val rotated = rotateBitmapAccordingToExif(bitmap, this, contentResolver)
+
+    // Compress to JPEG
+    return ByteArrayOutputStream().use { out ->
+        rotated.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        rotated.recycle()
+        out.toByteArray()
+    }
+}
+
+/**
  * Copies picture file to app directory, creates preview
  *
  * @return Hash of file, null if some error occurs
@@ -445,8 +487,19 @@ fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, qual
     var size = uri.length(context)
 
     val inputStream = if (size <= PICTURE_MAX_SIZE) {
-        val contentResolver = context.contentResolver
-        contentResolver.openInputStream(uri)
+        // Check if image needs EXIF rotation correction
+        val needsRotation = checkIfNeedsRotation(context, uri)
+        if (needsRotation) {
+            Log.i(tag, "Image needs EXIF rotation correction")
+            val corrected = uri.correctExifRotation(context, quality)
+            Log.i(tag, "Corrected rotation, new size: ${corrected.size}")
+            val newSize = corrected.size.toLong()
+            size = newSize
+            ByteArrayInputStream(corrected)
+        } else {
+            val contentResolver = context.contentResolver
+            contentResolver.openInputStream(uri)
+        }
     } else {
         Log.i(tag, "File is too big, will try to resize")
         val resized = uri.resizeAndCompress(context, imageSize, quality)

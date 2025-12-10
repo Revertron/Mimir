@@ -1,5 +1,6 @@
 package com.revertron.mimir
 
+import android.Manifest
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -7,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.PorterDuff
 import android.net.Uri
 import android.os.Bundle
@@ -19,6 +21,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatImageView
@@ -27,6 +30,8 @@ import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -42,6 +47,10 @@ import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Group chat activity using ConnectionService for server-mediated group messaging.
@@ -69,6 +78,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
 
         private const val REQUEST_SELECT_CONTACT = 100
         private const val PICK_IMAGE_REQUEST_CODE = 123
+        private const val TAKE_PHOTO_REQUEST_CODE = 124
     }
 
     private lateinit var groupChat: GroupChat
@@ -77,6 +87,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     private lateinit var replyText: AppCompatTextView
     private lateinit var attachmentPanel: ConstraintLayout
     private lateinit var attachmentPreview: AppCompatImageView
+    private lateinit var attachmentMenu: LinearLayoutCompat
     private lateinit var adapter: MessageAdapter
     private lateinit var recyclerView: RecyclerView
 
@@ -84,6 +95,7 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
     private lateinit var publicKey: ByteArray
     private var replyTo = 0L
     private var attachmentJson: JSONObject? = null
+    private var currentPhotoUri: Uri? = null
     private var isVisible: Boolean = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -237,9 +249,28 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
             }
         }
 
+        // Setup attachment menu
+        attachmentMenu = findViewById(R.id.attachment_menu)
+        attachmentMenu.visibility = View.GONE
+
         // Setup attachment button
         findViewById<AppCompatImageButton>(R.id.attach_button).setOnClickListener {
+            toggleAttachmentMenu()
+        }
+
+        findViewById<LinearLayoutCompat>(R.id.menu_item_image).setOnClickListener {
+            hideAttachmentMenu()
             selectAndSendPicture()
+        }
+
+        findViewById<LinearLayoutCompat>(R.id.menu_item_photo).setOnClickListener {
+            hideAttachmentMenu()
+            checkAndRequestCameraPermission()
+        }
+
+        findViewById<LinearLayoutCompat>(R.id.menu_item_file).setOnClickListener {
+            hideAttachmentMenu()
+            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
         }
 
         // Setup attachment panel
@@ -606,6 +637,16 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
                     Log.e(TAG, "Error getting picture")
                 }
             }
+            TAKE_PHOTO_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    currentPhotoUri?.let { uri ->
+                        Log.i(TAG, "Photo captured: $uri")
+                        getImageFromUri(uri)
+                    } ?: run {
+                        Log.e(TAG, "Error: Photo URI is null")
+                    }
+                }
+            }
         }
     }
 
@@ -794,6 +835,82 @@ class GroupChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, Stora
         super.onDestroy()
         getStorage().listeners.remove(this)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
+    }
+
+    private fun toggleAttachmentMenu() {
+        if (attachmentMenu.visibility == View.VISIBLE) {
+            hideAttachmentMenu()
+        } else {
+            showAttachmentMenu()
+        }
+    }
+
+    private fun showAttachmentMenu() {
+        attachmentMenu.visibility = View.VISIBLE
+        attachmentMenu.translationY = attachmentMenu.height.toFloat()
+        attachmentMenu.animate()
+            .translationY(0f)
+            .setDuration(200)
+            .start()
+    }
+
+    private fun hideAttachmentMenu() {
+        attachmentMenu.animate()
+            .translationY(attachmentMenu.height.toFloat())
+            .setDuration(200)
+            .withEndAction {
+                attachmentMenu.visibility = View.GONE
+            }
+            .start()
+    }
+
+    private val cameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                takePhoto()
+            } else {
+                Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private fun checkAndRequestCameraPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+                takePhoto()
+            }
+            else -> {
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private fun takePhoto() {
+        val photoFile = createImageFile()
+        photoFile?.let {
+            currentPhotoUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.file_provider",
+                it
+            )
+
+            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+            intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, currentPhotoUri)
+            startActivityForResult(intent, TAKE_PHOTO_REQUEST_CODE)
+        } ?: run {
+            Toast.makeText(this, "Error creating photo file", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun createImageFile(): File? {
+        return try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val imageFileName = "JPEG_${timeStamp}_"
+            val storageDir = cacheDir
+            File.createTempFile(imageFileName, ".jpg", storageDir)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating image file", e)
+            null
+        }
     }
 
     override fun finish() {

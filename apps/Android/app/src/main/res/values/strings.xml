@@ -248,5 +248,8 @@
     <string name="backup_import_restart_title">Restart Required</string>
     <string name="backup_import_restart_message">The backup has been imported successfully. The app needs to restart to apply the changes.</string>
     <string name="backup_restart_now">Restart</string>
+    <string name="send_image">Image</string>
+    <string name="send_photo">Photo</string>
+    <string name="send_file">File</string>
 
 </resources>

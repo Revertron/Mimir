@@ -71,6 +71,8 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent">
 
+        <include layout="@layout/attachment_menu" />
+
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/attachment"
             android:layout_width="match_parent"

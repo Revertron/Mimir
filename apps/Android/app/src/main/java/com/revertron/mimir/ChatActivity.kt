@@ -21,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.*
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -34,7 +35,11 @@ import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
+import java.io.File
 import java.lang.Thread.sleep
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 
 class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
@@ -42,6 +47,7 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     companion object {
         const val TAG = "ChatActivity"
         const val PICK_IMAGE_REQUEST_CODE = 123
+        const val TAKE_PHOTO_REQUEST_CODE = 124
     }
 
     lateinit var contact: Contact
@@ -50,7 +56,9 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
     private lateinit var replyText: AppCompatTextView
     private lateinit var attachmentPanel: ConstraintLayout
     private lateinit var attachmentPreview: AppCompatImageView
+    private lateinit var attachmentMenu: LinearLayoutCompat
     private var attachmentJson: JSONObject? = null
+    private var currentPhotoUri: Uri? = null
     private var isVisible: Boolean = false
     var replyTo = 0L
 
@@ -120,9 +128,28 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 replyTo = 0L
             }
         }
+        attachmentMenu = findViewById(R.id.attachment_menu)
+        attachmentMenu.visibility = View.GONE
+
         findViewById<AppCompatImageButton>(R.id.attach_button).setOnClickListener {
+            toggleAttachmentMenu()
+        }
+
+        findViewById<LinearLayoutCompat>(R.id.menu_item_image).setOnClickListener {
+            hideAttachmentMenu()
             selectAndSendPicture()
         }
+
+        findViewById<LinearLayoutCompat>(R.id.menu_item_photo).setOnClickListener {
+            hideAttachmentMenu()
+            checkAndRequestCameraPermission()
+        }
+
+        findViewById<LinearLayoutCompat>(R.id.menu_item_file).setOnClickListener {
+            hideAttachmentMenu()
+            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+        }
+
         attachmentPanel = findViewById(R.id.attachment)
         attachmentPanel.visibility = View.GONE
         attachmentPreview = findViewById(R.id.attachment_image)
@@ -267,13 +294,27 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PICK_IMAGE_REQUEST_CODE && resultCode == RESULT_OK) {
-            if (data == null || data.data == null) {
-                Log.e(TAG, "Error getting picture")
-                return
+        when (requestCode) {
+            PICK_IMAGE_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    if (data == null || data.data == null) {
+                        Log.e(TAG, "Error getting picture")
+                        return
+                    }
+                    val selectedPictureUri = data.data!!
+                    getImageFromUri(selectedPictureUri)
+                }
             }
-            val selectedPictureUri = data.data!!
-            getImageFromUri(selectedPictureUri)
+            TAKE_PHOTO_REQUEST_CODE -> {
+                if (resultCode == RESULT_OK) {
+                    currentPhotoUri?.let { uri ->
+                        Log.i(TAG, "Photo captured: $uri")
+                        getImageFromUri(uri)
+                    } ?: run {
+                        Log.e(TAG, "Error: Photo URI is null")
+                    }
+                }
+            }
         }
     }
 
@@ -443,6 +484,33 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
         mediaPlayer.start()
     }
 
+    private fun toggleAttachmentMenu() {
+        if (attachmentMenu.visibility == View.VISIBLE) {
+            hideAttachmentMenu()
+        } else {
+            showAttachmentMenu()
+        }
+    }
+
+    private fun showAttachmentMenu() {
+        attachmentMenu.visibility = View.VISIBLE
+        attachmentMenu.translationY = attachmentMenu.height.toFloat()
+        attachmentMenu.animate()
+            .translationY(0f)
+            .setDuration(200)
+            .start()
+    }
+
+    private fun hideAttachmentMenu() {
+        attachmentMenu.animate()
+            .translationY(attachmentMenu.height.toFloat())
+            .setDuration(200)
+            .withEndAction {
+                attachmentMenu.visibility = View.GONE
+            }
+            .start()
+    }
+
     private fun checkAndRequestAudioPermission() {
         when {
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> {
@@ -470,4 +538,53 @@ class ChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageLis
                 // User declined permission :(
             }
         }
+
+    private val cameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                takePhoto()
+            } else {
+                Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    private fun checkAndRequestCameraPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+                takePhoto()
+            }
+            else -> {
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private fun takePhoto() {
+        val photoFile = createImageFile()
+        photoFile?.let {
+            currentPhotoUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.file_provider",
+                it
+            )
+
+            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+            intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, currentPhotoUri)
+            startActivityForResult(intent, TAKE_PHOTO_REQUEST_CODE)
+        } ?: run {
+            Toast.makeText(this, "Error creating photo file", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun createImageFile(): File? {
+        return try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val imageFileName = "JPEG_${timeStamp}_"
+            val storageDir = cacheDir
+            File.createTempFile(imageFileName, ".jpg", storageDir)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating image file", e)
+            null
+        }
+    }
 }
