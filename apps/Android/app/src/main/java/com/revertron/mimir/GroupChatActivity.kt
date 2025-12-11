@@ -185,7 +185,7 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
-        val message = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return null
+        val message = getStorage().getGroupMessage(groupChat.chatId, messageId, true) ?: return null
         // Get the author's name from the message
         val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
         val authorName = user?.first ?: getString(R.string.unknown_nickname)
@@ -196,7 +196,6 @@ class GroupChatActivity : BaseChatActivity() {
         Thread {
             try {
                 val sendTime = System.currentTimeMillis()
-                val guid = getStorage().generateGuid(sendTime, text.toByteArray())
 
                 // Prepare message data based on type
                 val messageType: Int
@@ -212,6 +211,7 @@ class GroupChatActivity : BaseChatActivity() {
                     messageType = 0 // 0 = text message
                     messageData = text
                 }
+                val guid = getStorage().generateGuid(sendTime, messageData.toByteArray())
 
                 // Store message locally with pending status (msgId = null until confirmed)
                 val localId = getStorage().addGroupMessage(

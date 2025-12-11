@@ -245,7 +245,7 @@ class MessageAdapter(
 
         holder.time.text = formatTime(message.time)
         // Sorry for this
-        holder.itemView.findViewById<View>(R.id.message).tag = message.id
+        holder.itemView.findViewById<View>(R.id.message).tag = message.guid
         holder.sent.tag = message.delivered
 
         if (message.replyTo != 0L) {

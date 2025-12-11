@@ -116,7 +116,7 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
-        val message = getStorage().getMessage(messageId)
+        val message = getStorage().getMessage(messageId, true)
         return if (message != null) {
             Pair(contact.name, message.getText(this))
         } else {
