@@ -193,24 +193,23 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     override fun sendMessage(text: String, replyTo: Long) {
+        // Prepare message data based on type
+        val messageType: Int
+        val messageData: String
+
+        if (attachmentJson != null) {
+            // Message with attachment - send only JSON metadata
+            messageType = attachmentType // 1 = image, 3 = file
+            attachmentJson!!.put("text", text)
+            messageData = attachmentJson!!.toString()
+        } else {
+            // Plain text message
+            messageType = 0 // 0 = text message
+            messageData = text
+        }
         Thread {
             try {
                 val sendTime = System.currentTimeMillis()
-
-                // Prepare message data based on type
-                val messageType: Int
-                val messageData: String
-
-                if (attachmentJson != null) {
-                    // Message with attachment - send only JSON metadata
-                    messageType = attachmentType // 1 = image, 3 = file
-                    attachmentJson!!.put("text", text)
-                    messageData = attachmentJson!!.toString()
-                } else {
-                    // Plain text message
-                    messageType = 0 // 0 = text message
-                    messageData = text
-                }
                 val guid = getStorage().generateGuid(sendTime, messageData.toByteArray())
 
                 // Store message locally with pending status (msgId = null until confirmed)
