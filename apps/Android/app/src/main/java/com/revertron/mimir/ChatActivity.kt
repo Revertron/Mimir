@@ -183,6 +183,14 @@ class ChatActivity : BaseChatActivity() {
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         Log.i(TAG, "Clicked on ${item?.itemId}")
+        when (item?.itemId) {
+            R.id.contact_call -> {
+                checkAndRequestAudioPermission()
+            }
+            else -> {
+                Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+            }
+        }
         return true
     }
 
