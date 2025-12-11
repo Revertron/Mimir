@@ -165,7 +165,7 @@
     <string name="chat_created_successfully">Chat created successfully!</string>
     <string name="failed_to_create_chat">Failed to create chat :(</string>
     <string name="creating_chat">Mining confirmation for chat…</string>
-    <string name="member_count">%d members</string>
+    <string name="member_count">%d members, %d online</string>
     <string name="connection_failed">Mediator connection failed</string>
     <string name="message_send_failed">Mediator message send failed</string>
     <string name="failed_to_leave_group">Failed to leave group</string>

@@ -36,7 +36,8 @@ class MediatorManager(
     private val messenger: Messenger,
     private val storage: SqlStorage,
     private val keyPair: AsymmetricCipherKeyPair,
-    private val infoProvider: InfoProvider
+    private val infoProvider: InfoProvider,
+    private val reconnectionCallback: ReconnectionCallback? = null
 ) {
 
     companion object {
@@ -65,6 +66,9 @@ class MediatorManager(
     // Map: chatId -> Set of message listeners
     private val chatListeners = ConcurrentHashMap<Long, MutableSet<ChatMessageListener>>()
 
+    // Map: chatId -> subscription status (true = subscribed, false = unsubscribed)
+    private val chatSubscriptions = ConcurrentHashMap<Long, Boolean>()
+
     // Global invite listeners
     private val inviteListeners = mutableSetOf<InviteListener>()
 
@@ -75,6 +79,16 @@ class MediatorManager(
         CONNECTING,
         CONNECTED,
         FAILED
+    }
+
+    /**
+     * Status of a group chat's connection to its mediator.
+     * Combines mediator connection state with chat subscription state.
+     */
+    enum class GroupChatStatus {
+        DISCONNECTED,     // Mediator not connected
+        CONNECTING,       // Mediator connecting OR connected but not yet subscribed
+        SUBSCRIBED        // Mediator connected AND chat subscribed
     }
 
     /**
@@ -300,6 +314,48 @@ class MediatorManager(
     }
 
     /**
+     * Mark a chat as successfully subscribed to its mediator.
+     * Should be called after successful subscription response.
+     */
+    fun markChatSubscribed(chatId: Long) {
+        chatSubscriptions[chatId] = true
+        Log.d(TAG, "Chat $chatId marked as subscribed")
+    }
+
+    /**
+     * Mark a chat as unsubscribed from its mediator.
+     * Should be called on subscription failure or mediator disconnect.
+     */
+    fun markChatUnsubscribed(chatId: Long) {
+        chatSubscriptions[chatId] = false
+        Log.d(TAG, "Chat $chatId marked as unsubscribed")
+    }
+
+    /**
+     * Get the current status of a group chat combining mediator connection state
+     * with chat subscription state.
+     *
+     * @param chatId The chat ID
+     * @param mediatorPubkey The mediator's public key
+     * @return The combined GroupChatStatus
+     */
+    fun getGroupChatStatus(chatId: Long, mediatorPubkey: ByteArray): GroupChatStatus {
+        val mediatorAddress = Hex.toHexString(mediatorPubkey)
+        val mediatorState = connectionStatus[mediatorAddress] ?: ConnectionState.DISCONNECTED
+        val isSubscribed = chatSubscriptions[chatId] ?: false
+
+        val status = when {
+            mediatorState == ConnectionState.CONNECTED && isSubscribed -> GroupChatStatus.SUBSCRIBED
+            mediatorState == ConnectionState.CONNECTING -> GroupChatStatus.CONNECTING
+            mediatorState == ConnectionState.CONNECTED && !isSubscribed -> GroupChatStatus.CONNECTING
+            else -> GroupChatStatus.DISCONNECTED
+        }
+
+        Log.d(TAG, "getGroupChatStatus(chatId=$chatId): mediatorState=$mediatorState, isSubscribed=$isSubscribed -> $status")
+        return status
+    }
+
+    /**
      * Schedules a reconnection attempt for a mediator with exponential backoff.
      * Only attempts reconnection if we're online and haven't exceeded max attempts.
      *
@@ -399,6 +455,7 @@ class MediatorManager(
     /**
      * Resubscribes to all chats on a specific mediator after reconnection.
      * This ensures we continue receiving messages after a disconnection.
+     * Also triggers retry of undelivered messages after successful resubscription.
      */
     private fun resubscribeToChatsOnMediator(mediatorPubkey: ByteArray, client: MediatorClient) {
         thread(name = "ResubscribeChats") {
@@ -416,6 +473,9 @@ class MediatorManager(
 
                         // Note: Message listeners are already registered from initial connection,
                         // so we don't need to re-register them
+
+                        // Trigger retry of undelivered messages after successful resubscription
+                        reconnectionCallback?.onChatReconnected(chat.chatId)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to resubscribe to chat ${chat.chatId}", e)
                     }
@@ -439,6 +499,14 @@ class MediatorManager(
                 info.reset()
                 info.cancelReconnect()
                 Log.i(TAG, "Reset reconnection state for $address")
+            }
+
+            // Notify callback about mediator state change for status badge updates
+            try {
+                val mediatorPubkey = Hex.decode(address)
+                reconnectionCallback?.onMediatorStateChanged(mediatorPubkey)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decode mediator address for callback: $address", e)
             }
         }
 
@@ -608,6 +676,23 @@ class MediatorManager(
                 clients.remove(address)
             }
 
+            // Mark all chats on this mediator as unsubscribed
+            try {
+                val mediatorPubkey = Hex.decode(address)
+                val allChats = storage.getGroupChatList()
+                val chatsOnMediator = allChats.filter { it.mediatorPubkey.contentEquals(mediatorPubkey) }
+
+                Log.i(TAG, "Marking ${chatsOnMediator.size} chats as unsubscribed after disconnect")
+                for (chat in chatsOnMediator) {
+                    markChatUnsubscribed(chat.chatId)
+                }
+
+                // Notify callback about mediator state change for status badge updates
+                reconnectionCallback?.onMediatorStateChanged(mediatorPubkey)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to process disconnect for $address", e)
+            }
+
             // Trigger automatic reconnection if we're online
             if (App.app.online) {
                 Log.i(TAG, "We're online, scheduling reconnection to $address")
@@ -655,5 +740,27 @@ class MediatorManager(
             chatAvatar: ByteArray?,
             encryptedData: ByteArray
         )
+    }
+
+    /**
+     * Callback interface for mediator reconnection events.
+     * Used to trigger message retry after successful reconnection.
+     */
+    interface ReconnectionCallback {
+        /**
+         * Called when a chat has been successfully resubscribed after mediator reconnection.
+         * This is the ideal time to retry sending any undelivered messages for this chat.
+         *
+         * @param chatId The ID of the chat that was resubscribed
+         */
+        fun onChatReconnected(chatId: Long)
+
+        /**
+         * Called when a mediator's connection state changes (connected/disconnected).
+         * This triggers status updates for all group chats using this mediator.
+         *
+         * @param mediatorPubkey The public key of the mediator whose state changed
+         */
+        fun onMediatorStateChanged(mediatorPubkey: ByteArray)
     }
 }

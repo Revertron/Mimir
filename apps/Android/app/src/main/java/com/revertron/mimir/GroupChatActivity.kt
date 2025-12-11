@@ -14,6 +14,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.revertron.mimir.net.MediatorManager
@@ -100,6 +101,27 @@ class GroupChatActivity : BaseChatActivity() {
         }
     }
 
+    private val groupChatStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "ACTION_GROUP_CHAT_STATUS") {
+                val chatId = intent.getLongExtra("chat_id", 0L)
+                val statusName = intent.getStringExtra("status")
+                Log.d(TAG, "Received status broadcast for chat $chatId: $statusName")
+
+                if (chatId == groupChat.chatId && statusName != null) {
+                    try {
+                        val status = MediatorManager.GroupChatStatus.valueOf(statusName)
+                        mainHandler.post {
+                            showConnectionStatus(status)
+                        }
+                    } catch (e: IllegalArgumentException) {
+                        Log.e(TAG, "Invalid status received: $statusName", e)
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Extract group chat info before calling super.onCreate()
         val chatId = intent.getLongExtra(EXTRA_CHAT_ID, 0)
@@ -140,7 +162,7 @@ class GroupChatActivity : BaseChatActivity() {
 
         // Set title, subtitle, and avatar
         setToolbarTitle(groupChat.name)
-        setToolbarSubtitle(getString(R.string.member_count, groupChat.memberCount))
+        setToolbarSubtitle(getString(R.string.member_count, groupChat.memberCount, 0))
         setupAvatar(groupChat.avatar)
 
         // Setup message list
@@ -148,6 +170,10 @@ class GroupChatActivity : BaseChatActivity() {
 
         // Setup broadcast receivers
         setupBroadcastReceivers()
+
+        // Initialize connection status badge (optimistic CONNECTING, will update when service responds)
+        showConnectionStatus(MediatorManager.GroupChatStatus.CONNECTING)
+        requestGroupChatStatus()
     }
 
     // BaseChatActivity abstract method implementations
@@ -263,6 +289,10 @@ class GroupChatActivity : BaseChatActivity() {
             addAction("ACTION_MEDIATOR_ERROR")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(mediatorReceiver, filter)
+
+        // Register status receiver for connection badge updates
+        val statusFilter = IntentFilter("ACTION_GROUP_CHAT_STATUS")
+        LocalBroadcastManager.getInstance(this).registerReceiver(groupChatStatusReceiver, statusFilter)
     }
 
     override fun onToolbarClick() {
@@ -478,10 +508,33 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     private fun updateMemberCount() {
-        val memberCount = getStorage().getGroupChatMembersCount(groupChat.chatId)
-        groupChat = groupChat.copy(memberCount = memberCount)
+        val members = getStorage().getGroupMembers(groupChat.chatId)
+        val onlineCount = members.count { it.online }
+
+        groupChat = groupChat.copy(memberCount = members.size)
         findViewById<AppCompatTextView>(R.id.subtitle).text =
-            getString(R.string.member_count, memberCount)
+            getString(R.string.member_count, members.size, onlineCount)
+    }
+
+    private fun refreshMemberStatus() {
+        val mediatorClient = App.app.mediatorManager?.getOrCreateClient()
+        if (mediatorClient != null) {
+            Thread {
+                try {
+                    val members = mediatorClient.getMembers(groupChat.chatId)
+                    // Update database with permissions and online status
+                    for (member in members) {
+                        getStorage().updateGroupMemberStatus(groupChat.chatId, member.pubkey, member.permissions, member.online)
+                    }
+                    // Reload UI
+                    runOnUiThread {
+                        updateMemberCount()
+                    }
+                } catch (e: Exception) {
+                    Log.e(GroupInfoActivity.Companion.TAG, "Failed to fetch member status", e)
+                }
+            }.start()
+        }
     }
 
     override fun onGroupChatChanged(chatId: Long): Boolean {
@@ -547,6 +600,37 @@ class GroupChatActivity : BaseChatActivity() {
         startActivity(intent)
     }
 
+    /**
+     * Update the status badge on the group avatar based on connection status.
+     * Red = disconnected, Yellow = connecting, Green = subscribed
+     */
+    private fun showConnectionStatus(status: MediatorManager.GroupChatStatus) {
+        val imageView = findViewById<AppCompatImageView>(R.id.status_image)
+        when (status) {
+            MediatorManager.GroupChatStatus.DISCONNECTED -> {
+                imageView.setImageResource(R.drawable.status_badge_red)
+            }
+            MediatorManager.GroupChatStatus.CONNECTING -> {
+                imageView.setImageResource(R.drawable.status_badge_yellow)
+            }
+            MediatorManager.GroupChatStatus.SUBSCRIBED -> {
+                imageView.setImageResource(R.drawable.status_badge_green)
+            }
+        }
+    }
+
+    /**
+     * Request the current connection status from ConnectionService.
+     * The service will respond with an ACTION_GROUP_CHAT_STATUS broadcast.
+     */
+    private fun requestGroupChatStatus() {
+        val intent = Intent(this, ConnectionService::class.java).apply {
+            putExtra("command", "group_chat_status")
+            putExtra("chat_id", groupChat.chatId)
+        }
+        startService(intent)
+    }
+
     // Lifecycle
 
     override fun onResume() {
@@ -554,10 +638,12 @@ class GroupChatActivity : BaseChatActivity() {
         // Refresh member cache in case avatars or member info was updated
         // (e.g., after returning from GroupInfoActivity)
         adapter.refreshMemberCache()
+        refreshMemberStatus()
     }
 
     override fun onDestroy() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(groupChatStatusReceiver)
         super.onDestroy()
     }
 }

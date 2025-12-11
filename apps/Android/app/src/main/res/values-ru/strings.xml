@@ -152,7 +152,7 @@
     <string name="chat_created_successfully">Чат создан успешно!</string>
     <string name="failed_to_create_chat">Не получилось создать чат :(</string>
     <string name="creating_chat">Майним подтверждение для чата…</string>
-    <string name="member_count">%d участников</string>
+    <string name="member_count">%d участников, %d в сети</string>
     <string name="connection_failed">Ошибка подключения к медиатору</string>
     <string name="message_send_failed">Ошибка отправки сообщения медиатору</string>
     <string name="failed_to_leave_group">Ошибка выхода из группы</string>

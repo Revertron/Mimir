@@ -108,8 +108,33 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         mimirServer = MimirServer(applicationContext, storage, peerProvider, accountInfo.clientId, accountInfo.keyPair, messenger, this, this, wakeLock)
                         mimirServer?.start()
 
-                        // Create MediatorManager with Messenger
-                        mediatorManager = MediatorManager(messenger, storage, accountInfo.keyPair, this)
+                        // Create MediatorManager with Messenger and reconnection callback
+                        val reconnectionCallback = object : MediatorManager.ReconnectionCallback {
+                            override fun onChatReconnected(chatId: Long) {
+                                // Retry sending undelivered messages after successful reconnection
+                                Log.i(TAG, "Chat $chatId reconnected, retrying undelivered messages")
+                                handler.post {
+                                    resendUndeliveredMessages(chatId, storage)
+                                }
+                            }
+
+                            override fun onMediatorStateChanged(mediatorPubkey: ByteArray) {
+                                // Broadcast status updates for all chats on this mediator
+                                handler.post {
+                                    try {
+                                        val allChats = storage.getGroupChatList()
+                                        val chatsOnMediator = allChats.filter { it.mediatorPubkey.contentEquals(mediatorPubkey) }
+                                        Log.d(TAG, "Broadcasting status for ${chatsOnMediator.size} chats after mediator state change")
+                                        for (chat in chatsOnMediator) {
+                                            broadcastGroupChatStatus(chat.chatId, storage)
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to broadcast group chat status", e)
+                                    }
+                                }
+                            }
+                        }
+                        mediatorManager = MediatorManager(messenger, storage, accountInfo.keyPair, this, reconnectionCallback)
                         App.app.mediatorManager = mediatorManager
 
                         // Register global invite listener
@@ -297,6 +322,17 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             "mediator_register_listener" -> {
                 val chatId = intent.getLongExtra("chat_id", 0)
                 Log.i(TAG, "Registered listener for chat $chatId")
+            }
+            "group_chat_status" -> {
+                val chatId = intent.getLongExtra("chat_id", 0)
+                Log.d(TAG, "Received group_chat_status command for chat $chatId")
+                if (chatId != 0L) {
+                    handler.post {
+                        broadcastGroupChatStatus(chatId, storage)
+                    }
+                } else {
+                    Log.w(TAG, "group_chat_status command received with invalid chatId")
+                }
             }
         }
 
@@ -488,6 +524,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 Log.i(TAG, "Registered message listener for chat $chatId")
             }
 
+            // Mark chat as subscribed and broadcast status for badge update
+            mediatorManager?.markChatSubscribed(chatId)
+            broadcastGroupChatStatus(chatId, storage)
+
             val broadcastIntent = Intent("ACTION_MEDIATOR_SUBSCRIBED").apply {
                 putExtra("chat_id", chatId)
             }
@@ -502,6 +542,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Error subscribing to chat", e)
+            // Mark chat as unsubscribed and broadcast status for badge update
+            mediatorManager?.markChatUnsubscribed(chatId)
+            broadcastGroupChatStatus(chatId, storage)
             broadcastMediatorError("subscribe", e.message ?: "Unknown error")
         }
     }
@@ -858,6 +901,13 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                                     globalMessageListener?.let {
                                         mediatorManager?.registerMessageListener(chat.chatId, it)
                                     }
+
+                                    // Mark chat as subscribed and broadcast status for badge update
+                                    mediatorManager?.markChatSubscribed(chat.chatId)
+                                    handler.post {
+                                        broadcastGroupChatStatus(chat.chatId, storage)
+                                    }
+
                                     Thread {
                                         // Sync missed messages from server first
                                         syncMissedMessages(chat.chatId, client, storage, serverLastId)
@@ -866,6 +916,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                                     }.start()
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to subscribe to chat ${chat.chatId} on mediator ${mediatorHex.take(8)}", e)
+                                    // Mark chat as unsubscribed on failure
+                                    mediatorManager?.markChatUnsubscribed(chat.chatId)
+                                    handler.post {
+                                        broadcastGroupChatStatus(chat.chatId, storage)
+                                    }
                                 }
                             }
 
@@ -1110,7 +1165,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     override fun onPeerStatusChanged(from: ByteArray, status: PeerStatus) {
         val contact = Hex.toHexString(from)
-        peerStatuses.put(contact, status)
+        peerStatuses[contact] = status
         if (broadcastPeerStatuses) {
             val intent = Intent("ACTION_PEER_STATUS").apply {
                 putExtra("contact", contact)
@@ -1160,6 +1215,23 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val intent = Intent("ACTION_MEDIATOR_ERROR").apply {
             putExtra("operation", operation)
             putExtra("error", error)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    /**
+     * Broadcast the connection status of a group chat to update UI badges.
+     * Combines mediator connection state with chat subscription state.
+     */
+    private fun broadcastGroupChatStatus(chatId: Long, storage: SqlStorage) {
+        val chatInfo = storage.getGroupChat(chatId) ?: return
+        val status = mediatorManager?.getGroupChatStatus(chatId, chatInfo.mediatorPubkey)
+            ?: MediatorManager.GroupChatStatus.DISCONNECTED
+
+        Log.d(TAG, "Broadcasting status for chat $chatId: $status")
+        val intent = Intent("ACTION_GROUP_CHAT_STATUS").apply {
+            putExtra("chat_id", chatId)
+            putExtra("status", status.name) // Use enum name string instead of enum
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }

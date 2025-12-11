@@ -29,6 +29,15 @@
                 android:layout_height="32dp"
                 android:layout_gravity="start"
                 android:adjustViewBounds="true" />
+
+            <!-- Status badge overlay for connection status -->
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/status_image"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="bottom|end"
+                android:background="@color/transparent"
+                app:srcCompat="@drawable/status_badge_yellow" />
         </FrameLayout>
 
         <androidx.appcompat.widget.LinearLayoutCompat
