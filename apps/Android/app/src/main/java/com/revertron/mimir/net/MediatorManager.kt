@@ -471,13 +471,18 @@ class MediatorManager(
                         val serverLastId = client.subscribe(chat.chatId)
                         Log.i(TAG, "Resubscribed to chat ${chat.chatId} (${chat.name}), server last ID: $serverLastId")
 
+                        // Mark chat as subscribed for status badge
+                        markChatSubscribed(chat.chatId)
+
                         // Note: Message listeners are already registered from initial connection,
                         // so we don't need to re-register them
 
-                        // Trigger retry of undelivered messages after successful resubscription
+                        // Trigger retry of undelivered messages and status broadcast after successful resubscription
                         reconnectionCallback?.onChatReconnected(chat.chatId)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to resubscribe to chat ${chat.chatId}", e)
+                        // Mark as unsubscribed on failure
+                        markChatUnsubscribed(chat.chatId)
                     }
                 }
             } catch (e: Exception) {

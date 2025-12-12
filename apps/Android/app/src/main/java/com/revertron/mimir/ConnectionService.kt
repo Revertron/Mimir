@@ -111,10 +111,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         // Create MediatorManager with Messenger and reconnection callback
                         val reconnectionCallback = object : MediatorManager.ReconnectionCallback {
                             override fun onChatReconnected(chatId: Long) {
-                                // Retry sending undelivered messages after successful reconnection
-                                Log.i(TAG, "Chat $chatId reconnected, retrying undelivered messages")
+                                // Retry sending undelivered messages and update status badge after successful reconnection
+                                Log.i(TAG, "Chat $chatId reconnected, retrying undelivered messages and updating status")
                                 handler.post {
                                     resendUndeliveredMessages(chatId, storage)
+                                    broadcastGroupChatStatus(chatId, storage)
                                 }
                             }
 
@@ -986,6 +987,10 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 mediatorManager?.registerMessageListener(chatId, it)
                 Log.i(TAG, "Registered message listener for chat $chatId")
             }
+
+            // Mark chat as subscribed and broadcast status for badge update
+            mediatorManager?.markChatSubscribed(chatId)
+            broadcastGroupChatStatus(chatId, storage)
 
             val broadcastIntent = Intent("ACTION_MEDIATOR_CHAT_CREATED").apply {
                 putExtra("chat_id", chatId)
