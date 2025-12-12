@@ -106,7 +106,6 @@ class GroupChatActivity : BaseChatActivity() {
             if (intent?.action == "ACTION_GROUP_CHAT_STATUS") {
                 val chatId = intent.getLongExtra("chat_id", 0L)
                 val statusName = intent.getStringExtra("status")
-                Log.d(TAG, "Received status broadcast for chat $chatId: $statusName")
 
                 if (chatId == groupChat.chatId && statusName != null) {
                     try {
@@ -517,9 +516,14 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     private fun refreshMemberStatus() {
-        val mediatorClient = App.app.mediatorManager?.getOrCreateClient()
-        if (mediatorClient != null) {
-            Thread {
+        Thread {
+            val mediatorClient = try {
+                App.app.mediatorManager?.getOrCreateClient()
+            } catch (e: Throwable) {
+                Log.d(TAG, "Error getting client: $e")
+                return@Thread
+            }
+            if (mediatorClient != null) {
                 try {
                     val members = mediatorClient.getMembers(groupChat.chatId)
                     // Update database with permissions and online status
@@ -533,8 +537,8 @@ class GroupChatActivity : BaseChatActivity() {
                 } catch (e: Exception) {
                     Log.e(GroupInfoActivity.Companion.TAG, "Failed to fetch member status", e)
                 }
-            }.start()
-        }
+            }
+        }.start()
     }
 
     override fun onGroupChatChanged(chatId: Long): Boolean {

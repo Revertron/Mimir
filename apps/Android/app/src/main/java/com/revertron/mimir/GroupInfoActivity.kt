@@ -228,9 +228,14 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
     }
 
     private fun refreshMemberStatus() {
-        val mediatorClient = App.app.mediatorManager?.getOrCreateClient()
-        if (mediatorClient != null) {
-            Thread {
+        Thread {
+            val mediatorClient = try {
+                App.app.mediatorManager?.getOrCreateClient()
+            } catch (e: Throwable) {
+                Log.d(GroupChatActivity.Companion.TAG, "Error getting client: $e")
+                return@Thread
+            }
+            if (mediatorClient != null) {
                 try {
                     val members = mediatorClient.getMembers(chatId)
                     // Update database with permissions and online status
@@ -245,8 +250,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to fetch member status", e)
                 }
-            }.start()
-        }
+            }
+        }.start()
     }
 
     private fun updateOnlineCount() {

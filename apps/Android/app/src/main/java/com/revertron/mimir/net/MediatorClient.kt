@@ -875,7 +875,6 @@ class MediatorClient(
                 break
             }
             if (System.currentTimeMillis() - lastActivityTime > PING_DEADLINE_MS) {
-                Log.i(TAG, "Sending ping")
                 try {
                     if (!sendPing()) {
                         Log.i(TAG, "Connection broken")

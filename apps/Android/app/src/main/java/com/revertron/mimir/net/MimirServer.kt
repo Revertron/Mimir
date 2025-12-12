@@ -280,20 +280,21 @@ class MimirServer(
             var count = 0
             while (working.get()) {
                 sleep(3000)
+                val online = haveNetwork(context)
+                if (!online && !App.app.online) {
+                    continue
+                }
                 val old = App.app.online
                 val peersJSON = messenger.peersJSON
                 if (peersJSON != null && peersJSON != "null") {
                     val peers = JSONArray(peersJSON)
                     val peersCount = peers.length()
                     if (peersCount > 0) {
-                        if (peersCount > 1)
-                            Log.i(TAG, "Peers count: $peersCount")
                         val now = System.currentTimeMillis()
                         val peer = peers.getJSONObject(0)
                         //Log.i(TAG, "Peer: $peer")
                         val up = peer.getBoolean("Up")
                         App.app.online = up
-                        val online = haveNetwork(context)
                         val networkChanged = App.app.networkChangedRecently()
                         if (old != up)
                         {

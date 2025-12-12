@@ -143,7 +143,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         startGlobalChatListener(storage)
 
                         // Connect to all known mediators and subscribe to saved chats
-                        connectAndSubscribeToAllChats(storage)
+                        if (haveNetwork(this)) {
+                            connectAndSubscribeToAllChats(storage)
+                        }
 
                         val n = NotificationHelper.createForegroundServiceNotification(this, State.Offline)
                         startForeground(1, n)
@@ -326,7 +328,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }
             "group_chat_status" -> {
                 val chatId = intent.getLongExtra("chat_id", 0)
-                Log.d(TAG, "Received group_chat_status command for chat $chatId")
                 if (chatId != 0L) {
                     handler.post {
                         broadcastGroupChatStatus(chatId, storage)
@@ -1233,7 +1234,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         val status = mediatorManager?.getGroupChatStatus(chatId, chatInfo.mediatorPubkey)
             ?: MediatorManager.GroupChatStatus.DISCONNECTED
 
-        Log.d(TAG, "Broadcasting status for chat $chatId: $status")
         val intent = Intent("ACTION_GROUP_CHAT_STATUS").apply {
             putExtra("chat_id", chatId)
             putExtra("status", status.name) // Use enum name string instead of enum

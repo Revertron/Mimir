@@ -170,7 +170,6 @@ class MessageAdapter(
                 // Ordinary text messages, may contain a picture
                 if (message.data != null) {
                     val string = String(message.data)
-                    Log.i("Adapter", "Message: $string")
                     val json = JSONObject(string)
                     val name = json.getString("name")
                     val cachePath = File(holder.itemView.context.cacheDir, "files")
