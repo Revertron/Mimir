@@ -531,10 +531,15 @@ fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, qual
         }
     }
     val hash = getFileHash(outputFile)
+
+    // Get original filename
+    val originalName = getFileNameFromUri(context, uri) ?: fullName
+
     val json = JSONObject()
     json.put("name", fullName)
     json.put("size", size)
     json.put("hash", Hex.toHexString(hash))
+    json.put("originalName", originalName)
     return json
 }
 

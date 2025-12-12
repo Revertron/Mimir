@@ -218,6 +218,7 @@ class MessageAdapter(
                     val string = String(message.data)
                     val json = JSONObject(string)
                     val name = json.getString("name")
+                    val original = json.optString("originalName", json.getString("name"))
                     val size = json.optLong("size", 0L)
                     val filePath = File(holder.itemView.context.filesDir, "files")
                     val file = File(filePath, name)
@@ -227,7 +228,7 @@ class MessageAdapter(
                     holder.fileIcon.setImageResource(getFileIconForMimeType(mimeType))
 
                     // Set file name and size
-                    holder.fileName.text = name
+                    holder.fileName.text = original
                     holder.fileSize.text = formatFileSize(size)
 
                     // Show file panel, hide text
