@@ -60,6 +60,10 @@ class MessageAdapter(
         val message: AppCompatTextView = view.findViewById(R.id.text)
         val picture: AppCompatImageView = view.findViewById(R.id.picture)
         val picturePanel: FrameLayout = view.findViewById(R.id.picture_panel)
+        val filePanel: View = view.findViewById(R.id.file_panel)
+        val fileIcon: AppCompatImageView = view.findViewById(R.id.file_icon)
+        val fileName: AppCompatTextView = view.findViewById(R.id.file_name)
+        val fileSize: AppCompatTextView = view.findViewById(R.id.file_size)
         val time: AppCompatTextView = view.findViewById(R.id.time)
         val sent: AppCompatImageView = view.findViewById(R.id.status_image)
         val replyToName: AppCompatTextView = view.findViewById(R.id.reply_contact_name)
@@ -162,12 +166,14 @@ class MessageAdapter(
         } else {
             message.getText(holder.itemView.context)
         }
+        holder.message.visibility = View.VISIBLE
         holder.message.setCompoundDrawables(null, null, null ,null)
         holder.sent.visibility = if (message.incoming) View.GONE else View.VISIBLE
 
         when (message.type) {
             1 -> {
                 // Ordinary text messages, may contain a picture
+                holder.filePanel.visibility = View.GONE
                 if (message.data != null) {
                     val string = String(message.data)
                     val json = JSONObject(string)
@@ -193,36 +199,43 @@ class MessageAdapter(
             }
             2 -> {
                 // Audio call info
-                val icon = ContextCompat.getDrawable(holder.itemView.context, R.drawable.ic_phone_outline_themed)?.apply {
-                    setBounds(0, 0, intrinsicWidth, intrinsicHeight)
+                holder.filePanel.visibility = View.VISIBLE
+                holder.fileIcon.setImageResource(R.drawable.ic_phone_outline_themed)
+                holder.fileName.text = if (message.incoming) {
+                    holder.fileName.context.getString(R.string.audio_call_incoming)
+                } else {
+                    holder.fileName.context.getString(R.string.audio_call_outgoing)
                 }
-                holder.message.setCompoundDrawables(icon, null, null ,null)
-                holder.message.compoundDrawablePadding = holder.itemView.context.resources.getDimensionPixelSize(R.dimen.icon_padding)
+                holder.fileSize.text = holder.message.text
+                holder.message.visibility = View.GONE
                 holder.sent.visibility = View.GONE
                 holder.picture.setImageDrawable(null)
                 holder.picturePanel.visibility = View.GONE
             }
             3 -> {
-                // File attachment - show icon with file info
+                // File attachment - show file panel with icon and info
                 if (message.data != null) {
                     val string = String(message.data)
                     val json = JSONObject(string)
                     val name = json.getString("name")
+                    val size = json.optLong("size", 0L)
                     val filePath = File(holder.itemView.context.filesDir, "files")
                     val file = File(filePath, name)
 
                     // Get file icon based on MIME type
                     val mimeType = json.optString("mimeType", "application/octet-stream")
-                    val icon = ContextCompat.getDrawable(holder.itemView.context, getFileIconForMimeType(mimeType))?.apply {
-                        setBounds(0, 0, intrinsicWidth, intrinsicHeight)
-                    }
-                    holder.message.setCompoundDrawables(icon, null, null, null)
-                    holder.message.compoundDrawablePadding = holder.itemView.context.resources.getDimensionPixelSize(R.dimen.icon_padding)
-                    holder.message.gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                    holder.fileIcon.setImageResource(getFileIconForMimeType(mimeType))
+
+                    // Set file name and size
+                    holder.fileName.text = name
+                    holder.fileSize.text = formatFileSize(size)
+
+                    // Show file panel, hide text
+                    holder.filePanel.visibility = View.VISIBLE
 
                     // Set click listener to open file
                     if (file.exists()) {
-                        holder.message.setOnClickListener {
+                        holder.filePanel.setOnClickListener {
                             openFile(holder.itemView.context, file, mimeType)
                         }
                     }
@@ -231,10 +244,12 @@ class MessageAdapter(
                 holder.picturePanel.visibility = View.GONE
             }
             1000 -> {
+                holder.filePanel.visibility = View.GONE
                 holder.picture.setImageDrawable(null)
                 holder.picturePanel.visibility = View.GONE
             }
             else -> {
+                holder.filePanel.visibility = View.GONE
                 holder.picture.setImageDrawable(null)
                 holder.picturePanel.visibility = View.GONE
             }
@@ -312,6 +327,13 @@ class MessageAdapter(
         } else {
             timeFormatter.format(date)
         }
+    }
+
+    private fun formatFileSize(bytes: Long): String {
+        if (bytes <= 0) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+        return String.format("%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
     }
 
     override fun getItemViewType(position: Int): Int {

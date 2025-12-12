@@ -84,7 +84,6 @@
     <string name="select_contact_to_share">Выберите контакт</string>
     <string name="add_custom_peer">Добавить свой узел</string>
     <string name="add_button">Добавить</string>
-    <string name="audio_call_item">Звонок %s</string>
     <string name="call_already_ongoing">Звонок уже в процессе!</string>
     <string name="updates_title">Обновление Мимира</string>
     <string name="new_version_title">Доступна новая версия %s!</string>

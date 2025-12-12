@@ -93,7 +93,8 @@
     <string name="select_contact_to_share">Select contact</string>
     <string name="add_custom_peer">Add custom peer</string>
     <string name="add_button">Add</string>
-    <string name="audio_call_item">Audio call %s</string>
+    <string name="audio_call_incoming">Incoming audio call</string>
+    <string name="audio_call_outgoing">Outgoing audio call</string>
     <string name="call_already_ongoing">Call already in progress!</string>
     <string name="updates_title">Mimir update</string>
     <string name="new_version_title">New version %s is available!</string>

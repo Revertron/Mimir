@@ -77,26 +77,14 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         }
                     }
                     2 -> {
+                        // Returning only duration of the call
                         val callDuration = edit - time
-                        val text = formatDuration(callDuration)
-                        context.getString(R.string.audio_call_item, text)
+                        formatDuration(callDuration)
                     }
                     3 -> {
                         // File attachment - show original filename with optional message text
                         val json = JSONObject(String(data))
-                        val text = json.optString("text", "")
-                        val originalName = json.optString("originalName", json.getString("name"))
-                        val size = json.optLong("size", 0)
-                        val sizeStr = when {
-                            size < 1024 -> "$size B"
-                            size < 1024 * 1024 -> "%.1f KB".format(size / 1024.0)
-                            else -> "%.1f MB".format(size / (1024.0 * 1024.0))
-                        }
-                        if (text.isEmpty()) {
-                            "$originalName ($sizeStr)"
-                        } else {
-                            "$text\n$originalName ($sizeStr)"
-                        }
+                        json.optString("text", "")
                     }
                     else -> {
                         String(data)
@@ -128,26 +116,14 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         }
                     }
                     2 -> {
+                        // Returning only duration of the call
                         val callDuration = edit - time
-                        val text = formatDuration(callDuration)
-                        context.getString(R.string.audio_call_item, text)
+                        formatDuration(callDuration)
                     }
                     3 -> {
                         // File attachment - show original filename with optional message text
                         val json = JSONObject(String(data))
-                        val text = json.optString("text", "")
-                        val originalName = json.optString("originalName", json.getString("name"))
-                        val size = json.optLong("size", 0)
-                        val sizeStr = when {
-                            size < 1024 -> "$size B"
-                            size < 1024 * 1024 -> "%.1f KB".format(size / 1024.0)
-                            else -> "%.1f MB".format(size / (1024.0 * 1024.0))
-                        }
-                        if (text.isEmpty()) {
-                            "$originalName ($sizeStr)"
-                        } else {
-                            "$text\n$originalName ($sizeStr)"
-                        }
+                        json.optString("text", "")
                     }
                     1000 -> {
                         // System message - parse and format
