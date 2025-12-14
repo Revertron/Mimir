@@ -5,7 +5,7 @@ True P2P messenger on top of Yggdrasil Network
 ## Get Mimir
 
 Right now, development is moving so fast that I can't rely on slow publishing systems.
-So, you'll get only an APK for now: [Download APK](https://update.mimir-app.net/apk)
+So, you'll get only an APK for now: [Download APK](https://mimir.im/apk), or from the latest [pre-release](https://github.com/Revertron/Mimir/releases).
 
 ## What is Mimir?
 
@@ -25,9 +25,10 @@ So, the Mimir is the first true P2P messenger to use these unusual conditions. U
 
 1. Authentication of clients to each other based on Elliptic Curves
 2. Sending/receiving text messages
-3. Sending/receiving images
+3. Sending/receiving images, files, photos
 4. Audio calls with an impeccable sound quality
-5. Big plans for world domination :)
+5. Group chats!
+6. Big plans for world domination :)
 
 One of Mimir’s strong points is censorship circumvention: you can connect to any of hundreds of available nodes, host your own, or even build a private network. Freedom is literally in your hands.
 
@@ -45,7 +46,6 @@ In order to support multi-device interoperability when you have multiple clients
 Not in particular order:
 
 * File transfer: Big files, no limits because it's P2P.
-* Group chats: What a messenger without your groups?
 * Video calls: Your mum will see your face and smile!
 * News channels: Appealing articles in rich format with pictures.
 * Other platforms: Now I'm creating a proof of concept for Android, later desktop and etc.
