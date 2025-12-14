@@ -440,11 +440,15 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
             // Send to mediator
             val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
-            val messageId = client.sendMessage(chatId, guid, encryptedData)
-            Log.i(TAG, "Message sent with ID: $messageId, guid = $guid, replyTo = $replyTo")
+            val (messageId, newGuid) = client.sendMessage(chatId, guid, encryptedData)
+            Log.i(TAG, "Message sent with ID: $messageId, guid = $guid ($newGuid), replyTo = $replyTo")
 
             // Update server message id for later sync
             storage.updateGroupMessageServerId(chatId, guid, messageId)
+
+            if (newGuid != 0L && newGuid != guid) {
+                storage.changeGroupMessageGuid(chatId, guid, newGuid)
+            }
 
             // Mark message as delivered after successful send to mediator
             storage.setGroupMessageDelivered(chatId, guid, true)

@@ -482,7 +482,7 @@ class MediatorClient(
     }
 
     /** Sends a message and returns server-assigned incremental message_id. */
-    fun sendMessage(chatId: Long, guid: Long, blob: ByteArray): Long {
+    fun sendMessage(chatId: Long, guid: Long, blob: ByteArray): Pair<Long, Long> {
         // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
             writeTLVLong(TAG_CHAT_ID, chatId)
@@ -494,7 +494,7 @@ class MediatorClient(
 
         // Parse TLV response: TAG_MESSAGE_ID
         val tlvs = resp.payload.parseTLVs()
-        return tlvs.getTLVLong(TAG_MESSAGE_ID)
+        return tlvs.getTLVLong(TAG_MESSAGE_ID) to tlvs.getTLVLong(TAG_MESSAGE_GUID)
     }
 
     fun deleteMessage(chatId: Long, guid: Long) {

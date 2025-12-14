@@ -21,6 +21,7 @@ import com.revertron.mimir.loadRoundedAvatar
 import com.revertron.mimir.net.SystemMessage
 import com.revertron.mimir.randomString
 import com.revertron.mimir.ui.Contact
+import net.jpountz.xxhash.XXHashFactory
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.KeyGenerationParameters
 import org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator
@@ -29,8 +30,10 @@ import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONException
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
 import java.security.SecureRandom
 import java.util.Date
 import java.util.Random
@@ -766,6 +769,21 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
         if (this.writableDatabase.update(messagesTable, values, "guid = ?", arrayOf("$guid")) > 0) {
             Log.i(TAG, "Group message with guid $guid in chat $chatId delivered = $delivered")
+            // Notify listeners to update UI
+            for (listener in listeners) {
+                listener.onGroupChatChanged(chatId)
+            }
+        }
+    }
+
+    // Sometimes, when the collision on mediator occurs, it sends us new guid, and we change it locally
+    fun changeGroupMessageGuid(chatId: Long, guid: Long, newGuid: Long) {
+        val messagesTable = "messages_$chatId"
+        val values = ContentValues().apply {
+            put("guid", newGuid)
+        }
+        if (this.writableDatabase.update(messagesTable, values, "guid = ?", arrayOf("$guid")) > 0) {
+            Log.i(TAG, "Group message with guid $guid in chat $chatId changed guid to $newGuid")
             // Notify listeners to update UI
             for (listener in listeners) {
                 listener.onGroupChatChanged(chatId)
@@ -1538,13 +1556,13 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     fun generateGuid(time: Long, data: ByteArray): Long {
-        val hashCode = data.contentHashCode()
-        // Mix hash and time using polynomial rolling hash approach
-        var result = time
-        result = 31 * result + hashCode
-        result = 31 * result + (time ushr 32).toInt()
-        result = 31 * result + (hashCode ushr 16)
-        return result
+        val factory: XXHashFactory = XXHashFactory.fastestInstance()
+
+        val seed = 0xbabedeadf00d
+        val hasher = factory.hash64()
+        val timeBuffer = ByteBuffer.allocate(8).putLong(time).array()
+        val hash = hasher.hash(ByteBuffer.wrap(data + timeBuffer), seed)
+        return hash
     }
 
     // ============ Group Chat Methods ============
