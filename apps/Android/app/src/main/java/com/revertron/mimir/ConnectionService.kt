@@ -29,6 +29,8 @@ import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.net.Message
 import com.revertron.mimir.net.MimirServer
 import com.revertron.mimir.net.PeerStatus
+import com.revertron.mimir.net.SystemMessage
+import com.revertron.mimir.net.parseSystemMessage
 import com.revertron.mimir.net.readHeader
 import com.revertron.mimir.net.readMessage
 import com.revertron.mimir.net.writeMessage
@@ -38,6 +40,7 @@ import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.SettingsData
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
@@ -552,6 +555,49 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     /**
+     * Validates message data before saving to database.
+     * For attachment messages (type 1 and 3), verifies the data is valid JSON.
+     * Corrupted data is replaced with an error placeholder.
+     *
+     * @param data The message data to validate
+     * @param type The message type (1=image, 3=file, 0=text, etc.)
+     * @param guid The message GUID (for logging)
+     * @return Validated data, or error placeholder if validation fails
+     */
+    private fun validateMessageData(data: ByteArray, type: Int, guid: Long): ByteArray {
+        // Only validate JSON for attachment types
+        if (type != 1 && type != 3) {
+            return data
+        }
+
+        if (data.isEmpty()) {
+            Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - data is empty")
+            return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
+        }
+
+        try {
+            val dataStr = String(data, Charsets.UTF_8)
+
+            // Check if it starts with valid JSON
+            if (dataStr.isEmpty() || dataStr[0] != '{') {
+                Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - data doesn't start with '{'. First 4 bytes: ${data.take(4).joinToString(" ") { "0x%02x".format(it) }}")
+                return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
+            }
+
+            // Verify it's parseable JSON
+            JSONObject(dataStr)
+            return data // Valid
+
+        } catch (e: JSONException) {
+            Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - JSON parsing failed: ${e.message}. Data length: ${data.size}")
+            return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
+        } catch (e: Exception) {
+            Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - validation error: ${e.message}")
+            return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
+        }
+    }
+
+    /**
      * Parses and saves a group chat message.
      * Handles decryption, deserialization, media attachments, deduplication, and database storage.
      *
@@ -581,6 +627,16 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
             if (author.contentEquals(mediatorPubkey)) {
                 Log.d(TAG, "Processing system message $messageId for chat $chatId (not encrypted)")
+
+                // Parse system message to handle member management
+                val sysMsg = parseSystemMessage(encryptedData)
+                // Handle message deletion - this is an invisible system message
+                if (sysMsg is SystemMessage.MessageDeleted) {
+                    Log.i(TAG, "Deleting message with guid ${sysMsg.deletedGuid} from chat $chatId")
+                    storage.deleteGroupMessageByGuid(chatId, sysMsg.deletedGuid)
+                    // Don't save this system message to DB - it's invisible
+                    return 0
+                }
 
                 // System messages are not encrypted, save directly to database
                 // Format: [event_code(1)][...event-specific data...]
@@ -705,6 +761,9 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 return 0
             }
 
+            // Validate message data before saving to prevent database corruption
+            val validatedData = validateMessageData(m, message.type, message.guid)
+
             // Save to database
             val localId = storage.addGroupMessage(
                 chatId,
@@ -714,7 +773,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 message.sendTime,
                 message.type,
                 false, // not a system message
-                m,
+                validatedData,
                 message.replyTo,
                 fromSync = fromSync
             )

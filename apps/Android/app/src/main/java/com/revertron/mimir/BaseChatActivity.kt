@@ -165,7 +165,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     /**
      * Deletes a message by ID.
      */
-    protected abstract fun deleteMessageById(messageId: Long)
+    protected abstract fun deleteMessageById(messageId: Long, guid: Long)
 
     /**
      * Gets a message for reply purposes.
@@ -565,12 +565,13 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         return true
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun handleReply(view: View): Boolean {
-        val id = view.tag as Long
-        val replyInfo = getMessageForReply(id)
+        val (_, guid) = view.tag as Pair<Long, Long>
+        val replyInfo = getMessageForReply(guid)
         if (replyInfo != null) {
             val (authorName, messageText) = replyInfo
-            showReplyPanel(authorName, messageText, id)
+            showReplyPanel(authorName, messageText, guid)
         }
         return false
     }
@@ -580,19 +581,21 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         return false
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun handleDelete(view: View): Boolean {
-        showDeleteMessageConfirmDialog(view.tag as Long)
+        val (id, guid) = view.tag as Pair<Long, Long>
+        showDeleteMessageConfirmDialog(id, guid)
         return true
     }
 
-    private fun showDeleteMessageConfirmDialog(messageId: Long) {
+    private fun showDeleteMessageConfirmDialog(messageId: Long, guid: Long) {
         val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
         val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
         builder.setTitle(getString(R.string.delete_message_dialog_title))
         builder.setMessage(R.string.delete_message_dialog_text)
         builder.setIcon(R.drawable.ic_delete)
         builder.setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
-            deleteMessageById(messageId)
+            deleteMessageById(messageId, guid)
             adapter.deleteMessageId(messageId)
         }
         builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->

@@ -497,6 +497,16 @@ class MediatorClient(
         return tlvs.getTLVLong(TAG_MESSAGE_ID)
     }
 
+    fun deleteMessage(chatId: Long, guid: Long) {
+        // Build TLV payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLVLong(TAG_MESSAGE_GUID, guid)
+        }.toByteArray()
+        val resp = request(CMD_DELETE_MESSAGE, payload) ?: throw MediatorException("deleteMessage timeout")
+        if (resp.status != STATUS_OK) throw resp.asException("deleteMessage failed")
+    }
+
     fun getLastMessageId(chatId: Long): Long {
         // Build TLV payload
         val payload = ByteArrayOutputStream().apply {

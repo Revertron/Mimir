@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.nio.ByteBuffer
 
 const val MSG_TYPE_HELLO = 1
 const val MSG_TYPE_CHALLENGE = 2
@@ -487,6 +488,7 @@ const val SYS_USER_BANNED: Byte = 0x04
 const val SYS_CHAT_DELETED: Byte = 0x05
 const val SYS_CHAT_INFO_CHANGE: Byte = 0x06
 const val SYS_PERMS_CHANGED: Byte = 0x07
+const val SYS_MESSAGE_DELETED: Byte = 0x08
 
 /**
  * Represents a parsed system message from the mediator.
@@ -563,6 +565,17 @@ sealed class SystemMessage {
         val random: ByteArray
     ) : SystemMessage() {
         override val eventCode: Byte = SYS_PERMS_CHANGED
+    }
+
+    /**
+     * Message was deleted.
+     * Format: [event_code(1)][deleted_guid(8)][deleter_pubkey(32)]
+     */
+    data class MessageDeleted(
+        val deletedGuid: Long,
+        val deleter: ByteArray
+    ) : SystemMessage() {
+        override val eventCode: Byte = SYS_MESSAGE_DELETED
     }
 
     /**
@@ -651,6 +664,16 @@ fun parseSystemMessage(data: ByteArray): SystemMessage? {
                 val actor = data.copyOfRange(33, 65)
                 val random = data.copyOfRange(65, 97)
                 SystemMessage.PermsChanged(targetUser, actor, random)
+            }
+
+            SYS_MESSAGE_DELETED -> {
+                if (data.size < 41) { // 1 + 8 + 32
+                    Log.w(TAG, "SYS_MESSAGE_DELETED message too short: ${data.size}")
+                    return null
+                }
+                val deletedGuid = ByteBuffer.wrap(data, 1, 8).long
+                val deleter = data.copyOfRange(9, 41)
+                SystemMessage.MessageDeleted(deletedGuid, deleter)
             }
 
             else -> {

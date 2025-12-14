@@ -145,7 +145,7 @@ class CallActivity: BaseActivity() {
         }
 
         val id = getStorage().getContactId(pubkey)
-        val avatarPic = getStorage().getContactAvatar(id)
+        val avatarPic = getStorage().getContactAvatar(id, 128, 6)
         contact = Contact(id, pubkey, name, null, 0, avatarPic)
 
         val nameView = findViewById<AppCompatTextView>(R.id.name)

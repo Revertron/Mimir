@@ -9,6 +9,8 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.*
+import org.json.JSONException
+import org.json.JSONObject
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -86,10 +88,35 @@ class ContactsAdapter(
         holder.groupChatIcon.visibility = View.GONE
 
         // Set last message
-        val lastMessageText = if (contact.lastMessage?.type == 1) {
-            "\uD83D\uDDBC\uFE0F " + contact.lastMessage.getText(holder.avatar.context)
-        } else {
-            contact.lastMessage?.getText(holder.avatar.context)
+        val lastMessageText = when (contact.lastMessage?.type) {
+            1 -> {
+                "\uD83D\uDDBC\uFE0F " + contact.lastMessage.getText(holder.avatar.context)
+            }
+            2 -> {
+                val time = contact.lastMessage.getText(holder.avatar.context)
+                if (contact.lastMessage.incoming) {
+                    holder.avatar.context.getString(R.string.audio_call_incoming) + " " + time
+                } else {
+                    holder.avatar.context.getString(R.string.audio_call_outgoing) + " " + time
+                }
+            }
+            3 -> {
+                if (contact.lastMessage.data != null) {
+                    val string = String(contact.lastMessage.data)
+                    try {
+                        val json = JSONObject(string)
+                        val name = json.getString("name")
+                        json.optString("originalName", name)
+                    } catch (e: JSONException) {
+                        "Error. Message type ${contact.lastMessage.type}:\n"
+                    }
+                } else {
+                    "Bad message"
+                }
+            }
+            else -> {
+                contact.lastMessage?.getText(holder.avatar.context)
+            }
         }
         holder.lastMessage.text = lastMessageText
 

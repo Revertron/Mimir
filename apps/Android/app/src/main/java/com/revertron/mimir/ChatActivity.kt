@@ -111,7 +111,7 @@ class ChatActivity : BaseChatActivity() {
         return getStorage().getFirstUnreadMessageId(contact.id)
     }
 
-    override fun deleteMessageById(messageId: Long) {
+    override fun deleteMessageById(messageId: Long, guid: Long) {
         getStorage().deleteMessage(messageId)
     }
 

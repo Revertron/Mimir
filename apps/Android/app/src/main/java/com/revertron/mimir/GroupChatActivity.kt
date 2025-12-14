@@ -205,8 +205,34 @@ class GroupChatActivity : BaseChatActivity() {
         return getStorage().getFirstUnreadGroupMessageId(groupChat.chatId)
     }
 
-    override fun deleteMessageById(messageId: Long) {
-        getStorage().deleteGroupMessage(groupChat.chatId, messageId)
+    override fun deleteMessageById(messageId: Long, guid: Long) {
+        // Send delete request to mediator in background thread
+        Thread {
+            try {
+                val mediatorManager = App.app.mediatorManager
+                if (mediatorManager == null) {
+                    runOnUiThread {
+                        Toast.makeText(this, getString(R.string.mediator_not_connected), Toast.LENGTH_SHORT).show()
+                    }
+                    return@Thread
+                }
+
+                // Get or create mediator client
+                val mediatorClient = mediatorManager.getOrCreateClient()
+
+                // Request deletion from mediator
+                mediatorClient.deleteMessage(groupChat.chatId, guid)
+
+                // Success - the deletion will be processed when we receive the system message
+                // The system message handler will delete it from local storage
+                Log.i(TAG, "Message deletion request sent successfully for guid $guid")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete message", e)
+                runOnUiThread {
+                    Toast.makeText(this, getString(R.string.failed_to_delete_message), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
@@ -504,6 +530,15 @@ class GroupChatActivity : BaseChatActivity() {
             return isChatVisible
         }
         return false
+    }
+
+    override fun onGroupMessageDeleted(chatId: Long, messageId: Long) {
+        if (chatId == groupChat.chatId) {
+            runOnUiThread {
+                Log.i(TAG, "Message $messageId deleted in chat $chatId, updating adapter")
+                adapter.deleteMessageId(messageId)
+            }
+        }
     }
 
     private fun updateMemberCount() {

@@ -538,6 +538,15 @@ class MediatorManager(
 
             // Parse system message to handle member management
             val sysMsg = parseSystemMessage(body)
+
+            // Handle message deletion - this is an invisible system message
+            if (sysMsg is SystemMessage.MessageDeleted) {
+                Log.i(TAG, "Deleting message with guid ${sysMsg.deletedGuid} from chat $chatId")
+                storage.deleteGroupMessageByGuid(chatId, sysMsg.deletedGuid)
+                // Don't save this system message to DB - it's invisible
+                return
+            }
+
             val lastMemberSync = storage.getGroupChatTimestamp(chatId)
 
             // Only process member-affecting system messages that occurred after the last member sync

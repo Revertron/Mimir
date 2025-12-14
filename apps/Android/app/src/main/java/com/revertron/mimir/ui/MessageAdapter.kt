@@ -15,14 +15,13 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.storage.SqlStorage
-import org.bouncycastle.util.encoders.Hex
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
 import java.text.DateFormat
@@ -216,29 +215,39 @@ class MessageAdapter(
                 // File attachment - show file panel with icon and info
                 if (message.data != null) {
                     val string = String(message.data)
-                    val json = JSONObject(string)
-                    val name = json.getString("name")
-                    val original = json.optString("originalName", json.getString("name"))
-                    val size = json.optLong("size", 0L)
-                    val filePath = File(holder.itemView.context.filesDir, "files")
-                    val file = File(filePath, name)
+                    try {
+                        val json = JSONObject(string)
+                        val name = json.getString("name")
+                        val original = json.optString("originalName", name)
+                        val size = json.optLong("size", 0L)
+                        val filePath = File(holder.itemView.context.filesDir, "files")
+                        val file = File(filePath, name)
 
-                    // Get file icon based on MIME type
-                    val mimeType = json.optString("mimeType", "application/octet-stream")
-                    holder.fileIcon.setImageResource(getFileIconForMimeType(mimeType))
+                        // Get file icon based on MIME type
+                        val mimeType = json.optString("mimeType", "application/octet-stream")
+                        holder.fileIcon.setImageResource(getFileIconForMimeType(mimeType))
 
-                    // Set file name and size
-                    holder.fileName.text = original
-                    holder.fileSize.text = formatFileSize(size)
+                        // Set file name and size
+                        holder.fileName.text = original
+                        holder.fileSize.text = formatFileSize(size)
 
-                    // Show file panel, hide text
-                    holder.filePanel.visibility = View.VISIBLE
-
-                    // Set click listener to open file
-                    if (file.exists()) {
-                        holder.filePanel.setOnClickListener {
-                            openFile(holder.itemView.context, file, mimeType)
+                        // Show file panel, hide text
+                        holder.filePanel.visibility = View.VISIBLE
+                        if (holder.message.text.isEmpty()) {
+                            holder.message.visibility = View.GONE
                         }
+
+                        // Set click listener to open file
+                        if (file.exists()) {
+                            holder.filePanel.setOnClickListener {
+                                openFile(holder.itemView.context, file, mimeType)
+                            }
+                        }
+                    } catch (e: JSONException) {
+                        val text = "Unable to format message of type ${message.type}:\n" + String(message.data)
+                        holder.message.text = text
+                        holder.picture.setImageDrawable(null)
+                        holder.picturePanel.visibility = View.GONE
                     }
                 }
                 holder.picture.setImageDrawable(null)
@@ -259,8 +268,8 @@ class MessageAdapter(
         // which provides comprehensive event descriptions
 
         holder.time.text = formatTime(message.time)
-        // Sorry for this
-        holder.itemView.findViewById<View>(R.id.message).tag = message.guid
+        // Store both ID (for deletion) and GUID (for replies) as a Pair
+        holder.itemView.findViewById<View>(R.id.message).tag = Pair(message.id, message.guid)
         holder.sent.tag = message.delivered
 
         if (message.replyTo != 0L) {

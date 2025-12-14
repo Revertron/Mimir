@@ -27,6 +27,7 @@ import org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -66,29 +67,33 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     ) {
         fun getText(context: Context): String {
             return if (data != null) {
-                when (type) {
-                    1 -> {
-                        val json = JSONObject(String(data))
-                        val text = json.getString("text")
-                        if (text.isEmpty()) {
-                            json.getString("name")
-                        } else {
-                            text
+                try {
+                    when (type) {
+                        1 -> {
+                            val json = JSONObject(String(data))
+                            val text = json.getString("text")
+                            if (text.isEmpty()) {
+                                json.getString("name")
+                            } else {
+                                text
+                            }
+                        }
+                        2 -> {
+                            // Returning only duration of the call
+                            val callDuration = edit - time
+                            formatDuration(callDuration)
+                        }
+                        3 -> {
+                            // File attachment - show original filename with optional message text
+                            val json = JSONObject(String(data))
+                            json.optString("text", "")
+                        }
+                        else -> {
+                            String(data)
                         }
                     }
-                    2 -> {
-                        // Returning only duration of the call
-                        val callDuration = edit - time
-                        formatDuration(callDuration)
-                    }
-                    3 -> {
-                        // File attachment - show original filename with optional message text
-                        val json = JSONObject(String(data))
-                        json.optString("text", "")
-                    }
-                    else -> {
-                        String(data)
-                    }
+                } catch (e: JSONException) {
+                    "Unable to format message of type $type:\n" + String(data)
                 }
             } else {
                 "<Empty>"
@@ -105,38 +110,42 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
          */
         fun getText(context: Context, storage: SqlStorage, chatId: Long): String {
             return if (data != null) {
-                when (type) {
-                    1 -> {
-                        val json = JSONObject(String(data))
-                        val text = json.getString("text")
-                        if (text.isEmpty()) {
-                            json.getString("name")
-                        } else {
-                            text
+                try {
+                    when (type) {
+                        1 -> {
+                            val json = JSONObject(String(data))
+                            val text = json.getString("text")
+                            if (text.isEmpty()) {
+                                json.getString("name")
+                            } else {
+                                text
+                            }
+                        }
+                        2 -> {
+                            // Returning only duration of the call
+                            val callDuration = edit - time
+                            formatDuration(callDuration)
+                        }
+                        3 -> {
+                            // File attachment - show original filename with optional message text
+                            val json = JSONObject(String(data))
+                            json.optString("text", "")
+                        }
+                        1000 -> {
+                            // System message - parse and format
+                            val sysMsg = com.revertron.mimir.net.parseSystemMessage(data)
+                            if (sysMsg != null) {
+                                formatSystemMessage(sysMsg, storage, chatId)
+                            } else {
+                                context.getString(R.string.system_message)
+                            }
+                        }
+                        else -> {
+                            String(data)
                         }
                     }
-                    2 -> {
-                        // Returning only duration of the call
-                        val callDuration = edit - time
-                        formatDuration(callDuration)
-                    }
-                    3 -> {
-                        // File attachment - show original filename with optional message text
-                        val json = JSONObject(String(data))
-                        json.optString("text", "")
-                    }
-                    1000 -> {
-                        // System message - parse and format
-                        val sysMsg = com.revertron.mimir.net.parseSystemMessage(data)
-                        if (sysMsg != null) {
-                            formatSystemMessage(sysMsg, storage, chatId)
-                        } else {
-                            context.getString(R.string.system_message)
-                        }
-                    }
-                    else -> {
-                        String(data)
-                    }
+                } catch (e: JSONException) {
+                    "Unable to format message of type $type:\n" + String(data)
                 }
             } else {
                 "<Empty>"
@@ -180,6 +189,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     val actorName = storage.getGroupMemberInfo(chatId, msg.actor)?.nickname
                         ?: Hex.toHexString(msg.actor).take(8)
                     "$actorName changed permissions for $targetName"
+                }
+                is SystemMessage.MessageDeleted -> {
+                    // This should never be displayed as it's an invisible system message
+                    // handled in MediatorManager.onSystemMessage()
+                    ""
                 }
                 is SystemMessage.Unknown -> {
                     "System event: 0x${msg.eventCode.toString(16)}"
@@ -1079,6 +1093,34 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     fun deleteGroupMessage(chatId: Long, messageId: Long): Boolean {
         val messagesTable = "messages_$chatId"
         return this.writableDatabase.delete(messagesTable, "id = ?", arrayOf(messageId.toString())) > 0
+    }
+
+    fun deleteGroupMessageByGuid(chatId: Long, guid: Long): Boolean {
+        val messagesTable = "messages_$chatId"
+
+        // First, get the message ID before deleting so we can notify listeners
+        var messageId: Long? = null
+        val cursor = readableDatabase.query(
+            messagesTable,
+            arrayOf("id"),
+            "guid = ?",
+            arrayOf(guid.toString()),
+            null, null, null
+        )
+        cursor.use {
+            if (it.moveToFirst()) {
+                messageId = it.getLong(0)
+            }
+        }
+
+        val deleted = this.writableDatabase.delete(messagesTable, "guid = ?", arrayOf(guid.toString())) > 0
+
+        // Notify listeners if message was found and deleted
+        if (deleted && messageId != null) {
+            listeners.forEach { it.onGroupMessageDeleted(chatId, messageId!!) }
+        }
+
+        return deleted
     }
 
     private fun getMessageIdByGuid(guid: Long): Long {
@@ -2732,8 +2774,10 @@ interface StorageListener {
     fun onMessageDelivered(id: Long, delivered: Boolean) {}
     fun onMessageReceived(id: Long, contactId: Long): Boolean { return false }
     fun onMessageRead(id: Long, contactId: Long) {}
+    fun onMessageDeleted(messageId: Long, contactId: Long) {}
 
     fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean { return false }
+    fun onGroupMessageDeleted(chatId: Long, messageId: Long) {}
     fun onGroupMessageRead(chatId: Long, id: Long) {}
     fun onGroupChatChanged(chatId: Long): Boolean { return false }
     fun onGroupInviteReceived(inviteId: Long, chatId: Long, fromPubkey: ByteArray) {}

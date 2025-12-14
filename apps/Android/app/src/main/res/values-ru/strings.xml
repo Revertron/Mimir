@@ -38,6 +38,8 @@
     <string name="menu_delete">Удалить</string>
     <string name="delete_message_dialog_title">Удалить сообщение</string>
     <string name="delete_message_dialog_text">Вы действительно хотите удалить это сообщение?</string>
+    <string name="failed_to_delete_message">Не удалось удалить сообщение</string>
+    <string name="mediator_not_connected">Медиатор не подключен</string>
     <string name="empty_name">Вам надо указать имя!</string>
     <string name="wrong_public_key">Неверный публичный ключ</string>
     <string name="remove_contact">Удалить контакт и чат</string>
