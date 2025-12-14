@@ -37,6 +37,7 @@ class App: Application() {
 
         storage = SqlStorage(this)
         storage.cleanUp()
+        storage.updateUnreadCountsForGroups()
         app = this
         callback = NetworkStateCallback(this)
         val handler = Handler(mainLooper)

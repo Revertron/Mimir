@@ -205,7 +205,7 @@ class GroupChatActivity : BaseChatActivity() {
         return getStorage().getFirstUnreadGroupMessageId(groupChat.chatId)
     }
 
-    override fun deleteMessageById(messageId: Long, guid: Long) {
+    override fun deleteMessageByIdOrGuid(messageId: Long, guid: Long) {
         // Send delete request to mediator in background thread
         Thread {
             try {
@@ -223,13 +223,17 @@ class GroupChatActivity : BaseChatActivity() {
                 // Request deletion from mediator
                 mediatorClient.deleteMessage(groupChat.chatId, guid)
 
-                // Success - the deletion will be processed when we receive the system message
-                // The system message handler will delete it from local storage
+                // Success - the delete message locally
+                getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
                 Log.i(TAG, "Message deletion request sent successfully for guid $guid")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete message", e)
-                runOnUiThread {
-                    Toast.makeText(this, getString(R.string.failed_to_delete_message), Toast.LENGTH_SHORT).show()
+                if (e.toString().contains("message not found")) {
+                    getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this, getString(R.string.failed_to_delete_message), Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }.start()

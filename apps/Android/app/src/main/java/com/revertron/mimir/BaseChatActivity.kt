@@ -165,7 +165,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     /**
      * Deletes a message by ID.
      */
-    protected abstract fun deleteMessageById(messageId: Long, guid: Long)
+    protected abstract fun deleteMessageByIdOrGuid(messageId: Long, guid: Long)
 
     /**
      * Gets a message for reply purposes.
@@ -595,7 +595,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         builder.setMessage(R.string.delete_message_dialog_text)
         builder.setIcon(R.drawable.ic_delete)
         builder.setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
-            deleteMessageById(messageId, guid)
+            deleteMessageByIdOrGuid(messageId, guid)
             adapter.deleteMessageId(messageId)
         }
         builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->

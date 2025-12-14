@@ -297,6 +297,31 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
+    fun updateUnreadCountsForGroups() {
+        readableDatabase.query("group_chats", arrayOf("chat_id"), null, null, null, null, null).use { chats ->
+            while (chats.moveToNext()) {
+                val chatId = chats.getLong(0)
+                val messagesTable = "messages_$chatId"
+
+                val cursor = readableDatabase.rawQuery(
+                    "SELECT COUNT(id) FROM $messagesTable WHERE read == 0",
+                    null
+                )
+                val count = if (cursor.moveToNext() && !cursor.isNull(0)) {
+                    cursor.getInt(0)
+                } else {
+                    0
+                }
+                cursor.close()
+
+                val updateValues = ContentValues().apply {
+                    put("unread_count", count)
+                }
+                writableDatabase.update("group_chats", updateValues, "chat_id = ?", arrayOf(chatId.toString()))
+            }
+        }
+    }
+
     private fun migrateGroupMessageIncomingColumn(db: SQLiteDatabase) {
         val myPubkeyHex = db.query("accounts", arrayOf("pubkey"), null, null, null, null, "id", "1")
             .use { if (it.moveToFirst()) Hex.toHexString(it.getBlob(0)) else null }
@@ -690,11 +715,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
-    fun setGroupMessageRead(chatId: Long, id: Long, read: Boolean) {
+    fun isGroupMessageUnread(chatId: Long, id: Long): Boolean {
         val messagesTable = "messages_$chatId"
-
-        // Check if message was previously unread
-        val wasUnread = try {
+        return try {
             val cursor = readableDatabase.query(
                 messagesTable,
                 arrayOf("read", "incoming"),
@@ -714,6 +737,13 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         } catch (e: Exception) {
             false
         }
+    }
+
+    fun setGroupMessageRead(chatId: Long, id: Long, read: Boolean) {
+        val messagesTable = "messages_$chatId"
+
+        // Check if message was previously unread
+        val wasUnread = isGroupMessageUnread(chatId, id)
 
         val values = ContentValues().apply {
             put("read", read)
@@ -1113,10 +1143,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             }
         }
 
+        val unread = if (messageId != null) isGroupMessageUnread(chatId, messageId) else false
         val deleted = this.writableDatabase.delete(messagesTable, "guid = ?", arrayOf(guid.toString())) > 0
 
         // Notify listeners if message was found and deleted
         if (deleted && messageId != null) {
+            if (unread) decrementGroupUnreadCount(chatId)
             listeners.forEach { it.onGroupMessageDeleted(chatId, messageId!!) }
         }
 
@@ -2097,6 +2129,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
         return id
     }
+
+
 
     fun checkGroupMessageExists(chatId: Long, guid: Long): Boolean {
         val messagesTable = "messages_$chatId"
