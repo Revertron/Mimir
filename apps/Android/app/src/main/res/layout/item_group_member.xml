@@ -45,9 +45,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:paddingHorizontal="8dp"
+                android:paddingLeft="8dp"
                 android:paddingVertical="2dp"
-                android:background="@drawable/button_rounded"
                 android:textSize="12sp"
                 android:textStyle="bold"
                 android:visibility="gone"
@@ -56,16 +55,38 @@
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 
-        <androidx.appcompat.widget.AppCompatTextView
-            android:id="@+id/member_status"
+        <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textSize="14sp"
-            android:alpha="0.7"
-            android:ellipsize="end"
-            android:singleLine="true"
-            tools:text="online" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/member_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginTop="2dp"
+                android:textSize="14sp"
+                android:alpha="0.7"
+                android:ellipsize="end"
+                android:singleLine="true"
+                tools:text="online" />
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/member_pubkey"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:paddingLeft="8dp"
+                android:textSize="14sp"
+                android:alpha="0.7"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:typeface="monospace"
+                tools:text="42ff1234" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 

@@ -415,15 +415,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         }
     }
 
-    private fun sendGroupChatMessage(
-        chatId: Long,
-        storage: SqlStorage,
-        guid: Long,
-        replyTo: Long,
-        sendTime: Long,
-        type: Int,
-        messageData: String
-    ) {
+    private fun sendGroupChatMessage(chatId: Long, storage: SqlStorage, guid: Long, replyTo: Long, sendTime: Long, type: Int, messageData: String) {
         try {
             // Get chat info for encryption
             val chatInfo = storage.getGroupChat(chatId)
@@ -437,14 +429,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val baos = java.io.ByteArrayOutputStream()
             val dos = java.io.DataOutputStream(baos)
 
-            val message = Message(
-                guid = guid,
-                replyTo = replyTo,
-                sendTime = sendTime,
-                editTime = 0,
-                type = type,
-                data = messageData.toByteArray()
-            )
+            val message = Message(guid, replyTo, sendTime, 0, type, messageData.toByteArray())
 
             // For attachments, writeMessage() needs the file path to read the file/image
             val filePath = if (type == 1 || type == 3) File(filesDir, "files").absolutePath else ""

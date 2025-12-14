@@ -37,6 +37,7 @@ class GroupMemberAdapter(
         val memberName: AppCompatTextView = view.findViewById(R.id.member_name)
         val memberStatus: AppCompatTextView = view.findViewById(R.id.member_status)
         val memberRole: AppCompatTextView = view.findViewById(R.id.member_role)
+        val memberPubkey: AppCompatTextView = view.findViewById(R.id.member_pubkey)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -53,8 +54,8 @@ class GroupMemberAdapter(
         val context = holder.itemView.context
 
         // Set member name
-        val displayName = member.nickname?.ifEmpty { null }
-            ?: Hex.toHexString(member.pubkey).take(16)
+        val pubKey = Hex.toHexString(member.pubkey).take(8)
+        val displayName = member.nickname?.ifEmpty { null } ?: pubKey
         holder.memberName.text = displayName
 
         // Show real online status
@@ -88,6 +89,8 @@ class GroupMemberAdapter(
                 holder.memberRole.visibility = View.GONE
             }
         }
+
+        holder.memberPubkey.text = pubKey
 
         // Load avatar
         val avatar = storage.getGroupMemberAvatar(chatId, member.pubkey, 48, 6)

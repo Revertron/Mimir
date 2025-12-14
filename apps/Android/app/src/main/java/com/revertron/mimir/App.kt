@@ -43,7 +43,7 @@ class App: Application() {
         val handler = Handler(mainLooper)
         handler.postDelayed({
             callback.register()
-        }, 15000)
+        }, 500)
     }
 
     override fun onTerminate() {
