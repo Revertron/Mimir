@@ -211,11 +211,6 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     private val androidId: Int = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.hashCode() ?: 0
     private var myPublicKey: ByteArray? = null
 
-    init {
-        // Register NotificationHelper as a listener to receive storage events
-        listeners.add(notificationManager)
-    }
-
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(CREATE_ACCOUNTS)
         db.execSQL(CREATE_CONTACTS)
@@ -2138,6 +2133,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             for (listener in listeners) {
                 processed = processed or listener.onGroupMessageReceived(chatId, id, senderId)
             }
+            Log.w(TAG, "Processed: $processed")
 
             // Only show notification if not processed by any listener (i.e., chat not open)
             // Don't show notifications for system messages

@@ -67,6 +67,7 @@ class GroupChatActivity : BaseChatActivity() {
                     if (chatId == groupChat.chatId) {
                         Log.i(TAG, "Message sent successfully: msgId=$messageId, guid=$guid")
                         mainHandler.post {
+                            startShortSound(R.raw.message_sent)
                             // Message sent successfully, refresh UI
                             adapter.notifyDataSetChanged()
                             recyclerView.scrollToPosition(adapter.itemCount - 1)
@@ -510,8 +511,13 @@ class GroupChatActivity : BaseChatActivity() {
             runOnUiThread {
                 val message = getStorage().getGroupMessage(chatId, id, false)
                 if (message != null) {
+                    val isAtEnd = recyclerView.isAtEnd()
                     adapter.addMessageId(id, message.incoming) // Add the message ID like broadcasts do
-                    recyclerView.scrollToPosition(adapter.itemCount - 1)
+                    if (isAtEnd) {
+                        recyclerView.scrollToEnd()
+                    } else {
+                        startShortSound(R.raw.message_more)
+                    }
 
                     // Check if this is a system message that affects member count
                     if (message.type == 1000 && message.data != null) {

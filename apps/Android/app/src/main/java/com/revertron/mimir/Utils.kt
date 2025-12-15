@@ -29,6 +29,8 @@ import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
@@ -990,6 +992,15 @@ fun Uri.length(context: Context): Long {
     }
 }
 
+fun RecyclerView.scrollToEnd() {
+    smoothScrollToPosition(adapter!!.itemCount - 1)
+}
+
+fun RecyclerView.isAtEnd(): Boolean {
+    val lm = layoutManager as? LinearLayoutManager ?: return false
+    return lm.findLastVisibleItemPosition() == lm.itemCount - 1
+}
+
 fun haveNetwork(context: Context): Boolean {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
@@ -998,20 +1009,4 @@ fun haveNetwork(context: Context): Boolean {
     val caps = cm.getNetworkCapabilities(activeNetwork)
     val aliveNetwork = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     return aliveNetwork
-}
-
-fun isGoogleOnline(): Boolean {
-    return try {
-        val url = URL("https://www.google.com/generate_204")   // 0-byte body
-        val conn = url.openConnection() as HttpURLConnection
-        conn.apply {
-            instanceFollowRedirects = false
-            connectTimeout = 3_000
-            readTimeout    = 3_000
-            requestMethod  = "HEAD"
-        }
-        conn.responseCode == 204          // Google returns 204 No-Content
-    } catch (ignored: IOException) {
-        false
-    }
 }

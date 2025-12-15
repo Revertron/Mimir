@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -253,8 +251,11 @@ class ChatActivity : BaseChatActivity() {
         runOnUiThread {
             Log.i(TAG, "Message $id sent to $contactId")
             if (contact.id == contactId) {
+                val isAtEnd = recyclerView.isAtEnd()
                 adapter.addMessageId(id, false)
-                recyclerView.smoothScrollToPosition(adapter.itemCount)
+                if (isAtEnd) {
+                    recyclerView.scrollToEnd()
+                }
             }
         }
     }
@@ -263,7 +264,7 @@ class ChatActivity : BaseChatActivity() {
         Log.i(TAG, "Message $id delivered = $delivered")
         runOnUiThread {
             adapter.setMessageDelivered(id, delivered)
-            startDeliveredSound()
+            startShortSound(R.raw.message_sent)
         }
     }
 
@@ -272,29 +273,19 @@ class ChatActivity : BaseChatActivity() {
         if (contact.id == contactId) {
             runOnUiThread {
                 Log.i(TAG, "Adding message")
+                val isAtEnd = recyclerView.isAtEnd()
                 adapter.addMessageId(id, true)
                 if (isChatVisible) {
-                    //TODO scroll only if was already at the bottom
-                    recyclerView.smoothScrollToPosition(adapter.itemCount)
+                    if (isAtEnd) {
+                        recyclerView.scrollToEnd()
+                    } else {
+                        startShortSound(R.raw.message_more)
+                    }
                 }
             }
             return isChatVisible
         }
         return false
-    }
-
-    private fun startDeliveredSound() {
-        val attributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        val mediaPlayer = MediaPlayer.create(this, R.raw.message_sent, attributes, 0).apply {
-            setOnCompletionListener { player ->
-                player?.release()
-            }
-            isLooping = false
-        }
-        mediaPlayer.start()
     }
 
     // Lifecycle

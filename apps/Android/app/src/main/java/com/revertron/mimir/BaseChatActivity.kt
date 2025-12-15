@@ -7,6 +7,8 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.PorterDuff
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -635,5 +637,21 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         super.finish()
         @Suppress("DEPRECATION")
         overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
+    }
+
+    // Other
+
+    fun startShortSound(soundRes: Int) {
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        val mediaPlayer = MediaPlayer.create(this, soundRes, attributes, 0).apply {
+            setOnCompletionListener { player ->
+                player?.release()
+            }
+            isLooping = false
+        }
+        mediaPlayer.start()
     }
 }
