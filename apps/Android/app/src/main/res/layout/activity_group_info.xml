@@ -127,16 +127,16 @@
                 android:orientation="horizontal"
                 android:paddingVertical="16dp"
                 android:paddingHorizontal="16dp"
-                android:gravity="center">
+                android:gravity="center_horizontal|top">
 
                 <!-- Message Button -->
                 <androidx.appcompat.widget.LinearLayoutCompat
                     android:id="@+id/btn_message"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:orientation="vertical"
-                    android:gravity="center"
+                    android:gravity="center_horizontal|top"
                     android:padding="12dp"
                     android:background="@drawable/button_rounded">
 
@@ -149,6 +149,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
+                        android:gravity="center"
                         android:text="@string/message"
                         android:textSize="12sp" />
                 </androidx.appcompat.widget.LinearLayoutCompat>
@@ -157,11 +158,11 @@
                 <androidx.appcompat.widget.LinearLayoutCompat
                     android:id="@+id/btn_mute"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:layout_marginStart="8dp"
                     android:orientation="vertical"
-                    android:gravity="center"
+                    android:gravity="center_horizontal|top"
                     android:padding="12dp"
                     android:background="@drawable/button_rounded">
 
@@ -176,6 +177,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
+                        android:gravity="center"
                         android:text="@string/mute"
                         android:textSize="12sp" />
                 </androidx.appcompat.widget.LinearLayoutCompat>
@@ -184,11 +186,11 @@
                 <androidx.appcompat.widget.LinearLayoutCompat
                     android:id="@+id/btn_leave_chat"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:layout_marginStart="8dp"
                     android:orientation="vertical"
-                    android:gravity="center"
+                    android:gravity="center_horizontal|top"
                     android:padding="12dp"
                     android:background="@drawable/button_rounded">
 
@@ -203,6 +205,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
+                        android:gravity="center"
                         android:text="@string/leave_group"
                         android:textSize="12sp" />
                 </androidx.appcompat.widget.LinearLayoutCompat>
