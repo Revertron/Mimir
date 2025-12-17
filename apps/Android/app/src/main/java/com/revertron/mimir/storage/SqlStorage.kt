@@ -138,7 +138,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                             // System message - parse and format
                             val sysMsg = com.revertron.mimir.net.parseSystemMessage(data)
                             if (sysMsg != null) {
-                                formatSystemMessage(sysMsg, storage, chatId)
+                                formatSystemMessage(context, sysMsg, storage, chatId)
                             } else {
                                 context.getString(R.string.system_message)
                             }
@@ -155,7 +155,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             }
         }
 
-        private fun formatSystemMessage(msg: SystemMessage, storage: SqlStorage, chatId: Long): String {
+        private fun formatSystemMessage(context: Context, msg: SystemMessage, storage: SqlStorage, chatId: Long): String {
             return when (msg) {
                 is SystemMessage.UserAdded -> {
                     val targetName = storage.getGroupMemberInfo(chatId, msg.targetUser)?.nickname
@@ -191,7 +191,19 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         ?: Hex.toHexString(msg.targetUser).take(8)
                     val actorName = storage.getGroupMemberInfo(chatId, msg.actor)?.nickname
                         ?: Hex.toHexString(msg.actor).take(8)
-                    "$actorName changed permissions for $targetName"
+
+                    // Determine role name from permissions
+                    val PERM_ADMIN = 0x40
+                    val PERM_MOD = 0x20
+                    val PERM_BANNED = 0x01
+                    val roleName = when {
+                        (msg.newPermissions and PERM_BANNED) != 0 -> context.getString(R.string.role_banned)
+                        (msg.newPermissions and PERM_ADMIN) != 0 -> context.getString(R.string.admin)
+                        (msg.newPermissions and PERM_MOD) != 0 -> context.getString(R.string.moderator)
+                        else -> context.getString(R.string.role_user)
+                    }
+
+                    context.getString(R.string.system_msg_role_changed, actorName, targetName, roleName)
                 }
                 is SystemMessage.MessageDeleted -> {
                     // This should never be displayed as it's an invisible system message

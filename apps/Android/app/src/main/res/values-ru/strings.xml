@@ -86,6 +86,7 @@
     <string name="select_contact_to_share">Выберите контакт</string>
     <string name="add_custom_peer">Добавить свой узел</string>
     <string name="add_button">Добавить</string>
+    <string name="audio_call_outgoing">Исходящий звонок</string>
     <string name="call_already_ongoing">Звонок уже в процессе!</string>
     <string name="updates_title">Обновление Мимира</string>
     <string name="new_version_title">Доступна новая версия %s!</string>
@@ -98,6 +99,7 @@
     <string name="check_for_updates">Проверить обновления</string>
     <string name="already_last_version">Новых версий не обнаружено</string>
     <string name="error_checking_updates">Ошибка проверки обновлений: %s</string>
+    <string name="download_failed">Ошибка скачивания</string>
     <string name="configure_peers">Настройка узлов</string>
     <string name="use_default_peers">Узлы по умолчанию</string>
     <string name="custom_peers">Свои узлы</string>
@@ -241,4 +243,21 @@
     <string name="send_photo">Фото</string>
     <string name="send_file">Файл</string>
     <string name="open_with">Открыть с помощью:</string>
+    <string name="audio_call_incoming">Входящий звонок</string>
+    <string name="channel_name_update_download">Скачивание обновлений</string>
+    <string name="channel_description_update_download">Показывает прогресс скачивания обновлений</string>
+    <string name="downloading_update_progress">Скачивание %1$s (%2$d%%)</string>
+    <string name="only_owner_can_manage_members">Только владелец может управлять пользователями</string>
+    <string name="cannot_perform_actions_on_owner">Нельзя изменить права владельца чата</string>
+    <string name="menu_ban_user">Забанить пользователя</string>
+    <string name="menu_change_role">Изменить роль</string>
+    <string name="ban_user_title">Забанить пользователя</string>
+    <string name="ban_user_confirmation">Вы уверены, что хотите забанить %s?</string>
+    <string name="ban">Забанить</string>
+    <string name="user_banned">Пользователь забанен: %s</string>
+    <string name="change_role_title">Изменить роль %s</string>
+    <string name="role_user">Пользователь</string>
+    <string name="role_changed">Изменён с %1$s на %2$s</string>
+    <string name="role_banned">забанен</string>
+    <string name="system_msg_role_changed">%1$s изменил(а) роль %2$s на %3$s</string>
 </resources>

@@ -1,27 +1,32 @@
 package com.revertron.mimir
 
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.PorterDuff
 import android.os.Bundle
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.MenuItem
 import android.view.View
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.appcompat.widget.Toolbar
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.storage.GroupMemberInfo
 import com.revertron.mimir.ui.GroupMemberAdapter
 import org.bouncycastle.util.encoders.Hex
 
-class GroupInfoActivity : BaseActivity(), View.OnClickListener {
+class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener {
 
     companion object {
         const val TAG = "GroupInfoActivity"
@@ -44,6 +49,62 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
     private var isOwner: Boolean = false
     private var memberCount: Int = 0
     private var onlineCount: Int = 0 // TODO: Implement real online tracking
+
+    private val mediatorReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                "ACTION_MEDIATOR_USER_BANNED" -> {
+                    val intentChatId = intent.getLongExtra("chat_id", 0)
+                    if (intentChatId == chatId) {
+                        val userPubkey = intent.getByteArrayExtra("user_pubkey")
+                        val memberName = if (userPubkey != null) {
+                            getStorage().getGroupMemberInfo(chatId, userPubkey)?.nickname
+                                ?: Hex.toHexString(userPubkey).take(16)
+                        } else {
+                            "User"
+                        }
+                        Toast.makeText(this@GroupInfoActivity, getString(R.string.user_banned, memberName), Toast.LENGTH_SHORT).show()
+                        // Refresh member list
+                        refreshMemberStatus()
+                    }
+                }
+                "ACTION_MEDIATOR_ROLE_CHANGED" -> {
+                    val intentChatId = intent.getLongExtra("chat_id", 0)
+                    if (intentChatId == chatId) {
+                        val userPubkey = intent.getByteArrayExtra("user_pubkey")
+                        val permissions = intent.getIntExtra("permissions", 0)
+
+                        val memberName = if (userPubkey != null) {
+                            getStorage().getGroupMemberInfo(chatId, userPubkey)?.nickname
+                                ?: Hex.toHexString(userPubkey).take(16)
+                        } else {
+                            "User"
+                        }
+
+                        // Determine role name from permissions
+                        val PERM_ADMIN = 0x40
+                        val PERM_MOD = 0x20
+                        val roleName = when {
+                            (permissions and PERM_ADMIN) != 0 -> getString(R.string.admin)
+                            (permissions and PERM_MOD) != 0 -> getString(R.string.moderator)
+                            else -> getString(R.string.role_user)
+                        }
+
+                        Toast.makeText(this@GroupInfoActivity, getString(R.string.role_changed, memberName, roleName), Toast.LENGTH_SHORT).show()
+                        // Refresh member list
+                        refreshMemberStatus()
+                    }
+                }
+                "ACTION_MEDIATOR_ERROR" -> {
+                    val operation = intent.getStringExtra("operation")
+                    val error = intent.getStringExtra("error")
+                    if (operation == "ban_user" || operation == "change_role") {
+                        Toast.makeText(this@GroupInfoActivity, "Error: $error", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -290,7 +351,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
             currentUserPubkey = currentUserPubkey,
             storage = getStorage(),
             members = members,
-            onClick = this
+            onClick = this,
+            onLongClick = this
         )
 
         val recyclerView = findViewById<RecyclerView>(R.id.members_list)
@@ -344,6 +406,15 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
 
     override fun onResume() {
         super.onResume()
+
+        // Register broadcast receiver for mediator operations
+        val filter = IntentFilter().apply {
+            addAction("ACTION_MEDIATOR_USER_BANNED")
+            addAction("ACTION_MEDIATOR_ROLE_CHANGED")
+            addAction("ACTION_MEDIATOR_ERROR")
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(mediatorReceiver, filter)
+
         refreshMemberStatus()
     }
 
@@ -359,6 +430,46 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
         }
     }
 
+    override fun onLongClick(v: View?): Boolean {
+        // Handle member item long-click
+        val member = v?.tag as? GroupMemberInfo ?: return false
+
+        // Only show menu if current user is owner or has appropriate permissions
+        // For now, we'll check if the current user is the owner
+        if (!isOwner) {
+            Toast.makeText(this, getString(R.string.only_owner_can_manage_members), Toast.LENGTH_SHORT).show()
+            return true
+        }
+
+        // Don't allow actions on the owner
+        val PERM_OWNER = 0x80
+        if ((member.permissions and PERM_OWNER) != 0) {
+            Toast.makeText(this, getString(R.string.cannot_perform_actions_on_owner), Toast.LENGTH_SHORT).show()
+            return true
+        }
+
+        // Create and show popup menu
+        val popup = PopupMenu(this, v)
+        popup.inflate(R.menu.menu_group_member)
+
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.ban_user -> {
+                    banUser(member)
+                    true
+                }
+                R.id.change_role -> {
+                    changeUserRole(member)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        popup.show()
+        return true
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> {
@@ -367,6 +478,81 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun banUser(member: GroupMemberInfo) {
+        val memberName = member.nickname?.ifEmpty { null } ?: Hex.toHexString(member.pubkey).take(16)
+
+        // Show confirmation dialog
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(getString(R.string.ban_user_title))
+            .setMessage(getString(R.string.ban_user_confirmation, memberName))
+            .setPositiveButton(getString(R.string.ban)) { _, _ ->
+                // Send intent to ConnectionService to ban the user
+                val intent = Intent(this, ConnectionService::class.java)
+                intent.putExtra("command", "mediator_ban_user")
+                intent.putExtra("chat_id", chatId)
+                intent.putExtra("user_pubkey", member.pubkey)
+                startService(intent)
+
+                Log.i(TAG, "Sent ban user request to ConnectionService")
+                // Toast will be shown when broadcast is received
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun changeUserRole(member: GroupMemberInfo) {
+        val memberName = member.nickname?.ifEmpty { null } ?: Hex.toHexString(member.pubkey).take(16)
+
+        // Permission flags
+        val PERM_ADMIN = 0x40
+        val PERM_MOD = 0x20
+        val PERM_USER = 0x10
+
+        // Determine current role
+        val currentRole = when {
+            (member.permissions and PERM_ADMIN) != 0 -> getString(R.string.admin)
+            (member.permissions and PERM_MOD) != 0 -> getString(R.string.moderator)
+            else -> getString(R.string.role_user)
+        }
+
+        // Show role selection dialog
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val roles = arrayOf(getString(R.string.role_user), getString(R.string.moderator), getString(R.string.admin))
+        val currentIndex = roles.indexOf(currentRole)
+
+        AlertDialog.Builder(wrapper)
+            .setTitle(getString(R.string.change_role_title, memberName))
+            .setSingleChoiceItems(roles, currentIndex) { dialog, which ->
+                val newRole = roles[which]
+                if (newRole != currentRole) {
+                    // Send intent to ConnectionService to change user role
+                    val roleUser = getString(R.string.role_user)
+                    val roleModerator = getString(R.string.moderator)
+                    val roleAdmin = getString(R.string.admin)
+
+                    val newPermissions = when (newRole) {
+                        roleAdmin -> PERM_ADMIN
+                        roleModerator -> PERM_MOD
+                        else -> PERM_USER
+                    }
+
+                    val intent = Intent(this, ConnectionService::class.java)
+                    intent.putExtra("command", "mediator_change_role")
+                    intent.putExtra("chat_id", chatId)
+                    intent.putExtra("user_pubkey", member.pubkey)
+                    intent.putExtra("permissions", newPermissions)
+                    startService(intent)
+
+                    Log.i(TAG, "Sent change role request to ConnectionService: $newRole")
+                    // Toast will be shown when broadcast is received
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     override fun finish() {
@@ -463,5 +649,10 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener {
             muteIcon.setImageResource(R.drawable.ic_volume_off)
             muteText.text = getString(R.string.mute)
         }
+    }
+
+    override fun onDestroy() {
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
+        super.onDestroy()
     }
 }

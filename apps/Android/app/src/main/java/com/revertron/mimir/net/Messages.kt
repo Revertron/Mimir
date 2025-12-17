@@ -557,10 +557,11 @@ sealed class SystemMessage {
 
     /**
      * User permissions were changed.
-     * Format: [event_code(1)][target_user(32)][actor(32)][random(32)]
+     * Format: [event_code(1)][target_user(32)][new_perms(1)][actor(32)][random(32)]
      */
     data class PermsChanged(
         val targetUser: ByteArray,
+        val newPermissions: Int,
         val actor: ByteArray,
         val random: ByteArray
     ) : SystemMessage() {
@@ -656,14 +657,15 @@ fun parseSystemMessage(data: ByteArray): SystemMessage? {
             }
 
             SYS_PERMS_CHANGED -> {
-                if (data.size < 97) { // 1 + 32 + 32 + 32
+                if (data.size < 98) { // 1 + 32 + 1 + 32 + 32
                     Log.w(TAG, "SYS_PERMS_CHANGED message too short: ${data.size}")
                     return null
                 }
                 val targetUser = data.copyOfRange(1, 33)
-                val actor = data.copyOfRange(33, 65)
-                val random = data.copyOfRange(65, 97)
-                SystemMessage.PermsChanged(targetUser, actor, random)
+                val newPermissions = data[33].toInt() and 0xFF
+                val actor = data.copyOfRange(34, 66)
+                val random = data.copyOfRange(66, 98)
+                SystemMessage.PermsChanged(targetUser, newPermissions, actor, random)
             }
 
             SYS_MESSAGE_DELETED -> {

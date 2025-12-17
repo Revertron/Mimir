@@ -80,6 +80,7 @@ class MediatorClient(
         private const val CMD_GET_MEMBERS_INFO: Int = 0x52 // client requests all members info and membership
         private const val CMD_GET_MEMBERS: Int = 0x53 // client requests all member pubkeys with permissions and online status
         private const val CMD_GOT_MEMBER_INFO: Int = 0x54 // mediator push: member info updated
+        private const val CMD_CHANGE_MEMBER_STATUS: Int = 0x55 // change member permissions (ban, promote, demote)
 
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
@@ -859,6 +860,45 @@ class MediatorClient(
         return members
     }
 
+    /**
+     * Changes a member's permissions in a chat.
+     * Can be used to promote, demote, or ban users.
+     *
+     * Protocol: cmdChangeMemberStatus (0x55)
+     * Request payload: [chatId(u64)][userPubkey(32)][newPerms(u8)]
+     *
+     * Permission flags:
+     * - PERM_OWNER = 0x80 (cannot be changed, owner is immutable)
+     * - PERM_ADMIN = 0x40 (can modify non-owners)
+     * - PERM_MOD = 0x20 (moderator)
+     * - PERM_USER = 0x10 (regular user)
+     * - PERM_READ_ONLY = 0x08 (read-only access)
+     * - PERM_BANNED = 0x01 (banned from chat)
+     *
+     * Only owner and admin can change permissions.
+     * Admin cannot modify owner.
+     *
+     * @param chatId The group chat ID
+     * @param userPubkey The public key of the user whose permissions to change (32 bytes)
+     * @param newPermissions The new permission flags
+     */
+    fun changeMemberStatus(chatId: Long, userPubkey: ByteArray, newPermissions: Int) {
+        require(userPubkey.size == 32) { "userPubkey must be 32 bytes" }
+        require(newPermissions in 0x00..0xFF) { "newPermissions must be a single byte (0-255)" }
+
+        // Build TLV payload
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            writeTLV(TAG_USER_PUBKEY, userPubkey)
+            writeTLVByte(TAG_PERMS, newPermissions.toByte())
+        }.toByteArray()
+
+        val resp = request(CMD_CHANGE_MEMBER_STATUS, payload) ?: throw MediatorException("changeMemberStatus timeout")
+        if (resp.status != STATUS_OK) throw resp.asException("changeMemberStatus failed")
+
+        Log.i(TAG, "Changed permissions for user ${Hex.toHexString(userPubkey).take(8)}... in chat $chatId to 0x${newPermissions.toString(16)}")
+    }
+
     fun stopClient() {
         running = false
         closeQuietly()
@@ -1168,7 +1208,7 @@ class MediatorClient(
          * - SYS_USER_BANNED (0x04): [target_user(32)][actor(32)][random(32)]
          * - SYS_CHAT_DELETED (0x05): [actor(32)][random(32)]
          * - SYS_CHAT_INFO_CHANGE (0x06): [actor(32)][random(32)]
-         * - SYS_PERMS_CHANGED (0x07): [target_user(32)][actor(32)][random(32)]
+         * - SYS_PERMS_CHANGED (0x07): [target_user(32)][new_perms(1)][actor(32)][random(32)]
          *
          * @param chatId The group chat ID
          * @param messageId Server-assigned message ID

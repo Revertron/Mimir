@@ -19,7 +19,8 @@ class GroupMemberAdapter(
     private val currentUserPubkey: ByteArray,
     private val storage: SqlStorage,
     private var members: List<GroupMemberInfo>,
-    private val onClick: View.OnClickListener?
+    private val onClick: View.OnClickListener?,
+    private val onLongClick: View.OnLongClickListener?
 ) : RecyclerView.Adapter<GroupMemberAdapter.ViewHolder>() {
 
     companion object {
@@ -45,6 +46,9 @@ class GroupMemberAdapter(
             .inflate(R.layout.item_group_member, parent, false)
         onClick?.let {
             view.setOnClickListener(it)
+        }
+        onLongClick?.let {
+            view.setOnLongClickListener(it)
         }
         return ViewHolder(view)
     }

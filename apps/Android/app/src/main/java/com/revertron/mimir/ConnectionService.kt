@@ -325,6 +325,25 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }.start()
                 }
             }
+            "mediator_ban_user" -> {
+                val chatId = intent.getLongExtra("chat_id", 0)
+                val userPubkey = intent.getByteArrayExtra("user_pubkey")
+                if (chatId != 0L && userPubkey != null) {
+                    Thread {
+                        banUserFromGroupChat(chatId, storage, userPubkey)
+                    }.start()
+                }
+            }
+            "mediator_change_role" -> {
+                val chatId = intent.getLongExtra("chat_id", 0)
+                val userPubkey = intent.getByteArrayExtra("user_pubkey")
+                val permissions = intent.getIntExtra("permissions", 0)
+                if (chatId != 0L && userPubkey != null) {
+                    Thread {
+                        changeMemberRole(chatId, storage, userPubkey, permissions)
+                    }.start()
+                }
+            }
             "mediator_register_listener" -> {
                 val chatId = intent.getLongExtra("chat_id", 0)
                 Log.i(TAG, "Registered listener for chat $chatId")
@@ -412,6 +431,61 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting chat", e)
             broadcastMediatorError("delete", e.message ?: "Unknown error")
+        }
+    }
+
+    private fun banUserFromGroupChat(chatId: Long, storage: SqlStorage, userPubkey: ByteArray) {
+        try {
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                broadcastMediatorError("ban_user", "Chat not found")
+                return
+            }
+
+            val client = mediatorManager!!.getOrCreateClient(chatInfo.mediatorPubkey)
+            // Use deleteUser which bans the user (sets banned=1 and adds PERM_BANNED flag)
+            client.deleteUser(chatId, userPubkey)
+
+            val pubkeyHex = Hex.toHexString(userPubkey).take(8)
+            Log.i(TAG, "Banned user $pubkeyHex from chat $chatId")
+
+            val broadcastIntent = Intent("ACTION_MEDIATOR_USER_BANNED").apply {
+                putExtra("chat_id", chatId)
+                putExtra("user_pubkey", userPubkey)
+            }
+            LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error banning user", e)
+            broadcastMediatorError("ban_user", e.message ?: "Unknown error")
+        }
+    }
+
+    private fun changeMemberRole(chatId: Long, storage: SqlStorage, userPubkey: ByteArray, newPermissions: Int) {
+        try {
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                broadcastMediatorError("change_role", "Chat not found")
+                return
+            }
+
+            val client = mediatorManager!!.getOrCreateClient(chatInfo.mediatorPubkey)
+            // Change member permissions using the new changeMemberStatus method
+            client.changeMemberStatus(chatId, userPubkey, newPermissions)
+
+            val pubkeyHex = Hex.toHexString(userPubkey).take(8)
+            Log.i(TAG, "Changed role for user $pubkeyHex in chat $chatId to 0x${newPermissions.toString(16)}")
+
+            val broadcastIntent = Intent("ACTION_MEDIATOR_ROLE_CHANGED").apply {
+                putExtra("chat_id", chatId)
+                putExtra("user_pubkey", userPubkey)
+                putExtra("permissions", newPermissions)
+            }
+            LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error changing member role", e)
+            broadcastMediatorError("change_role", e.message ?: "Unknown error")
         }
     }
 
