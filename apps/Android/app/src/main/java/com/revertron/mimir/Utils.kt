@@ -116,7 +116,7 @@ fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
         val current = Version.parse(BuildConfig.VERSION_NAME)
         if (newestCode > current && newestVersion != null) {
             Log.i(TAG, "Found new version: $newestVersion")
-            NotificationHelper.showUpdateAvailableNotification(context, newestCode, newestDesc!!, newestApkPath!!)
+            NotificationHelper.showUpdateAvailableNotification(context, newestCode, newestDesc!!, newestApkPath!!, !forced)
         } else if (forced) {
             Toast.makeText(context, R.string.already_last_version, Toast.LENGTH_LONG).show()
         }

@@ -135,7 +135,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
          * @param description Update description
          * @param apkPath Path to APK file on update server
          */
-        fun showUpdateAvailableNotification(context: Context, version: Version, description: String, apkPath: String) {
+        fun showUpdateAvailableNotification(context: Context, version: Version, description: String, apkPath: String, silent: Boolean) {
             createUpdatesChannel(context)
 
             val intent = Intent(context, UpdateActivity::class.java).apply {
@@ -166,6 +166,8 @@ class NotificationHelper(private val context: Context) : StorageListener {
                 .setAutoCancel(true)
                 .setDeleteIntent(deletePendingIntent)
                 .setContentIntent(pendingIntent)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setSilent(silent)
                 .build()
 
             if (hasPostNotificationsPermission(context)) {
@@ -186,7 +188,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
                     val channel = NotificationChannel(
                         CHANNEL_UPDATES,
                         "App updates",
-                        NotificationManager.IMPORTANCE_HIGH
+                        NotificationManager.IMPORTANCE_MIN
                     )
                     notificationManager.createNotificationChannel(channel)
                 }
