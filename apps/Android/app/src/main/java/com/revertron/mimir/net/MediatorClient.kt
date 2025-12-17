@@ -576,7 +576,7 @@ class MediatorClient(
                 TAG_MESSAGE_ID -> msgId = value.readLong(0)
                 TAG_MESSAGE_GUID -> guid = value.readLong(0)
                 TAG_PUBKEY -> author = value
-                TAG_TIMESTAMP -> timestamp = value.readLong(0)
+                TAG_TIMESTAMP -> timestamp = value.readLong(0) * 1000 // Convert seconds to milliseconds
                 TAG_MESSAGE_BLOB -> {
                     blob = value
                     // Message complete - add to list

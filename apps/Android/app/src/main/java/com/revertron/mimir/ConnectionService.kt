@@ -586,12 +586,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             val serverLastId = client.subscribe(chatId)
             Log.i(TAG, "Subscribed to chat $chatId (server last message ID: $serverLastId)")
 
-            // Register message listener for this chat
-            globalMessageListener?.let {
-                mediatorManager?.registerMessageListener(chatId, it)
-                Log.i(TAG, "Registered message listener for chat $chatId")
-            }
-
             // Mark chat as subscribed and broadcast status for badge update
             mediatorManager?.markChatSubscribed(chatId)
             broadcastGroupChatStatus(chatId, storage)
@@ -603,10 +597,17 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
             Thread {
                 Thread.sleep(1000)
-                // Sync missed messages after successful subscription (pass server last ID from subscribe response)
+                // Sync missed messages BEFORE registering listener to prevent race condition
+                // where push messages arrive and update localLastId before sync completes
                 syncMissedMessages(chatId, client, storage, serverLastId)
                 // Re-send any undelivered messages after successful subscription
                 resendUndeliveredMessages(chatId, storage)
+
+                // NOW register message listener for future push messages
+                globalMessageListener?.let {
+                    mediatorManager?.registerMessageListener(chatId, it)
+                    Log.i(TAG, "Registered message listener for chat $chatId after sync")
+                }
             }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Error subscribing to chat", e)

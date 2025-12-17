@@ -89,6 +89,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
     // State
     protected var isChatVisible: Boolean = false
+    protected var lastSoundTime = 0L
 
     // Permission launchers
     protected val cameraPermissionLauncher =
@@ -642,6 +643,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     // Other
 
     fun startShortSound(soundRes: Int) {
+        if (System.currentTimeMillis() + 300 > lastSoundTime) {
+            return
+        }
         val attributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -653,5 +657,6 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             isLooping = false
         }
         mediaPlayer.start()
+        lastSoundTime = System.currentTimeMillis()
     }
 }

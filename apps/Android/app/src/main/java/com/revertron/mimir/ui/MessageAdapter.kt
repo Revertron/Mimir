@@ -272,6 +272,15 @@ class MessageAdapter(
         holder.itemView.findViewById<View>(R.id.message).tag = Pair(message.id, message.guid)
         holder.sent.tag = message.delivered
 
+        // Disable click listener for system messages (type 1000)
+        if (message.type == 1000) {
+            holder.itemView.findViewById<View>(R.id.message).setOnClickListener(null)
+            holder.itemView.findViewById<View>(R.id.message).isClickable = false
+        } else {
+            holder.itemView.findViewById<View>(R.id.message).setOnClickListener(onClick)
+            holder.itemView.findViewById<View>(R.id.message).isClickable = true
+        }
+
         if (message.replyTo != 0L) {
             val replyToMessage = if (groupChat) {
                 storage.getGroupMessage(chatId, message.replyTo, true)
