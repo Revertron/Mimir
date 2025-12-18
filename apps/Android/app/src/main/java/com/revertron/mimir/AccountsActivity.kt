@@ -147,6 +147,8 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
                         val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
                         avatarView.setImageBitmap(bmp)
                     })
+                } else {
+                    Toast.makeText(this, R.string.error_loading_avatar_picture, Toast.LENGTH_LONG).show()
                 }
             }.start()
         }

@@ -251,7 +251,7 @@ fun loadSquareAvatar(context: Context, uri: Uri, maxSize: Int): Bitmap? {
         val bmp = cr.openInputStream(uri).use { ins ->
             BitmapFactory.decodeStream(ins)
         } ?: return null
-        return bmp
+        return rotateBitmapAccordingToExif(bmp, uri, cr)
     }
 
     val shortEdge = min(w, h)
@@ -270,13 +270,18 @@ fun loadSquareAvatar(context: Context, uri: Uri, maxSize: Int): Bitmap? {
     } ?: return null
 
     /* ---------------------------------------------------------------------
+       2.5. Rotate according to EXIF orientation if needed
+       ------------------------------------------------------------------ */
+    val rotated = rotateBitmapAccordingToExif(bmp, uri, cr)
+
+    /* ---------------------------------------------------------------------
        3. Fine-scale so that the *smaller* side becomes exactly maxSize
        ------------------------------------------------------------------ */
-    val scale = maxSize.toFloat() / min(bmp.width, bmp.height)
+    val scale = maxSize.toFloat() / min(rotated.width, rotated.height)
     val matrix = Matrix().apply { postScale(scale, scale) }
 
     val scaled = Bitmap.createBitmap(
-        bmp, 0, 0, bmp.width, bmp.height, matrix, true
+        rotated, 0, 0, rotated.width, rotated.height, matrix, true
     )
 
     /* ---------------------------------------------------------------------
@@ -291,9 +296,11 @@ fun loadSquareAvatar(context: Context, uri: Uri, maxSize: Int): Bitmap? {
     )
 
     /* ---------------------------------------------------------------------
-       5. Clean up if we created an intermediate bitmap
+       5. Clean up intermediate bitmaps
        ------------------------------------------------------------------ */
-    if (scaled != bmp) scaled.recycle()
+    if (bmp != rotated) bmp.recycle()
+    if (scaled != rotated) scaled.recycle()
+    if (rotated != avatar) rotated.recycle()
     return avatar
 }
 
