@@ -52,6 +52,16 @@ class ConnectionInputStream(private val conn: Connection, bufferSize: Int = 4096
         pos = 0
         count = 0
         while (true) {
+            // Check if connection is dead before attempting to read
+            if (!conn.isAlive) {
+                return false
+            }
+
+            // Check if thread has been interrupted (from stopClient())
+            if (Thread.currentThread().isInterrupted) {
+                return false
+            }
+
             val read = try {
                 conn.readWithTimeout(buf, 500).toInt()
             } catch (e: Exception) {
