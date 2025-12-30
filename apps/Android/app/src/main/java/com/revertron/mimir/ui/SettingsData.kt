@@ -52,7 +52,7 @@ object SettingsData {
                 titleRes = R.string.automatic_updates_checking,
                 descriptionRes = R.string.automatic_updates_checking_desc,
                 isSwitch = true,
-                checked = sp.getBoolean(KEY_AUTO_UPDATES, false)
+                checked = sp.getBoolean(KEY_AUTO_UPDATES, true)
             ),
 
             SettingsAdapter.Item(
