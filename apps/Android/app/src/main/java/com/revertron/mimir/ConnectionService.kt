@@ -221,14 +221,27 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }
             "online" -> {
                 mimirServer?.reconnectPeers()
+                mimirServer?.signalNetworkChange() // Wake up online state thread immediately
                 Log.i(TAG, "Resending unsent messages")
                 mimirServer?.sendMessages()
 
                 if (mediatorManager != null) {
                     Thread {
-                        Thread.sleep(2000)
-                        // Reconnect to mediators and resubscribe to chats when coming online
-                        connectAndSubscribeToAllChats(storage)
+                        // Wait for App.app.online to become true before connecting to mediators
+                        // This ensures Yggdrasil network is fully up before mediator connections
+                        val maxWaitTime = 15000L // 15 seconds max
+                        val startTime = System.currentTimeMillis()
+                        while (!App.app.online && System.currentTimeMillis() - startTime < maxWaitTime) {
+                            Thread.sleep(1000)
+                        }
+
+                        if (App.app.online) {
+                            Log.i(TAG, "Yggdrasil network is online, proceeding with mediator connections")
+                            // Reconnect to mediators and resubscribe to chats when coming online
+                            connectAndSubscribeToAllChats(storage)
+                        } else {
+                            Log.w(TAG, "Timeout waiting for Yggdrasil network, skipping mediator connection")
+                        }
                     }.start()
                 }
 

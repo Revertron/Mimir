@@ -566,6 +566,7 @@ class GroupChatActivity : BaseChatActivity() {
                 App.app.mediatorManager?.getOrCreateClient()
             } catch (e: Throwable) {
                 Log.d(TAG, "Error getting client: $e")
+                showConnectionStatus(MediatorManager.GroupChatStatus.DISCONNECTED)
                 return@Thread
             }
             if (mediatorClient != null) {
