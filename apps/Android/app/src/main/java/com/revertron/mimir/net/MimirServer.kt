@@ -283,7 +283,7 @@ class MimirServer(
                 val online = haveNetwork(context)
                 if (!online && !App.app.online) {
                     // Wait for network to come back, but can be woken up early via signal
-                    Log.d(TAG, "Network offline, waiting for signal or timeout...")
+                    //Log.d(TAG, "Network offline, waiting for signal or timeout...")
                     val waitStart = System.currentTimeMillis()
                     synchronized(onlineStateLock) {
                         try {
