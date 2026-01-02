@@ -83,6 +83,7 @@ class ContactsAdapter(
         when (item) {
             is ChatListItem.ContactItem -> bindContactItem(holder, item)
             is ChatListItem.GroupChatItem -> bindGroupChatItem(holder, item)
+            is ChatListItem.SavedMessagesItem -> bindSavedMessagesItem(holder, item)
         }
 
         holder.itemView.tag = item
@@ -180,6 +181,27 @@ class ContactsAdapter(
             val avatarColor = getAvatarColor(groupChat.chatId.toString().toByteArray())
             holder.avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
+    }
+
+    private fun bindSavedMessagesItem(holder: ViewHolder, savedMessages: ChatListItem.SavedMessagesItem) {
+        // Hide group chat icon
+        holder.groupChatIcon.visibility = View.GONE
+
+        // Hide delivered icon
+        holder.deliveredIcon.visibility = View.GONE
+
+        // Check if there's a draft - show it instead of the last message
+        if (savedMessages.draft != null) {
+            val draftText = buildDraftText(savedMessages.draft, holder.itemView.context)
+            holder.lastMessage.text = draftText
+        } else {
+            // Set last message or empty
+            holder.lastMessage.text = savedMessages.lastMessageText ?: ""
+        }
+
+        // Set special icon (no color filter)
+        holder.avatar.clearColorFilter()
+        holder.avatar.setImageDrawable(savedMessages.avatar)
     }
 
     /**

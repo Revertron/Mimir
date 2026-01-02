@@ -52,4 +52,17 @@ sealed class ChatListItem {
         override val unreadCount: Int,
         override val draft: SqlStorage.Draft? = null
     ) : ChatListItem()
+
+    /**
+     * Saved messages chat item (virtual contact for saving messages to self).
+     */
+    data class SavedMessagesItem(
+        override val id: Long = SqlStorage.SAVED_MESSAGES_CONTACT_ID,
+        override val name: String,
+        override val avatar: Drawable?,
+        override val lastMessageText: String?,
+        override val lastMessageTime: Long,
+        override val unreadCount: Int = 0,
+        override val draft: SqlStorage.Draft? = null
+    ) : ChatListItem()
 }

@@ -11,14 +11,17 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.revertron.mimir.net.PeerStatus
+import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.lang.Thread.sleep
 
@@ -30,6 +33,7 @@ class ChatActivity : BaseChatActivity() {
     }
 
     private lateinit var contact: Contact
+    private var isSavedMessages = false
 
     private val peerStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
@@ -44,11 +48,30 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Check if this is saved messages
+        isSavedMessages = intent.getBooleanExtra("savedMessages", false)
+
         // Extract contact info before calling super.onCreate()
-        val pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
+        val pubkey: ByteArray
+        val id: Long
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
-        val id = getStorage().getContactId(pubkey)
-        val avatarPic = getStorage().getContactAvatar(id)
+
+        if (isSavedMessages) {
+            // For saved messages, use special ID and current user's pubkey
+            id = SqlStorage.SAVED_MESSAGES_CONTACT_ID
+            val accountInfo = getStorage().getAccountInfo(1, 0L)
+            pubkey = (accountInfo!!.keyPair.public as Ed25519PublicKeyParameters).encoded
+        } else {
+            // Normal contact flow
+            pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
+            id = getStorage().getContactId(pubkey)
+        }
+
+        val avatarPic = if (isSavedMessages) {
+            ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
+        } else {
+            getStorage().getContactAvatar(id)
+        }
         contact = Contact(id, pubkey, name, null, 0, avatarPic)
 
         super.onCreate(savedInstanceState)
@@ -56,6 +79,12 @@ class ChatActivity : BaseChatActivity() {
         // Set title and avatar
         setToolbarTitle(contact.name)
         setupAvatar(contact.avatar)
+
+        // Hide online indicator for saved messages
+        if (isSavedMessages) {
+            val statusImage = findViewById<AppCompatImageView>(R.id.status_image)
+            statusImage?.visibility = View.GONE
+        }
 
         // Handle shared image if any
         val image = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
@@ -69,22 +98,31 @@ class ChatActivity : BaseChatActivity() {
         // Setup broadcast receivers
         setupBroadcastReceivers()
 
-        // Show initial connection state
-        showOnlineState(PeerStatus.Connecting)
-        fetchStatus(this, contact.pubkey)
+        // Skip connection for saved messages
+        if (!isSavedMessages) {
+            // Show initial connection state
+            showOnlineState(PeerStatus.Connecting)
+            fetchStatus(this, contact.pubkey)
 
-        // Connect to peer
-        Thread {
-            sleep(500)
-            connect(this@ChatActivity, contact.pubkey)
-        }.start()
+            // Connect to peer
+            Thread {
+                sleep(500)
+                connect(this@ChatActivity, contact.pubkey)
+            }.start()
+        }
     }
 
     // BaseChatActivity abstract method implementations
 
     override fun getLayoutResId(): Int = R.layout.activity_chat
 
-    override fun getChatId(): Long = contact.id
+    override fun getChatId(): Long {
+        return if (isSavedMessages) {
+            SqlStorage.SAVED_MESSAGES_CONTACT_ID
+        } else {
+            contact.id
+        }
+    }
 
     override fun getChatName(): String = contact.name
 
@@ -157,6 +195,12 @@ class ChatActivity : BaseChatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         super.onCreateOptionsMenu(menu)
         menuInflater.inflate(R.menu.menu_contact, menu)
+        if (isSavedMessages) {
+            menu.findItem(R.id.contact_call)?.isVisible = false
+            menu.findItem(R.id.mute_contact)?.isVisible = false
+            menu.findItem(R.id.block_contact)?.isVisible = false
+            menu.findItem(R.id.remove_contact)?.isVisible = false
+        }
         return true
     }
 

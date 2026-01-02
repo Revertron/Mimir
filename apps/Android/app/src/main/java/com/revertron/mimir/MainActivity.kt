@@ -169,6 +169,15 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     override fun onClick(view: View) {
         if (view.tag != null) {
             when (val item = view.tag as ChatListItem) {
+                is ChatListItem.SavedMessagesItem -> {
+                    Log.i(TAG, "Clicked on Saved Messages")
+
+                    val intent = Intent(this, ChatActivity::class.java)
+                    intent.putExtra("contactId", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+                    intent.putExtra("name", item.name)
+                    intent.putExtra("savedMessages", true)
+                    startActivity(intent, animFromRight.toBundle())
+                }
                 is ChatListItem.ContactItem -> {
                     val addr = Hex.toHexString(item.pubkey)
                     Log.i(TAG, "Clicked on contact $addr")
@@ -195,6 +204,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
     override fun onLongClick(v: View): Boolean {
         when (val item = v.tag as ChatListItem) {
+            is ChatListItem.SavedMessagesItem -> {
+                // No context menu for saved messages
+                return false
+            }
             is ChatListItem.ContactItem -> {
                 // Convert ChatListItem.ContactItem back to Contact for the popup menu
                 val contact = Contact(item.id, item.pubkey, item.name, item.lastMessage, item.unreadCount, item.avatar)
@@ -467,7 +480,22 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         })
 
         // Sort by last message time (most recent first)
-        return chatItems.sortedByDescending { it.lastMessageTime }
+        val sortedItems = chatItems.sortedByDescending { it.lastMessageTime }.toMutableList()
+
+        // Add Saved Messages at the top (after sorting)
+        val savedMessagesIcon = ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
+        val lastSavedMessage = storage.getLastSavedMessage()
+        val savedDraft = storage.getDraft(SqlStorage.CHAT_TYPE_CONTACT, SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+
+        sortedItems.add(0, ChatListItem.SavedMessagesItem(
+            name = getString(R.string.saved_messages),
+            avatar = savedMessagesIcon,
+            lastMessageText = lastSavedMessage?.getText(this),
+            lastMessageTime = lastSavedMessage?.time ?: 0,
+            draft = savedDraft
+        ))
+
+        return sortedItems
     }
 
     private fun refreshContacts() {

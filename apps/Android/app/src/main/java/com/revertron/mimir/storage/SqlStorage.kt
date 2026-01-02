@@ -60,6 +60,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         // Chat types for drafts table
         const val CHAT_TYPE_CONTACT = 0
         const val CHAT_TYPE_GROUP = 1
+
+        // Special contact ID for saved messages
+        const val SAVED_MESSAGES_CONTACT_ID = -1L
     }
 
     data class Message(
@@ -1144,6 +1147,36 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             val type = cursor.getInt(9)
             val message = cursor.getBlob(10)
             //Log.i(TAG, "$messageId: $guid")
+            result = Message(id, contactId, guid, replyTo, incoming, delivered, read, time, edit, type, message)
+        }
+        cursor.close()
+        return result
+    }
+
+    fun getLastSavedMessage(): Message? {
+        var result: Message? = null
+        val columns = arrayOf("id", "contact", "guid", "replyTo", "incoming", "delivered", "read", "time", "edit", "type", "message")
+        val cursor = readableDatabase.query(
+            "messages",
+            columns,
+            "contact = ?",
+            arrayOf(SAVED_MESSAGES_CONTACT_ID.toString()),
+            null, null,
+            "time DESC",
+            "1"
+        )
+        if (cursor.moveToNext()) {
+            val id = cursor.getLong(0)
+            val contactId = cursor.getLong(1)
+            val guid = cursor.getLong(2)
+            val replyTo = cursor.getLong(3)
+            val incoming = cursor.getInt(4) != 0
+            val delivered = cursor.getInt(5) != 0
+            val read = cursor.getInt(6) != 0
+            val time = cursor.getLong(7)
+            val edit = cursor.getLong(8)
+            val type = cursor.getInt(9)
+            val message = cursor.getBlob(10)
             result = Message(id, contactId, guid, replyTo, incoming, delivered, read, time, edit, type, message)
         }
         cursor.close()

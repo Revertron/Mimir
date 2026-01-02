@@ -2,6 +2,7 @@ package com.revertron.mimir
 
 import android.app.NotificationManager
 import android.app.Service
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.hardware.display.DisplayManager
@@ -207,16 +208,47 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             }
             "send" -> {
                 val pubkey = intent.getByteArrayExtra("pubkey")
-                val keyString = Hex.toHexString(pubkey)
                 val message = intent.getStringExtra("message")
                 val replyTo = intent.getLongExtra("replyTo", 0L)
                 val type = intent.getIntExtra("type", 0)
+
                 if (pubkey != null && message != null) {
-                    val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, type, message.toByteArray())
-                    Log.i(TAG, "Message $id to $keyString")
-                    Thread{
-                        mimirServer?.sendMessages()
-                    }.start()
+                    // Check if this is a saved message (pubkey matches current account)
+                    val accountInfo = storage.getAccountInfo(1, 0L)
+                    val myPubkey = (accountInfo!!.keyPair.public as Ed25519PublicKeyParameters).encoded
+                    val isSavedMessage = myPubkey != null && pubkey.contentEquals(myPubkey)
+
+                    if (isSavedMessage) {
+                        // Saved message - store locally only, mark as delivered immediately
+                        val messageBytes = message.toByteArray()
+                        val db = storage.writableDatabase
+                        val values = ContentValues().apply {
+                            put("contact", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+                            put("guid", storage.generateGuid(getUtcTimeMs(), messageBytes))
+                            put("replyTo", replyTo)
+                            put("incoming", false)
+                            put("delivered", true)  // Immediately delivered
+                            put("time", getUtcTimeMs())
+                            put("edit", 0)
+                            put("type", type)
+                            put("message", messageBytes)
+                            put("read", true)
+                        }
+                        val id = db.insert("messages", null, values)
+                        Log.i(TAG, "Saved message $id")
+                        // Notify listeners
+                        for (listener in storage.listeners) {
+                            listener.onMessageSent(id, SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+                        }
+                    } else {
+                        // Normal message - existing code
+                        val keyString = Hex.toHexString(pubkey)
+                        val id = storage.addMessage(pubkey, 0, replyTo, false, false, getUtcTimeMs(), 0, type, message.toByteArray())
+                        Log.i(TAG, "Message $id to $keyString")
+                        Thread {
+                            mimirServer?.sendMessages()
+                        }.start()
+                    }
                 }
             }
             "online" -> {

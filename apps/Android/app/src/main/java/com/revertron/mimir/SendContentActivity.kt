@@ -9,9 +9,11 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
@@ -115,6 +117,16 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
 
     override fun onClick(view: View) {
         when (val item = view.tag as ChatListItem) {
+            is ChatListItem.SavedMessagesItem -> {
+                Log.i(TAG, "Clicked on Saved Messages")
+                val intent = Intent(this, ChatActivity::class.java)
+                intent.putExtra("contactId", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+                intent.putExtra("name", item.name)
+                intent.putExtra("savedMessages", true)
+                intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+                startActivity(intent, animFromRight.toBundle())
+                finish()
+            }
             is ChatListItem.ContactItem -> {
                 val addr = Hex.toHexString(item.pubkey)
                 Log.i(TAG, "Clicked on contact $addr")
@@ -183,7 +195,20 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
         })
 
         // Sort by last message time (most recent first)
-        return chatItems.sortedByDescending { it.lastMessageTime }
+        val sortedItems = chatItems.sortedByDescending { it.lastMessageTime }.toMutableList()
+
+        // Add Saved Messages at the top (after sorting)
+        val savedMessagesIcon = ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
+        val lastSavedMessage = storage.getLastSavedMessage()
+
+        sortedItems.add(0, ChatListItem.SavedMessagesItem(
+            name = getString(R.string.saved_messages),
+            avatar = savedMessagesIcon,
+            lastMessageText = lastSavedMessage?.getText(this),
+            lastMessageTime = lastSavedMessage?.time ?: 0
+        ))
+
+        return sortedItems
     }
 
     private fun refreshContacts() {

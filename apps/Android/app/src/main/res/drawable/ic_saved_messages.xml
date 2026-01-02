@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background gradient -->
+    <item android:width="32dp" android:height="32dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="90"
+                android:startColor="#49c29c"
+                android:endColor="#63fac0" />
+            <corners android:radius="4dp"/>
+        </shape>
+    </item>
+
+    <!-- Foreground icon with padding -->
+    <item
+        android:drawable="@drawable/ic_book_edit_outline"
+        android:gravity="center"
+        android:width="24dp"
+        android:height="24dp" />
+</layer-list>
