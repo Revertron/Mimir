@@ -17,9 +17,8 @@ class App: Application() {
 
     var mediatorManager: MediatorManager? = null
     var online: Boolean = false
-    private var networkChangedTime = AtomicLong(0L)
     lateinit var storage: SqlStorage
-    lateinit var callback: NetworkStateCallback
+    lateinit var callback: NetState
 
     override fun onCreate() {
         super.onCreate()
@@ -39,7 +38,7 @@ class App: Application() {
         storage.cleanUp()
         storage.updateUnreadCountsForGroups()
         app = this
-        callback = NetworkStateCallback(this)
+        callback = NetState(this)
         val handler = Handler(mainLooper)
         handler.postDelayed({
             callback.register()
@@ -49,13 +48,5 @@ class App: Application() {
     override fun onTerminate() {
         callback.unregister()
         super.onTerminate()
-    }
-
-    fun networkChanged() {
-        networkChangedTime.set(System.currentTimeMillis())
-    }
-
-    fun networkChangedRecently(): Boolean {
-        return System.currentTimeMillis() - networkChangedTime.get() < 15000
     }
 }

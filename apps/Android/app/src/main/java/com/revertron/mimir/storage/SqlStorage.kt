@@ -1376,33 +1376,6 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         writableDatabase.delete("ips", "address = ?", arrayOf(address))
     }
 
-    /**
-     * Returns the public keys of every contact that currently has
-     * NO un-expired rows in the ips table.
-     */
-    fun getContactsWithoutValidAddresses(): List<ByteArray> {
-        val now = getUtcTime()
-
-        // All contacts that DO have at least one valid IP
-        val withValid = mutableSetOf<Long>()
-        readableDatabase.rawQuery("SELECT DISTINCT id FROM ips WHERE expiration >= ?", arrayOf(now.toString())).use { c ->
-            while (c.moveToNext()) withValid.add(c.getLong(0))
-        }
-
-        // All contacts minus the ones above → the ones without any valid IP
-        val missing = mutableListOf<ByteArray>()
-        readableDatabase.rawQuery("SELECT id, pubkey FROM contacts", null).use { c ->
-            while (c.moveToNext()) {
-                val id = c.getLong(0)          // numeric rowid
-                if (id !in withValid) {
-                    val blob = c.getBlob(1)    // pubkey byte array
-                    missing.add(blob)
-                }
-            }
-        }
-        return missing
-    }
-
     fun getAccountInfo(id: Int, ifUpdatedSince: Long): AccountInfo? {
         val db = this.readableDatabase
         val columns = arrayOf("name", "info", "avatar", "privkey", "pubkey", "client", "updated")

@@ -3,7 +3,7 @@ package com.revertron.mimir.net
 import com.revertron.mimir.yggmobile.Connection
 import java.io.InputStream
 
-class ConnectionInputStream(private val conn: Connection, bufferSize: Int = 4096) : InputStream() {
+class ConnectionInputStream(private val conn: Connection, bufferSize: Int = 16384) : InputStream() {
 
     private val buf = ByteArray(bufferSize)
     private var pos = 0
@@ -63,7 +63,7 @@ class ConnectionInputStream(private val conn: Connection, bufferSize: Int = 4096
             }
 
             val read = try {
-                conn.readWithTimeout(buf, 500).toInt()
+                conn.readWithTimeout(buf, 0).toInt()
             } catch (e: Exception) {
                 if (e.message?.contains("deadline exceeded") == true) {
                     continue    // no data yet; retry

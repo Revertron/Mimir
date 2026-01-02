@@ -6,6 +6,7 @@ import android.os.PowerManager
 import android.util.Log
 import com.revertron.mimir.App
 import com.revertron.mimir.BuildConfig
+import com.revertron.mimir.NetState
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.haveNetwork
 import com.revertron.mimir.storage.Peer
@@ -67,7 +68,7 @@ class MimirServer(
     private var announceTtl = 0L
     private var forceAnnounce = false
     private lateinit var currentPeer: String
-    private var oldPeerTime = 0L
+    private var currentPeerTime = 0L
     private val peerStats = HashMap<String, PeerStats>()
 
     @SuppressLint("WakelockTimeout", "Wakelock")
@@ -83,7 +84,7 @@ class MimirServer(
             val peersArray = org.json.JSONArray(peersJSON)
             if (peersArray.length() > 0) {
                 currentPeer = peersArray.getJSONObject(0).getString("URI")
-                oldPeerTime = System.currentTimeMillis()
+                currentPeerTime = System.currentTimeMillis()
             }
         }
 
@@ -142,7 +143,7 @@ class MimirServer(
             messenger.addPeer(newPeer)
             messenger.removePeer(currentPeer)
             currentPeer = newPeer
-            oldPeerTime = System.currentTimeMillis()
+            currentPeerTime = System.currentTimeMillis()
             forceAnnounce = true
         }
     }
@@ -151,7 +152,7 @@ class MimirServer(
         if (messenger == null) return
         val peers = peerProvider.getPeers()
         // If user changed the group of peers from default to own or wise versa, we remove old stats
-        peerStats.keys.retainAll(peers)
+        peerStats.keys.retainAll(peers.toSet())
         if (peers.size < 2) {
             Log.w(TAG, "No useful peers")
             return
@@ -184,21 +185,84 @@ class MimirServer(
             e.printStackTrace()
         }
         currentPeer = newPeer
-        oldPeerTime = System.currentTimeMillis()
+        currentPeerTime = System.currentTimeMillis()
         forceAnnounce = true
+    }
+
+    fun refreshPeerList() {
+        if (messenger == null) return
+        val newPeers = peerProvider.getPeers()
+        if (newPeers.isEmpty()) {
+            Log.w(TAG, "No peers available")
+            return
+        }
+
+        // Get current peers from messenger
+        val currentPeers = mutableSetOf<String>()
+        val peersJSON = messenger.peersJSON
+        if (peersJSON != null && peersJSON != "null") {
+            val peersArray = JSONArray(peersJSON)
+            for (i in 0 until peersArray.length()) {
+                val peer = peersArray.getJSONObject(i)
+                currentPeers.add(peer.getString("URI"))
+            }
+        }
+
+        Log.i(TAG, "Refreshing peer list: current=${currentPeers.size}, new=${newPeers.size}")
+
+        // Remove peers that are no longer in the new peer list
+        val peersToRemove = currentPeers.subtract(newPeers.toSet())
+        for (peer in peersToRemove) {
+            try {
+                messenger.removePeer(peer)
+                peerStats.remove(peer)
+                Log.i(TAG, "Removed old peer: $peer")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing peer $peer", e)
+            }
+        }
+
+        // Add new peers that aren't already in the messenger
+        val peersToAdd = newPeers.subtract(currentPeers)
+        for (peer in peersToAdd) {
+            try {
+                messenger.addPeer(peer)
+                peerStats[peer] = PeerStats(0, -1)
+                Log.i(TAG, "Added new peer: $peer")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding peer $peer", e)
+            }
+        }
+
+        // Clean up stats for peers not in the new list
+        peerStats.keys.retainAll(newPeers.toSet())
+
+        // Initialize stats for any peers without stats
+        for (peer in newPeers) {
+            if (!peerStats.contains(peer)) {
+                peerStats[peer] = PeerStats(0, -1)
+            }
+        }
+
+        // Update currentPeer if it was removed
+        if (!newPeers.contains(currentPeer)) {
+            currentPeer = newPeers.random()
+            currentPeerTime = System.currentTimeMillis()
+            Log.i(TAG, "Current peer was removed, selected new random peer: $currentPeer")
+        }
+
+        // Force announce to update trackers with new peer configuration
+        forceAnnounce = true
+
+        Log.i(TAG, "Peer list refreshed: ${newPeers.size} peers active, will select best peer based on cost")
     }
 
     private fun startAnnounceThread(pubkey: ByteArray, privkey: ByteArray, peer: Peer, receiver: ResolverReceiver) {
         Thread {
-            //var lastTrackersPing = System.currentTimeMillis()
             while (working.get()) {
                 sleep(5000)
                 try {
                     val online = haveNetwork(context)
-                    /*if (online && System.currentTimeMillis() - lastTrackersPing >= 180000) {
-                        resolver.pingTrackers()
-                        lastTrackersPing = System.currentTimeMillis()
-                    }*/
 
                     val expiredTtl = getUtcTime() >= lastAnnounceTime + announceTtl
                     if (App.app.online && online && (expiredTtl || forceAnnounce)) {
@@ -234,53 +298,12 @@ class MimirServer(
         }.apply { name = "ResendThread" }.start()
     }
 
-    private fun startRediscoverThread() {
-        Thread {
-            val receiver = object : ResolverReceiver {
-                override fun onResolveResponse(pubkey: ByteArray, ips: List<Peer>) {
-                    Log.i(TAG, "Resolved addrs: $ips")
-                    ips.forEach {
-                        storage.saveIp(pubkey, it.address, 0, it.clientId, it.priority, it.expiration)
-                    }
-                }
-
-                override fun onAnnounceResponse(pubkey: ByteArray, ttl: Long) {}
-                override fun onError(pubkey: ByteArray) {
-                    //val hex = Hex.toHexString(pubkey)
-                    //Log.w(TAG, "Error resolving IPs for $hex")
-                }
-            }
-
-            sleep(8000)
-            while (working.get()) {
-                val missing = storage.getContactsWithoutValidAddresses()
-                //Log.i(TAG, "Found ${missing.size} contacts without addresses, resolving")
-                for (contact in missing) {
-                    val online = haveNetwork(context)
-                    if (online && App.app.online) {
-                        Log.d(TAG, "Rediscovering ${Hex.toHexString(contact)}")
-                        resolver.resolveAddrs(contact, receiver)
-                        sleep(1000)
-                    }
-                }
-
-                val start = System.currentTimeMillis()
-                while (System.currentTimeMillis() - start < 180000) {
-                    sleep(1000)
-                    if (!working.get()) {
-                        break
-                    }
-                }
-            }
-        }.start()
-    }
-
     private fun startOnlineStateThread() {
         Thread {
             var count = 0
             while (working.get()) {
                 sleep(3000)
-                val online = haveNetwork(context)
+                val online = NetState.haveNetwork()
                 if (!online && !App.app.online) {
                     // Wait for network to come back, but can be woken up early via signal
                     //Log.d(TAG, "Network offline, waiting for signal or timeout...")
@@ -312,7 +335,7 @@ class MimirServer(
                         //Log.i(TAG, "Peer: $peer")
                         val up = peer.getBoolean("Up")
                         App.app.online = up
-                        val networkChanged = App.app.networkChangedRecently()
+                        val networkChanged = NetState.networkChangedRecently()
                         if (old != up)
                         {
                             Log.i(TAG, "Online changed to $up ($currentPeer)")
@@ -345,7 +368,7 @@ class MimirServer(
                                 count = 0
                             }
                         }
-                        if (online && up && now - oldPeerTime >= 10000) {
+                        if (online && up && now - currentPeerTime >= 10000) {
                             var minimalCost = 500
                             if (peersCount > 1) {
                                 var bestPeer = ""
@@ -389,7 +412,7 @@ class MimirServer(
                             }
                         }
 
-                        if (!up && !networkChanged && peersCount == 1 && online && now - oldPeerTime > 6000) {
+                        if (!up && !networkChanged && peersCount == 1 && online && now - currentPeerTime > 6000) {
                             Log.i(TAG, "Seems that peer is dead, jumping")
                             peerStats.getOrPut(currentPeer, { PeerStats(0, 500) }).apply {
                                 fails += 1

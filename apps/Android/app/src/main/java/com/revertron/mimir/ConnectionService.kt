@@ -158,7 +158,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 }
             }
             "refresh_peer" -> {
-                mimirServer?.jumpPeer()
+                mimirServer?.refreshPeerList()
             }
             "connect" -> {
                 val pubkey = intent.getByteArrayExtra("pubkey")
