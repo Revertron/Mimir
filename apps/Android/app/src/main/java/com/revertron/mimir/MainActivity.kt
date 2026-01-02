@@ -487,10 +487,17 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val lastSavedMessage = storage.getLastSavedMessage()
         val savedDraft = storage.getDraft(SqlStorage.CHAT_TYPE_CONTACT, SqlStorage.SAVED_MESSAGES_CONTACT_ID)
 
+        // Show tip if there are no saved messages and no draft
+        val messageText = when {
+            savedDraft != null -> null  // Draft will be shown by adapter
+            lastSavedMessage != null -> lastSavedMessage.getText(this)
+            else -> getString(R.string.saved_messages_tip)
+        }
+
         sortedItems.add(0, ChatListItem.SavedMessagesItem(
             name = getString(R.string.saved_messages),
             avatar = savedMessagesIcon,
-            lastMessageText = lastSavedMessage?.getText(this),
+            lastMessageText = messageText,
             lastMessageTime = lastSavedMessage?.time ?: 0,
             draft = savedDraft
         ))

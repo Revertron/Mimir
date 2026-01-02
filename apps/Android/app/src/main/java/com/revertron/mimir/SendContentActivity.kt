@@ -201,10 +201,13 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
         val savedMessagesIcon = ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
         val lastSavedMessage = storage.getLastSavedMessage()
 
+        // Show tip if there are no saved messages
+        val messageText = lastSavedMessage?.getText(this) ?: getString(R.string.saved_messages_tip)
+
         sortedItems.add(0, ChatListItem.SavedMessagesItem(
             name = getString(R.string.saved_messages),
             avatar = savedMessagesIcon,
-            lastMessageText = lastSavedMessage?.getText(this),
+            lastMessageText = messageText,
             lastMessageTime = lastSavedMessage?.time ?: 0
         ))
 

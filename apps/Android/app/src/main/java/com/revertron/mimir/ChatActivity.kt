@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.Contact
@@ -94,6 +95,11 @@ class ChatActivity : BaseChatActivity() {
 
         // Setup message list
         setupMessageList()
+
+        // Setup empty view for saved messages
+        if (isSavedMessages) {
+            setupEmptyView()
+        }
 
         // Setup broadcast receivers
         setupBroadcastReceivers()
@@ -275,6 +281,40 @@ class ChatActivity : BaseChatActivity() {
             putExtra("outgoing", true)
         }
         startActivity(callIntent, animFromRight.toBundle())
+    }
+
+    // Empty view handling
+
+    private fun setupEmptyView() {
+        updateEmptyView()
+
+        // Register observer to update empty view when adapter data changes
+        adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+            override fun onChanged() {
+                updateEmptyView()
+            }
+
+            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+                updateEmptyView()
+            }
+
+            override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) {
+                updateEmptyView()
+            }
+        })
+    }
+
+    private fun updateEmptyView() {
+        val emptyView = findViewById<View>(R.id.empty_view)
+        val messagesCount = adapter.itemCount
+
+        // Keep RecyclerView always visible for proper keyboard handling
+        // Just overlay the empty view on top when needed
+        if (messagesCount == 0) {
+            emptyView.visibility = View.VISIBLE
+        } else {
+            emptyView.visibility = View.GONE
+        }
     }
 
     // Peer status display

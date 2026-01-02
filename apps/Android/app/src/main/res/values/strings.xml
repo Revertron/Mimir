@@ -25,6 +25,7 @@
     <string name="cancel">Cancel</string>
     <string name="message">Message</string>
     <string name="saved_messages">Saved Messages</string>
+    <string name="saved_messages_tip">Save messages, media, and links for quick access</string>
     <string name="my_public_key">My public key:</string>
     <string name="contact_public_key">Public key</string>
     <string name="my_name_title">My name:</string>

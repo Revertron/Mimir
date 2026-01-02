@@ -24,6 +24,7 @@
     <string name="cancel">Отмена</string>
     <string name="message">Сообщение</string>
     <string name="saved_messages">Избранное</string>
+    <string name="saved_messages_tip">Сохраняйте сообщения, медиа и ссылки для быстрого доступа</string>
     <string name="my_public_key">Мой публичный ключ:</string>
     <string name="contact_public_key">Публичный ключ</string>
     <string name="my_name_title">Моё имя:</string>
