@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -174,6 +175,12 @@ class GroupChatActivity : BaseChatActivity() {
         // Initialize connection status badge (optimistic CONNECTING, will update when service responds)
         showConnectionStatus(MediatorManager.GroupChatStatus.CONNECTING)
         requestGroupChatStatus()
+
+        // Handle shared media if any (similar to ChatActivity:61-64)
+        val sharedUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        if (sharedUri != null) {
+            handleSharedMedia(sharedUri)
+        }
     }
 
     // BaseChatActivity abstract method implementations
@@ -679,6 +686,23 @@ class GroupChatActivity : BaseChatActivity() {
             putExtra("chat_id", groupChat.chatId)
         }
         startService(intent)
+    }
+
+    private fun handleSharedMedia(uri: Uri) {
+        try {
+            val mimeType = contentResolver.getType(uri)
+            when {
+                mimeType?.startsWith("image/") == true -> {
+                    getImageFromUri(uri)
+                }
+                else -> {
+                    getFileFromUri(uri)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to handle shared media: ${e.message}")
+            Toast.makeText(this, R.string.error_loading_file, Toast.LENGTH_SHORT).show()
+        }
     }
 
     // Lifecycle

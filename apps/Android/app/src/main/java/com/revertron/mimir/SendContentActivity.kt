@@ -16,6 +16,7 @@ import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 
 /**
@@ -79,20 +80,7 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
         super.onResume()
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         if (recycler.adapter == null) {
-            val contacts = (application as App).storage.getContactList()
-
-            // Convert to ChatListItem
-            val chatItems = contacts.map { contact ->
-                ChatListItem.ContactItem(
-                    id = contact.id,
-                    pubkey = contact.pubkey,
-                    name = contact.name,
-                    lastMessage = contact.lastMessage,
-                    unreadCount = contact.unread,
-                    avatar = contact.avatar
-                )
-            }
-
+            val chatItems = getChatList()
             val adapter = ContactsAdapter(chatItems, this, null)
             recycler.adapter = adapter
             recycler.layoutManager = LinearLayoutManager(this)
@@ -126,24 +114,41 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
     }
 
     override fun onClick(view: View) {
-        if (view.tag is ChatListItem.ContactItem) {
-            val contactItem = view.tag as ChatListItem.ContactItem
-            val addr = Hex.toHexString(contactItem.pubkey)
-            Log.i(TAG, "Clicked on $addr")
-            val intent = Intent(this, ChatActivity::class.java)
-            intent.putExtra("pubkey", contactItem.pubkey)
-            intent.putExtra("name", contactItem.name)
-            intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
-            startActivity(intent, animFromRight.toBundle())
-            finish()
+        when (val item = view.tag as ChatListItem) {
+            is ChatListItem.ContactItem -> {
+                val addr = Hex.toHexString(item.pubkey)
+                Log.i(TAG, "Clicked on contact $addr")
+                val intent = Intent(this, ChatActivity::class.java)
+                intent.putExtra("pubkey", item.pubkey)
+                intent.putExtra("name", item.name)
+                intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+                startActivity(intent, animFromRight.toBundle())
+                finish()
+            }
+            is ChatListItem.GroupChatItem -> {
+                Log.i(TAG, "Clicked on group chat ${item.chatId}")
+                val intent = Intent(this, GroupChatActivity::class.java)
+                intent.putExtra(GroupChatActivity.EXTRA_CHAT_ID, item.chatId)
+                intent.putExtra(GroupChatActivity.EXTRA_CHAT_NAME, item.name)
+                intent.putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, item.description)
+                intent.putExtra(GroupChatActivity.EXTRA_IS_OWNER, item.isOwner)
+                intent.putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, item.mediatorAddress)
+                intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+                startActivity(intent, animFromRight.toBundle())
+                finish()
+            }
         }
     }
 
-    private fun refreshContacts() {
-        val contacts = (application as App).storage.getContactList()
+    private fun getChatList(): List<ChatListItem> {
+        val storage = (application as App).storage
+        val contacts = storage.getContactList()
+        val groupChats = storage.getGroupChatList()
 
-        // Convert to ChatListItem
-        val chatItems = contacts.map { contact ->
+        val chatItems = mutableListOf<ChatListItem>()
+
+        // Convert contacts to ChatListItems
+        chatItems.addAll(contacts.map { contact ->
             ChatListItem.ContactItem(
                 id = contact.id,
                 pubkey = contact.pubkey,
@@ -152,8 +157,37 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
                 unreadCount = contact.unread,
                 avatar = contact.avatar
             )
-        }
+        })
 
+        // Convert group chats to ChatListItems
+        val accountInfo = storage.getAccountInfo(1, 0L)
+        val myPubKey = (accountInfo!!.keyPair.public as Ed25519PublicKeyParameters).encoded
+        chatItems.addAll(groupChats.map { groupChat ->
+            val avatar = storage.getGroupChatAvatar(groupChat.chatId, 48, 6)
+            val isOwner = myPubKey?.contentEquals(groupChat.ownerPubkey) ?: false
+            val lastMessage = storage.getLastGroupMessage(groupChat.chatId)
+
+            ChatListItem.GroupChatItem(
+                id = groupChat.chatId,
+                chatId = groupChat.chatId,
+                name = groupChat.name,
+                description = groupChat.description ?: "",
+                mediatorAddress = groupChat.mediatorPubkey,
+                memberCount = storage.getGroupChatMembersCount(groupChat.chatId),
+                isOwner = isOwner,
+                avatar = avatar,
+                lastMessageText = lastMessage?.getText(this),
+                lastMessageTime = groupChat.lastMessageTime,
+                unreadCount = groupChat.unreadCount
+            )
+        })
+
+        // Sort by last message time (most recent first)
+        return chatItems.sortedByDescending { it.lastMessageTime }
+    }
+
+    private fun refreshContacts() {
+        val chatItems = getChatList()
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         val adapter = recycler.adapter as ContactsAdapter
         adapter.setContacts(chatItems)
