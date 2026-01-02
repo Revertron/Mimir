@@ -1,7 +1,11 @@
 package com.revertron.mimir.ui
 
 import android.annotation.SuppressLint
+import android.graphics.Color
 import android.graphics.PorterDuff
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -9,6 +13,7 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.*
+import com.revertron.mimir.storage.SqlStorage
 import org.json.JSONException
 import org.json.JSONObject
 import java.text.DateFormat
@@ -87,38 +92,44 @@ class ContactsAdapter(
         // Hide group chat icon for regular contacts
         holder.groupChatIcon.visibility = View.GONE
 
-        // Set last message
-        val lastMessageText = when (contact.lastMessage?.type) {
-            1 -> {
-                "\uD83D\uDDBC\uFE0F " + contact.lastMessage.getText(holder.avatar.context)
-            }
-            2 -> {
-                val time = contact.lastMessage.getText(holder.avatar.context)
-                if (contact.lastMessage.incoming) {
-                    holder.avatar.context.getString(R.string.audio_call_incoming) + " " + time
-                } else {
-                    holder.avatar.context.getString(R.string.audio_call_outgoing) + " " + time
+        // Check if there's a draft - show it instead of the last message
+        if (contact.draft != null) {
+            val draftText = buildDraftText(contact.draft, holder.itemView.context)
+            holder.lastMessage.text = draftText
+        } else {
+            // Set last message
+            val lastMessageText = when (contact.lastMessage?.type) {
+                1 -> {
+                    "\uD83D\uDDBC\uFE0F " + contact.lastMessage.getText(holder.avatar.context)
                 }
-            }
-            3 -> {
-                if (contact.lastMessage.data != null) {
-                    val string = String(contact.lastMessage.data)
-                    try {
-                        val json = JSONObject(string)
-                        val name = json.getString("name")
-                        json.optString("originalName", name)
-                    } catch (e: JSONException) {
-                        "Error. Message type ${contact.lastMessage.type}:\n"
+                2 -> {
+                    val time = contact.lastMessage.getText(holder.avatar.context)
+                    if (contact.lastMessage.incoming) {
+                        holder.avatar.context.getString(R.string.audio_call_incoming) + " " + time
+                    } else {
+                        holder.avatar.context.getString(R.string.audio_call_outgoing) + " " + time
                     }
-                } else {
-                    "Bad message"
+                }
+                3 -> {
+                    if (contact.lastMessage.data != null) {
+                        val string = String(contact.lastMessage.data)
+                        try {
+                            val json = JSONObject(string)
+                            val name = json.getString("name")
+                            json.optString("originalName", name)
+                        } catch (e: JSONException) {
+                            "Error. Message type ${contact.lastMessage.type}:\n"
+                        }
+                    } else {
+                        "Bad message"
+                    }
+                }
+                else -> {
+                    contact.lastMessage?.getText(holder.avatar.context)
                 }
             }
-            else -> {
-                contact.lastMessage?.getText(holder.avatar.context)
-            }
+            holder.lastMessage.text = lastMessageText
         }
-        holder.lastMessage.text = lastMessageText
 
         // Set delivered icon (only for contacts, not group chats)
         if (contact.unreadCount == 0 && contact.lastMessage?.delivered != null) {
@@ -147,8 +158,14 @@ class ContactsAdapter(
         // Show group chat icon
         holder.groupChatIcon.visibility = View.VISIBLE
 
-        // Set last message (for group chats, we might want to show sender name in the future)
-        holder.lastMessage.text = groupChat.lastMessageText ?: groupChat.description
+        // Check if there's a draft - show it instead of the last message
+        if (groupChat.draft != null) {
+            val draftText = buildDraftText(groupChat.draft, holder.itemView.context)
+            holder.lastMessage.text = draftText
+        } else {
+            // Set last message (for group chats, we might want to show sender name in the future)
+            holder.lastMessage.text = groupChat.lastMessageText ?: groupChat.description
+        }
 
         // Group chats don't show delivered icon
         holder.deliveredIcon.visibility = View.GONE
@@ -163,6 +180,48 @@ class ContactsAdapter(
             val avatarColor = getAvatarColor(groupChat.chatId.toString().toByteArray())
             holder.avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
+    }
+
+    /**
+     * Builds a SpannableString for displaying a draft with red "Draft:" prefix.
+     */
+    private fun buildDraftText(draft: SqlStorage.Draft, context: android.content.Context): SpannableString {
+        // Build draft preview text
+        val draftContent = when {
+            !draft.text.isNullOrEmpty() && !draft.mediaUri.isNullOrEmpty() -> {
+                // Both text and media
+                when (draft.mediaType) {
+                    1 -> "\uD83D\uDDBC\uFE0F ${draft.text}" // Image emoji
+                    3 -> "\uD83D\uDCC4 ${draft.text}" // File emoji
+                    else -> draft.text
+                }
+            }
+            !draft.text.isNullOrEmpty() -> draft.text
+            !draft.mediaUri.isNullOrEmpty() -> {
+                when (draft.mediaType) {
+                    1 -> "\uD83D\uDDBC\uFE0F ${context.getString(R.string.draft_image)}" // Image
+                    3 -> "\uD83D\uDCC4 ${context.getString(R.string.draft_file)}" // File
+                    else -> context.getString(R.string.draft_attachment)
+                }
+            }
+            else -> ""
+        }
+
+        // Create "Draft: " prefix with red color
+        val draftLabel = context.getString(R.string.draft)
+        val fullText = "$draftLabel: $draftContent"
+        val spannable = SpannableString(fullText)
+
+        // Make "Draft:" red (length of draft label + colon)
+        val redColor = Color.rgb(220, 20, 60) // Crimson red
+        spannable.setSpan(
+            ForegroundColorSpan(redColor),
+            0,
+            draftLabel.length + 1, // Length of localized "Draft" + ":"
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+
+        return spannable
     }
 
     override fun getItemCount(): Int {

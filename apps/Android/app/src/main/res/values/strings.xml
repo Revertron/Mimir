@@ -98,6 +98,10 @@
     <string name="audio_call_incoming">Incoming audio call</string>
     <string name="audio_call_outgoing">Outgoing audio call</string>
     <string name="call_already_ongoing">Call already in progress!</string>
+    <string name="draft">Draft</string>
+    <string name="draft_image">Image</string>
+    <string name="draft_file">File</string>
+    <string name="draft_attachment">Attachment</string>
     <string name="updates_title">Mimir update</string>
     <string name="new_version_title">New version %s is available!</string>
     <string name="old_version_title">Current %s</string>

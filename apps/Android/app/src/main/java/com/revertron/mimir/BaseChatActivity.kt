@@ -31,6 +31,7 @@ import androidx.core.content.FileProvider
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.MessageAdapter
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
@@ -270,6 +271,10 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
                 sendMessage(text, replyTo)
                 clearReplyPanel()
                 clearAttachment()
+
+                // Delete the draft since message was sent
+                val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+                getStorage().deleteDraft(chatType, getChatId())
             }
         }
     }
@@ -607,6 +612,106 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         builder.show()
     }
 
+    // Draft Management
+
+    /**
+     * Saves the current message draft (text and attachment) to the database.
+     * Called when the activity stops (user navigates away).
+     */
+    private fun saveDraft() {
+        val editText = findViewById<AppCompatEditText>(R.id.message_edit)
+        val messageText = editText.text?.toString()?.trim()
+
+        // Get filename from attachmentJson if present
+        val fileName = attachmentJson?.optString("name")
+        val mediaType = if (attachmentJson != null) attachmentType else 0
+
+        // Construct full path if we have a filename
+        val mediaUri = if (!fileName.isNullOrEmpty()) {
+            val filesDir = File(this.filesDir, "files")
+            File(filesDir, fileName).absolutePath
+        } else {
+            null
+        }
+
+        // Only save if there's actual content
+        if (!messageText.isNullOrEmpty() || mediaUri != null) {
+            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            getStorage().saveDraft(chatType, getChatId(), messageText, mediaUri, mediaType)
+        } else {
+            // Clear draft if there's no content
+            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            getStorage().deleteDraft(chatType, getChatId())
+        }
+    }
+
+    /**
+     * Restores a saved draft (text and attachment) from the database.
+     * Called when the activity resumes (becomes visible).
+     */
+    private fun restoreDraft() {
+        val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+        val draft = getStorage().getDraft(chatType, getChatId())
+
+        if (draft != null) {
+            // Restore text
+            if (!draft.text.isNullOrEmpty()) {
+                val editText = findViewById<AppCompatEditText>(R.id.message_edit)
+                editText.setText(draft.text)
+                editText.setSelection(draft.text.length) // Move cursor to end
+            }
+
+            // Restore attachment if present
+            if (!draft.mediaUri.isNullOrEmpty() && draft.mediaType != 0) {
+                try {
+                    val file = File(draft.mediaUri)
+                    if (file.exists()) {
+                        // Reconstruct the attachment JSON from the saved file
+                        val fileName = file.name
+                        val fileSize = file.length()
+
+                        val message = JSONObject()
+                        message.put("name", fileName)
+                        message.put("size", fileSize)
+
+                        attachmentType = draft.mediaType
+                        attachmentJson = message
+
+                        // Update UI based on media type
+                        when (draft.mediaType) {
+                            1 -> { // Image
+                                val preview = getImagePreview(this, fileName, 320, 85)
+                                attachmentPreview.setImageBitmap(preview)
+                                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                            }
+                            3 -> { // File
+                                // Try to determine MIME type from extension
+                                val extension = fileName.substringAfterLast('.', "")
+                                val mimeType = when (extension.lowercase()) {
+                                    "pdf" -> "application/pdf"
+                                    "zip" -> "application/zip"
+                                    "txt" -> "text/plain"
+                                    else -> "application/octet-stream"
+                                }
+                                attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
+                                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                            }
+                        }
+
+                        attachmentName.text = fileName
+                        attachmentSize.text = formatFileSize(fileSize)
+                        attachmentPanel.visibility = View.VISIBLE
+                    } else {
+                        // File no longer exists, clear the draft
+                        getStorage().deleteDraft(chatType, getChatId())
+                    }
+                } catch (e: Exception) {
+                    Log.w("BaseChatActivity", "Failed to restore draft attachment: ${e.message}")
+                }
+            }
+        }
+    }
+
     // Lifecycle
 
     override fun onStart() {
@@ -614,9 +719,19 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         isChatVisible = true
     }
 
+    override fun onPause() {
+        super.onPause()
+        saveDraft()
+    }
+
     override fun onStop() {
         super.onStop()
         isChatVisible = false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        restoreDraft()
     }
 
     override fun onDestroy() {

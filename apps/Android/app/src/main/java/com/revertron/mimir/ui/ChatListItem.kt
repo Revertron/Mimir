@@ -14,6 +14,7 @@ sealed class ChatListItem {
     abstract val lastMessageText: String?
     abstract val lastMessageTime: Long
     abstract val unreadCount: Int
+    abstract val draft: SqlStorage.Draft?
 
     /**
      * Individual contact chat item.
@@ -24,7 +25,8 @@ sealed class ChatListItem {
         override val name: String,
         val lastMessage: SqlStorage.Message?,
         override val unreadCount: Int,
-        override val avatar: Drawable?
+        override val avatar: Drawable?,
+        override val draft: SqlStorage.Draft? = null
     ) : ChatListItem() {
         override val lastMessageText: String?
             get() = lastMessage?.getText(App.app.applicationContext)
@@ -47,6 +49,7 @@ sealed class ChatListItem {
         override val avatar: Drawable?,
         override val lastMessageText: String?,
         override val lastMessageTime: Long,
-        override val unreadCount: Int
+        override val unreadCount: Int,
+        override val draft: SqlStorage.Draft? = null
     ) : ChatListItem()
 }

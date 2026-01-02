@@ -36,6 +36,7 @@ class App: Application() {
 
         storage = SqlStorage(this)
         storage.cleanUp()
+        storage.cleanupOldDrafts(7) // Clean up drafts older than 7 days
         storage.updateUnreadCountsForGroups()
         app = this
         callback = NetState(this)

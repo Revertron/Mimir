@@ -34,6 +34,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
+import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
@@ -418,13 +419,17 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
         // Convert contacts to ChatListItems
         chatItems.addAll(contacts.map { contact ->
+            // Check if there's a draft for this contact
+            val draft = storage.getDraft(SqlStorage.CHAT_TYPE_CONTACT, contact.id)
+
             ChatListItem.ContactItem(
                 id = contact.id,
                 pubkey = contact.pubkey,
                 name = contact.name,
                 lastMessage = contact.lastMessage,
                 unreadCount = contact.unread,
-                avatar = contact.avatar
+                avatar = contact.avatar,
+                draft = draft
             )
         })
 
@@ -442,6 +447,9 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 lastMessage?.getText(this)
             }
 
+            // Check if there's a draft for this group chat
+            val draft = storage.getDraft(SqlStorage.CHAT_TYPE_GROUP, groupChat.chatId)
+
             ChatListItem.GroupChatItem(
                 id = groupChat.chatId,
                 chatId = groupChat.chatId,
@@ -453,7 +461,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 avatar = avatar,
                 lastMessageText = lastMessageText,
                 lastMessageTime = groupChat.lastMessageTime,
-                unreadCount = groupChat.unreadCount
+                unreadCount = groupChat.unreadCount,
+                draft = draft
             )
         })
 

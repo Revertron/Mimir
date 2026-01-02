@@ -43,7 +43,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 12
+        const val DATABASE_VERSION = 13
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
@@ -53,6 +53,13 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         // Group chat tables (version 8+)
         const val CREATE_GROUP_CHATS = "CREATE TABLE group_chats (chat_id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, avatar TEXT, mediator_pubkey BLOB NOT NULL, owner_pubkey BLOB NOT NULL, shared_key BLOB NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, last_message_time INTEGER DEFAULT 0, unread_count INTEGER DEFAULT 0, muted BOOL DEFAULT 0)"
         const val CREATE_GROUP_INVITES = "CREATE TABLE group_invites (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, from_pubkey BLOB NOT NULL, timestamp INTEGER NOT NULL, chat_name TEXT NOT NULL, chat_description TEXT, chat_avatar TEXT, encrypted_data BLOB NOT NULL, status INTEGER DEFAULT 0)"
+
+        // Drafts table (version 13+)
+        const val CREATE_DRAFTS = "CREATE TABLE drafts (chat_type INTEGER NOT NULL, chat_id INTEGER NOT NULL, text TEXT, media_uri TEXT, media_type INTEGER DEFAULT 0, timestamp INTEGER NOT NULL, PRIMARY KEY(chat_type, chat_id))"
+
+        // Chat types for drafts table
+        const val CHAT_TYPE_CONTACT = 0
+        const val CHAT_TYPE_GROUP = 1
     }
 
     data class Message(
@@ -217,6 +224,19 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
+    /**
+     * Represents a saved message draft for a chat (1-to-1 or group).
+     * Drafts can contain text, a pending attachment (image/file), or both.
+     */
+    data class Draft(
+        val chatType: Int,      // CHAT_TYPE_CONTACT or CHAT_TYPE_GROUP
+        val chatId: Long,       // Contact ID or Group Chat ID
+        val text: String?,      // Message text (can be null)
+        val mediaUri: String?,  // Path to cached media file (can be null)
+        val mediaType: Int,     // 0=none, 1=image, 3=file (matches message types)
+        val timestamp: Long     // Last modified time (UTC)
+    )
+
     val listeners = mutableListOf<StorageListener>()
     private val notificationManager = NotificationHelper(context)
     @SuppressLint("HardwareIds")
@@ -230,6 +250,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         db.execSQL(CREATE_MESSAGES)
         db.execSQL(CREATE_GROUP_CHATS)
         db.execSQL(CREATE_GROUP_INVITES)
+        db.execSQL(CREATE_DRAFTS)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -304,6 +325,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         if (newVersion > oldVersion && newVersion == 12) {
             addGoneColumnToMembersTables(db)
+        }
+
+        if (newVersion > oldVersion && newVersion == 13) {
+            // Add drafts table for message composition state persistence
+            db.execSQL(CREATE_DRAFTS)
         }
     }
 
@@ -654,6 +680,120 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("updated", getUtcTime())
         }
         writableDatabase.update("contacts", values, "id = ?", arrayOf("$contactId"))
+    }
+
+    // ========== Draft Management ==========
+
+    /**
+     * Saves a draft for a chat (1-to-1 or group).
+     * Pass null for text/mediaUri to clear those fields.
+     * To delete the entire draft, use deleteDraft() instead.
+     */
+    fun saveDraft(chatType: Int, chatId: Long, text: String?, mediaUri: String?, mediaType: Int) {
+        val values = ContentValues().apply {
+            put("chat_type", chatType)
+            put("chat_id", chatId)
+            put("text", text)
+            put("media_uri", mediaUri)
+            put("media_type", mediaType)
+            put("timestamp", getUtcTime())
+        }
+        writableDatabase.insertWithOnConflict("drafts", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    /**
+     * Retrieves the draft for a specific chat.
+     * Returns null if no draft exists.
+     */
+    fun getDraft(chatType: Int, chatId: Long): Draft? {
+        val cursor = readableDatabase.query(
+            "drafts",
+            arrayOf("chat_type", "chat_id", "text", "media_uri", "media_type", "timestamp"),
+            "chat_type = ? AND chat_id = ?",
+            arrayOf("$chatType", "$chatId"),
+            null, null, null
+        )
+
+        val draft = if (cursor.moveToNext()) {
+            Draft(
+                chatType = cursor.getInt(0),
+                chatId = cursor.getLong(1),
+                text = cursor.getStringOrNull(2),
+                mediaUri = cursor.getStringOrNull(3),
+                mediaType = cursor.getInt(4),
+                timestamp = cursor.getLong(5)
+            )
+        } else {
+            null
+        }
+        cursor.close()
+        return draft
+    }
+
+    /**
+     * Deletes the draft for a specific chat.
+     */
+    fun deleteDraft(chatType: Int, chatId: Long) {
+        // First, delete any cached media file referenced by this draft
+        val draft = getDraft(chatType, chatId)
+        draft?.mediaUri?.let { uri ->
+            try {
+                val file = File(uri)
+                if (file.exists() && file.path.contains("cache")) {
+                    file.delete()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete draft media: ${e.message}")
+            }
+        }
+
+        writableDatabase.delete("drafts", "chat_type = ? AND chat_id = ?", arrayOf("$chatType", "$chatId"))
+    }
+
+    /**
+     * Deletes drafts older than the specified number of days.
+     * Also deletes any cached media files associated with old drafts.
+     *
+     * @param maxAgeDays Maximum age of drafts to keep (default: 7 days)
+     * @return Number of drafts deleted
+     */
+    fun cleanupOldDrafts(maxAgeDays: Int = 7): Int {
+        val cutoffTime = getUtcTime() - (maxAgeDays * 24 * 60 * 60 * 1000L)
+
+        // First, get all old drafts to clean up their media files
+        val cursor = readableDatabase.query(
+            "drafts",
+            arrayOf("media_uri"),
+            "timestamp < ?",
+            arrayOf("$cutoffTime"),
+            null, null, null
+        )
+
+        var deletedCount = 0
+        while (cursor.moveToNext()) {
+            val mediaUri = cursor.getStringOrNull(0)
+            mediaUri?.let { uri ->
+                try {
+                    val file = File(uri)
+                    if (file.exists() && file.path.contains("cache")) {
+                        file.delete()
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to delete old draft media: ${e.message}")
+                }
+            }
+            deletedCount++
+        }
+        cursor.close()
+
+        // Delete the draft records
+        writableDatabase.delete("drafts", "timestamp < ?", arrayOf("$cutoffTime"))
+
+        if (deletedCount > 0) {
+            Log.i(TAG, "Cleaned up $deletedCount old drafts (older than $maxAgeDays days)")
+        }
+
+        return deletedCount
     }
 
     fun addMessage(contact: ByteArray, guid: Long, replyTo: Long, incoming: Boolean, delivered: Boolean, sendTime: Long, editTime: Long, type: Int, message: ByteArray): Long {
