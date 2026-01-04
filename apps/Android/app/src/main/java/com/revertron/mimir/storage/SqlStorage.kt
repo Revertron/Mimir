@@ -43,7 +43,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 13
+        const val DATABASE_VERSION = 14
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
@@ -334,6 +334,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             // Add drafts table for message composition state persistence
             db.execSQL(CREATE_DRAFTS)
         }
+
+        if (newVersion > oldVersion && newVersion == 14) {
+            // Add last_seen timestamp tracking for group members
+            addLastSeenColumnToMembersTables(db)
+        }
     }
 
     fun updateUnreadCountsForGroups() {
@@ -448,6 +453,24 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         Log.i(TAG, "Added 'gone' column to $membersTable")
                     } catch (e: SQLiteException) {
                         Log.w(TAG, "Failed to add 'gone' column to $membersTable", e)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun addLastSeenColumnToMembersTables(db: SQLiteDatabase) {
+        db.query("group_chats", arrayOf("chat_id"), null, null, null, null, null).use { chats ->
+            while (chats.moveToNext()) {
+                val chatId = chats.getLong(0)
+                val membersTable = "members_$chatId"
+
+                if (!hasColumn(db, membersTable, "last_seen")) {
+                    try {
+                        db.execSQL("ALTER TABLE $membersTable ADD COLUMN last_seen INTEGER NOT NULL DEFAULT 0")
+                        Log.i(TAG, "Added 'last_seen' column to $membersTable")
+                    } catch (e: SQLiteException) {
+                        Log.w(TAG, "Failed to add 'last_seen' column to $membersTable", e)
                     }
                 }
             }
@@ -1741,7 +1764,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 updated INTEGER NOT NULL DEFAULT 0,
                 banned BOOL DEFAULT 0,
                 online BOOL DEFAULT 0,
-                gone BOOL DEFAULT 0
+                gone BOOL DEFAULT 0,
+                last_seen INTEGER NOT NULL DEFAULT 0
             )
         """.trimIndent())
 
@@ -2709,7 +2733,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         val cursor = readableDatabase.query(
             membersTable,
-            arrayOf("nickname", "info", "avatar", "permissions", "joined_at", "banned"),
+            arrayOf("nickname", "info", "avatar", "permissions", "joined_at", "banned", "online", "last_seen"),
             "pubkey = ?",
             arrayOf(pubkey.toHexString()),
             null, null, null
@@ -2723,7 +2747,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 avatarPath = cursor.getStringOrNull(2),
                 permissions = cursor.getInt(3),
                 joinedAt = cursor.getLong(4),
-                banned = cursor.getInt(5) != 0
+                banned = cursor.getInt(5) != 0,
+                online = cursor.getInt(6) != 0,
+                lastSeen = cursor.getLong(7)
             )
         } else {
             null
@@ -2741,7 +2767,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         val cursor = readableDatabase.query(
             membersTable,
-            arrayOf("pubkey", "nickname", "info", "avatar", "permissions", "joined_at", "banned", "online"),
+            arrayOf("pubkey", "nickname", "info", "avatar", "permissions", "joined_at", "banned", "online", "last_seen"),
             "gone = 0", null, null, null,
             "joined_at ASC"
         )
@@ -2756,7 +2782,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 permissions = cursor.getInt(4),
                 joinedAt = cursor.getLong(5),
                 banned = cursor.getInt(6) != 0,
-                online = cursor.getInt(7) != 0
+                online = cursor.getInt(7) != 0,
+                lastSeen = cursor.getLong(8)
             ))
         }
         cursor.close()
@@ -2841,6 +2868,35 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("permissions", permissions)
             put("online", if (online) 1 else 0)
         }
+        val updated = writableDatabase.update(
+            membersTable,
+            values,
+            "pubkey = ?",
+            arrayOf(Hex.toHexString(pubkey))
+        )
+        return updated > 0
+    }
+
+    /**
+     * Updates member's online status and last_seen timestamp.
+     * Used when receiving real-time status change events from mediator.
+     */
+    fun updateGroupMemberOnlineStatus(
+        chatId: Long,
+        pubkey: ByteArray,
+        online: Boolean,
+        lastSeen: Long = 0
+    ): Boolean {
+        require(pubkey.size == 32) { "pubkey must be 32 bytes" }
+        val membersTable = "members_$chatId"
+
+        val values = ContentValues().apply {
+            put("online", if (online) 1 else 0)
+            if (lastSeen > 0) {
+                put("last_seen", lastSeen)
+            }
+        }
+
         val updated = writableDatabase.update(
             membersTable,
             values,
@@ -2965,7 +3021,8 @@ data class GroupMemberInfo(
     val permissions: Int,
     val joinedAt: Long,
     val banned: Boolean,
-    val online: Boolean = false
+    val online: Boolean = false,
+    val lastSeen: Long = 0  // Unix timestamp in seconds
 )
 
 data class AccountInfo(val name: String, val info: String, val avatar: String, val updated: Long, val clientId: Int, val keyPair: AsymmetricCipherKeyPair)

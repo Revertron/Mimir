@@ -55,6 +55,8 @@ class MediatorClient(
         const val SYS_CHAT_DELETED: Byte = 0x05
         const val SYS_CHAT_INFO_CHANGE: Byte = 0x06
         const val SYS_PERMS_CHANGED: Byte = 0x07
+        const val SYS_MESSAGE_DELETED: Byte = 0x08  // message deleted (for reference)
+        const val SYS_MEMBER_ONLINE: Byte = 0x09  // member online status changed
 
         // Command codes (verified in mediator.go)
         private const val CMD_GET_NONCE: Int = 0x01
@@ -113,6 +115,7 @@ class MediatorClient(
         private const val TAG_ONLINE: Byte = 0x34.toByte()
         private const val TAG_ACCEPTED: Byte = 0x35.toByte()
         private const val TAG_LAST_UPDATE: Byte = 0x36.toByte()
+        private const val TAG_LAST_SEEN: Byte = 0x37.toByte()  // Unix timestamp in seconds
     }
 
     private val rng = SecureRandom()
@@ -823,13 +826,14 @@ class MediatorClient(
         val resp = request(CMD_GET_MEMBERS, payload) ?: throw MediatorException("getMembers timeout")
         if (resp.status != STATUS_OK) throw resp.asException("getMembers failed")
 
-        // Parse TLV response: TAG_COUNT + repeated members (each member has TAG_USER_PUBKEY, TAG_PERMS, TAG_ONLINE)
+        // Parse TLV response: TAG_COUNT + repeated members (each member has TAG_USER_PUBKEY, TAG_PERMS, TAG_ONLINE, [TAG_LAST_SEEN])
         val members = mutableListOf<Member>()
         var offset = 0
         var count = 0
         var pubkey: ByteArray? = null
         var perms = 0
         var online = false
+        var lastSeen = 0L
 
         while (offset < resp.payload.size) {
             val tag = resp.payload[offset++]
@@ -842,18 +846,31 @@ class MediatorClient(
                 TAG_COUNT -> count = ByteArray(4).apply { value.copyInto(this) }.readU32(0).toInt()
                 TAG_USER_PUBKEY -> pubkey = value
                 TAG_PERMS -> perms = value[0].toInt() and 0xFF
-                TAG_ONLINE -> {
-                    online = value[0].toInt() == 1
-                    // Member record complete - add to list
+                TAG_ONLINE -> online = value[0].toInt() == 1
+                TAG_LAST_SEEN -> {
+                    // Parse 8-byte Unix timestamp (seconds)
+                    lastSeen = if (value.size >= 8) {
+                        ByteArray(8).apply { value.copyInto(this, 0, 0, 8) }.readLong(0)
+                    } else {
+                        0L
+                    }
+                    // Member record complete - add to list (TAG_LAST_SEEN is the final tag)
                     if (pubkey != null) {
-                        members.add(Member(pubkey, perms, online))
+                        members.add(Member(pubkey, perms, online, lastSeen))
                         // Reset for next member
                         pubkey = null
                         perms = 0
                         online = false
+                        lastSeen = 0L
                     }
                 }
             }
+        }
+
+        // Handle members from old mediator that don't send TAG_LAST_SEEN
+        // If we have a pending member (pubkey set but not added yet), add it now
+        if (pubkey != null) {
+            members.add(Member(pubkey, perms, online, 0L))
         }
 
         Log.i(TAG, "Retrieved ${members.size} member(s) for chat $chatId")
@@ -970,8 +987,24 @@ class MediatorClient(
                     // Check if this is a system message (author == mediator pubkey)
                     if (author.contentEquals(mediatorPubkey)) {
                         // System message: unencrypted, format is [event_code(1)][...event data...]
-                        Log.d(TAG, "Received system message for chat $chatId: event_code=${if (data.isNotEmpty()) data[0].toInt() and 0xFF else 0}")
-                        listener.onSystemMessage(chatId, msgId, guid, timestamp, data)
+                        val eventCode = if (data.isNotEmpty()) data[0] else 0
+                        Log.d(TAG, "Received system message for chat $chatId: event_code=${eventCode.toInt() and 0xFF}")
+
+                        // Handle SYS_MEMBER_ONLINE separately (don't save to database, just update UI)
+                        if (eventCode == SYS_MEMBER_ONLINE && data.size >= 42) {
+                            // Parse: [event(1)][pubkey(32)][online(1)][timestamp(8)]
+                            val memberPubkey = data.copyOfRange(1, 33)
+                            val isOnline = data[33].toInt() == 1
+                            val eventTimestamp = ByteArray(8).apply {
+                                data.copyInto(this, 0, 34, 42)
+                            }.readLong(0)
+
+                            Log.i(TAG, "Member online status change: ${Hex.toHexString(memberPubkey).take(8)}... -> ${if (isOnline) "online" else "offline"} @ $eventTimestamp")
+                            listener.onMemberOnlineStatusChanged(chatId, memberPubkey, isOnline, eventTimestamp)
+                        } else {
+                            // Other system messages - save to database
+                            listener.onSystemMessage(chatId, msgId, guid, timestamp, data)
+                        }
                     } else {
                         // Regular user message
                         listener.onPushMessage(chatId, msgId, guid, timestamp, author, data)
@@ -1252,6 +1285,23 @@ class MediatorClient(
          */
         fun onMemberInfoUpdate(chatId: Long, memberPubkey: ByteArray, encryptedInfo: ByteArray?, timestamp: Long)
 
+        /**
+         * Mediator broadcasts that a member's online status has changed.
+         *
+         * Format: [event_code(1)][pubkey(32)][online(1)][timestamp(8)]
+         *
+         * @param chatId The chat ID where this member exists
+         * @param memberPubkey The public key of the member whose status changed
+         * @param isOnline True if member came online, false if went offline
+         * @param timestamp Unix timestamp in seconds when the status changed
+         */
+        fun onMemberOnlineStatusChanged(
+            chatId: Long,
+            memberPubkey: ByteArray,
+            isOnline: Boolean,
+            timestamp: Long
+        )
+
         /** Connection ended or failed. */
         fun onDisconnected(error: Exception)
     }
@@ -1286,7 +1336,8 @@ class MediatorClient(
     data class Member(
         val pubkey: ByteArray,          // 32-byte public key
         val permissions: Int,           // Permission flags (owner, admin, mod, user, read-only, banned)
-        val online: Boolean             // Online status (true if subscribed to chat)
+        val online: Boolean,            // Online status (true if subscribed to chat)
+        val lastSeen: Long = 0          // Unix timestamp in seconds (0 if never seen or currently online)
     )
 
     class MediatorException(message: String, cause: Throwable? = null) : Exception(message, cause)

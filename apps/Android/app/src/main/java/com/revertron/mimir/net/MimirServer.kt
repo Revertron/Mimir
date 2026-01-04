@@ -433,6 +433,10 @@ class MimirServer(
                     if (old) {
                         onServerStateChanged(false)
                     }
+                    if (online) {
+                        jumpPeer()
+                        count = 0
+                    }
                 }
             }
         }.start()

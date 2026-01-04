@@ -208,7 +208,23 @@
     <string name="files">Файлы</string>
     <string name="links">Ссылки</string>
     <string name="online">В сети</string>
-    <string name="last_seen_recently">Замечен недавно</string>
+    <string name="last_seen_never">Не был онлайн</string>
+    <string name="last_seen_just_now">был(а) только что</string>
+    <plurals name="last_seen_minutes_ago">
+        <item quantity="one">был(а) %d минуту назад</item>
+        <item quantity="few">был(а) %d минуты назад</item>
+        <item quantity="many">был(а) %d минут назад</item>
+        <item quantity="other">был(а) %d минут назад</item>
+    </plurals>
+    <plurals name="last_seen_hours_ago">
+        <item quantity="one">был(а) %d час назад</item>
+        <item quantity="few">был(а) %d часа назад</item>
+        <item quantity="many">был(а) %d часов назад</item>
+        <item quantity="other">был(а) %d часов назад</item>
+    </plurals>
+    <string name="last_seen_yesterday_at">был(а) вчера в %s</string>
+    <string name="last_seen_on_day_at">был(а) в %1$s в %2$s</string>
+    <string name="last_seen_on_date">был(а) %s</string>
     <string name="owner">Владелец</string>
     <string name="admin">Админ</string>
     <string name="moderator">Модератор</string>

@@ -8,6 +8,7 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
+import com.revertron.mimir.formatLastSeen
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.storage.GroupMemberInfo
 import com.revertron.mimir.storage.SqlStorage
@@ -62,12 +63,16 @@ class GroupMemberAdapter(
         val displayName = member.nickname?.ifEmpty { null } ?: pubKey
         holder.memberName.text = displayName
 
-        // Show real online status
+        // Show online status or last seen timestamp
         if (member.online) {
             holder.memberStatus.text = context.getString(R.string.online)
-            holder.memberStatus.setTextColor(context.getColor(R.color.status_online)) // Add green color
+            holder.memberStatus.setTextColor(context.getColor(R.color.status_online)) // Green color for online
         } else {
-            holder.memberStatus.text = context.getString(R.string.last_seen_recently)
+            val lastSeenText = formatLastSeen(context, member.lastSeen, false)
+            holder.memberStatus.text = lastSeenText.ifEmpty {
+                context.getString(R.string.last_seen_never)
+            }
+            holder.memberStatus.setTextColor(context.getColor(android.R.color.darker_gray))
         }
 
         // Set member role badge based on permission flags

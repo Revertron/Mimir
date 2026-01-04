@@ -674,6 +674,37 @@ class MediatorManager(
             }
         }
 
+        override fun onMemberOnlineStatusChanged(
+            chatId: Long,
+            memberPubkey: ByteArray,
+            isOnline: Boolean,
+            timestamp: Long
+        ) {
+            val pubkeyHex = Hex.toHexString(memberPubkey).take(8)
+            Log.i(TAG, "Member online status changed in chat $chatId: $pubkeyHex... -> ${if (isOnline) "online" else "offline"} @ $timestamp")
+
+            try {
+                // Don't track current user's own status
+                if (memberPubkey.contentEquals(getPublicKey())) {
+                    Log.d(TAG, "Ignoring own online status change event")
+                    return
+                }
+
+                // Update database with new status and last_seen timestamp
+                val lastSeenTimestamp = if (isOnline) 0L else timestamp
+                storage.updateGroupMemberOnlineStatus(
+                    chatId = chatId,
+                    pubkey = memberPubkey,
+                    online = isOnline,
+                    lastSeen = lastSeenTimestamp
+                )
+
+                Log.d(TAG, "Updated member online status in storage for chat $chatId")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing member online status change for chat $chatId", e)
+            }
+        }
+
         override fun onMemberInfoRequest(chatId: Long, lastUpdate: Long): MediatorClient.MemberInfoResponse? {
             val info = infoProvider.getMyInfo(lastUpdate) ?: return null
             val chatInfo = storage.getGroupChat(chatId) ?: return null

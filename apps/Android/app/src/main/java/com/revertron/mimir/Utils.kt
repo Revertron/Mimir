@@ -52,6 +52,7 @@ import java.net.URLEncoder
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import java.util.Random
 import kotlin.math.abs
@@ -1016,4 +1017,71 @@ fun haveNetwork(context: Context): Boolean {
     val caps = cm.getNetworkCapabilities(activeNetwork)
     val aliveNetwork = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     return aliveNetwork
+}
+
+/**
+ * Formats last_seen timestamp for display.
+ * Returns hybrid format: relative for today, absolute for older.
+ */
+fun formatLastSeen(context: Context, lastSeenSeconds: Long, isOnline: Boolean): String {
+    if (isOnline || lastSeenSeconds == 0L) {
+        return ""  // Online members don't show last_seen
+    }
+
+    val lastSeenMs = lastSeenSeconds * 1000
+    val now = System.currentTimeMillis()
+    val diffMs = now - lastSeenMs
+
+    if (diffMs < 0) {
+        return context.getString(R.string.last_seen_just_now)  // Clock skew
+    }
+
+    val calendar = Calendar.getInstance()
+    val todayStart = calendar.apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    val yesterdayStart = todayStart - 86400000
+
+    val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val dateFormatter = SimpleDateFormat("d MMM yyyy", Locale.getDefault())
+    val dayFormatter = SimpleDateFormat("EEEE", Locale.getDefault())
+
+    return when {
+        // Today: relative time
+        lastSeenMs >= todayStart -> {
+            val diffSeconds = diffMs / 1000
+            when {
+                diffSeconds < 60 -> context.getString(R.string.last_seen_just_now)
+                diffSeconds < 3600 -> {
+                    val minutes = (diffSeconds / 60).toInt()
+                    context.resources.getQuantityString(R.plurals.last_seen_minutes_ago, minutes, minutes)
+                }
+                else -> {
+                    val hours = (diffSeconds / 3600).toInt()
+                    context.resources.getQuantityString(R.plurals.last_seen_hours_ago, hours, hours)
+                }
+            }
+        }
+
+        // Yesterday
+        lastSeenMs >= yesterdayStart -> {
+            context.getString(R.string.last_seen_yesterday_at, timeFormatter.format(Date(lastSeenMs)))
+        }
+
+        // This week
+        lastSeenMs >= todayStart - (calendar.get(Calendar.DAY_OF_WEEK) - 1) * 86400000 -> {
+            context.getString(R.string.last_seen_on_day_at,
+                dayFormatter.format(Date(lastSeenMs)),
+                timeFormatter.format(Date(lastSeenMs)))
+        }
+
+        // Older
+        else -> {
+            context.getString(R.string.last_seen_on_date, dateFormatter.format(Date(lastSeenMs)))
+        }
+    }
 }

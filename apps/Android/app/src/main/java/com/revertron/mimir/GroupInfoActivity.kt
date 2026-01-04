@@ -299,9 +299,13 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
             if (mediatorClient != null) {
                 try {
                     val members = mediatorClient.getMembers(chatId)
-                    // Update database with permissions and online status
+                    // Update database with permissions, online status, and last_seen
                     for (member in members) {
                         getStorage().updateGroupMemberStatus(chatId, member.pubkey, member.permissions, member.online)
+                        // Update last_seen for offline members
+                        if (!member.online && member.lastSeen > 0) {
+                            getStorage().updateGroupMemberOnlineStatus(chatId, member.pubkey, false, member.lastSeen)
+                        }
                     }
                     // Reload UI
                     runOnUiThread {

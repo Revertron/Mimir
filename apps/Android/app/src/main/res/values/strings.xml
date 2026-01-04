@@ -223,7 +223,19 @@
     <string name="files">Files</string>
     <string name="links">Links</string>
     <string name="online">online</string>
-    <string name="last_seen_recently">last seen recently</string>
+    <string name="last_seen_never">Never seen online</string>
+    <string name="last_seen_just_now">last seen just now</string>
+    <plurals name="last_seen_minutes_ago">
+        <item quantity="one">last seen %d minute ago</item>
+        <item quantity="other">last seen %d minutes ago</item>
+    </plurals>
+    <plurals name="last_seen_hours_ago">
+        <item quantity="one">last seen %d hour ago</item>
+        <item quantity="other">last seen %d hours ago</item>
+    </plurals>
+    <string name="last_seen_yesterday_at">last seen yesterday at %s</string>
+    <string name="last_seen_on_day_at">last seen on %1$s at %2$s</string>
+    <string name="last_seen_on_date">last seen on %s</string>
     <string name="owner">Owner</string>
     <string name="admin">Admin</string>
     <string name="moderator">Moderator</string>
