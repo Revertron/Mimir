@@ -82,6 +82,8 @@
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />
         </activity>
 
+        <activity android:name=".ForwardSelectorActivity" android:exported="false" />
+
         <activity android:name=".AboutActivity" android:exported="false" android:parentActivityName=".SettingsActivity">
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".SettingsActivity" />
         </activity>

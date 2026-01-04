@@ -181,6 +181,11 @@ class GroupChatActivity : BaseChatActivity() {
         if (sharedUri != null) {
             handleSharedMedia(sharedUri)
         }
+
+        // Handle forward mode if present
+        if (intent.getBooleanExtra("FORWARD_MODE", false)) {
+            handleForwardMode()
+        }
     }
 
     // BaseChatActivity abstract method implementations
@@ -253,6 +258,10 @@ class GroupChatActivity : BaseChatActivity() {
         val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
         val authorName = user?.first ?: getString(R.string.unknown_nickname)
         return Pair(authorName, message.getText(this))
+    }
+
+    override fun getMessageForForwarding(messageId: Long): com.revertron.mimir.storage.SqlStorage.Message? {
+        return getStorage().getGroupMessage(groupChat.chatId, messageId, byGuid = false)
     }
 
     override fun sendMessage(text: String, replyTo: Long) {
@@ -351,6 +360,89 @@ class GroupChatActivity : BaseChatActivity() {
                 intent.putExtra("pubkey", pubKey)
                 intent.putExtra("name", user?.first ?: Hex.toHexString(pubKey).take(16))
                 startActivity(intent, animFromRight.toBundle())
+            }
+        }
+    }
+
+    // Forward mode handling
+
+    private fun handleForwardMode() {
+        val messageText = intent.getStringExtra("FORWARD_MESSAGE_TEXT") ?: ""
+        val messageType = intent.getIntExtra("FORWARD_MESSAGE_TYPE", 0)
+        val messageJson = intent.getStringExtra("FORWARD_MESSAGE_JSON")
+
+        // Show forwarded message in reply panel
+        showReplyPanel(
+            getString(R.string.forwarded_message),
+            messageText,
+            0L  // No actual GUID - this is a forward, not a reply
+        )
+
+        // Store forward data for sending
+        when (messageType) {
+            1 -> {
+                // Image message - recreate attachment
+                messageJson?.let { json ->
+                    try {
+                        attachmentJson = org.json.JSONObject(json)
+                        attachmentType = messageType
+
+                        // Verify file exists and show attachment UI
+                        val filename = attachmentJson?.optString("name")
+                        if (filename != null) {
+                            val file = java.io.File(java.io.File(filesDir, "files"), filename)
+                            if (file.exists()) {
+                                val fileSize = attachmentJson?.optLong("size", 0) ?: 0
+                                val preview = getImagePreview(this, filename, 320, 85)
+
+                                attachmentPreview.setImageBitmap(preview)
+                                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                                attachmentName.text = filename
+                                attachmentSize.text = formatFileSize(fileSize)
+                                attachmentPanel.visibility = android.view.View.VISIBLE
+                            } else {
+                                Log.e(TAG, "Forwarded file not found: $filename")
+                                Toast.makeText(this, "Media file not found", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse forwarded media", e)
+                    }
+                }
+            }
+            3 -> {
+                // File message - recreate attachment
+                messageJson?.let { json ->
+                    try {
+                        attachmentJson = org.json.JSONObject(json)
+                        attachmentType = messageType
+
+                        // Verify file exists and show attachment UI
+                        val filename = attachmentJson?.optString("name")
+                        if (filename != null) {
+                            val file = java.io.File(java.io.File(filesDir, "files"), filename)
+                            if (file.exists()) {
+                                val displayName = attachmentJson?.optString("originalName", filename) ?: filename
+                                val fileSize = attachmentJson?.optLong("size", 0) ?: 0
+                                val mimeType = attachmentJson?.optString("mimeType", "application/octet-stream") ?: "application/octet-stream"
+
+                                attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
+                                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                                attachmentName.text = displayName
+                                attachmentSize.text = formatFileSize(fileSize)
+                                attachmentPanel.visibility = android.view.View.VISIBLE
+                            } else {
+                                Log.e(TAG, "Forwarded file not found: $filename")
+                                Toast.makeText(this, "Media file not found", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse forwarded media", e)
+                    }
+                }
+            }
+            else -> {
+                // Text message - stored in reply panel already
             }
         }
     }

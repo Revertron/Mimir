@@ -95,6 +95,10 @@
     <string name="allow">Allow</string>
     <string name="allow_notifications_snack">Notifications are disabled for this app. Please, allow them to get messages and calls.</string>
     <string name="select_contact_to_share">Select contact</string>
+    <string name="select_chat_to_forward">Select chat to forward to</string>
+    <string name="message_saved_to_saved_messages">Message saved to Saved Messages</string>
+    <string name="show">Show</string>
+    <string name="forwarded_message">Forwarded message</string>
     <string name="add_custom_peer">Add custom peer</string>
     <string name="add_button">Add</string>
     <string name="audio_call_incoming">Incoming audio call</string>

@@ -66,6 +66,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         const val PICK_IMAGE_REQUEST_CODE = 123
         const val TAKE_PHOTO_REQUEST_CODE = 124
         const val PICK_FILE_REQUEST_CODE = 125
+        const val REQUEST_FORWARD_MESSAGE = 126
     }
 
     // UI Components - Reply Panel
@@ -176,6 +177,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
      */
     protected abstract fun getMessageForReply(messageId: Long): Pair<String, String>? // Returns (authorName, messageText)
 
+    /**
+     * Gets a message for forwarding purposes.
+     */
+    protected abstract fun getMessageForForwarding(messageId: Long): SqlStorage.Message?
+
     // Shared UI Setup
 
     private fun setupToolbar() {
@@ -266,7 +272,52 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
         sendButton.setOnClickListener {
             val text: String = editText.text.toString().trim()
-            if (text.isNotEmpty() || attachmentJson != null) {
+            val isForwardMode = intent.getBooleanExtra("FORWARD_MODE", false)
+
+            if (isForwardMode && replyTo == 0L) {
+                // Forward mode: send user text first (if present), then forwarded message
+                editText.text?.clear()
+
+                // Send user's text first if present
+                if (text.isNotEmpty()) {
+                    sendMessage(text, 0L)
+                }
+
+                // Then send the forwarded message
+                if (attachmentJson != null) {
+                    // Media forward - send with attachment and original caption
+                    val originalCaption = attachmentJson?.optString("text", "") ?: ""
+                    sendMessage(originalCaption, 0L)
+                } else {
+                    // Text forward - get text from reply panel and send
+                    val forwardedText = replyText.text.toString()
+                    if (forwardedText.isNotEmpty()) {
+                        // Temporarily clear attachment to ensure text-only send
+                        val savedAttachment = attachmentJson
+                        val savedType = attachmentType
+                        attachmentJson = null
+                        sendMessage(forwardedText, 0L)
+                        attachmentJson = savedAttachment
+                        attachmentType = savedType
+                    }
+                }
+
+                clearReplyPanel()
+                clearAttachment()
+
+                // Clear forward mode
+                intent.removeExtra("FORWARD_MODE")
+                intent.removeExtra("FORWARD_MESSAGE_ID")
+                intent.removeExtra("FORWARD_MESSAGE_GUID")
+                intent.removeExtra("FORWARD_MESSAGE_TYPE")
+                intent.removeExtra("FORWARD_MESSAGE_TEXT")
+                intent.removeExtra("FORWARD_MESSAGE_JSON")
+
+                // Delete the draft since message was sent
+                val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+                getStorage().deleteDraft(chatType, getChatId())
+            } else if (text.isNotEmpty() || attachmentJson != null) {
+                // Normal send flow
                 editText.text?.clear()
                 sendMessage(text, replyTo)
                 clearReplyPanel()
@@ -453,7 +504,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
     }
 
-    private fun formatFileSize(bytes: Long): String {
+    fun formatFileSize(bytes: Long): String {
         return when {
             bytes < 1024 -> "$bytes B"
             bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
@@ -461,7 +512,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
     }
 
-    private fun getFileIconForMimeType(mimeType: String): Int {
+    fun getFileIconForMimeType(mimeType: String): Int {
         return when {
             mimeType.startsWith("application/pdf") -> R.drawable.ic_file_document_outline
             mimeType.startsWith("application/zip") || mimeType.startsWith("application/x-") -> R.drawable.ic_file_document_outline
@@ -503,6 +554,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
                     }
                     val selectedFileUri = data.data!!
                     getFileFromUri(selectedFileUri)
+                }
+            }
+            REQUEST_FORWARD_MESSAGE -> {
+                if (resultCode == RESULT_OK && data != null) {
+                    handleForwardDestination(data)
                 }
             }
         }
@@ -584,9 +640,38 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         return false
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun handleForward(view: View): Boolean {
-        Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
-        return false
+        val (messageId, guid) = view.tag as Pair<Long, Long>
+        val message = getMessageForForwarding(messageId)
+
+        if (message == null) {
+            Toast.makeText(this, "Message not found", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        // Filter out system messages
+        if (message.type == 1000) {
+            Toast.makeText(this, "Cannot forward system messages", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        // Launch ForwardSelectorActivity
+        val intent = Intent(this, ForwardSelectorActivity::class.java)
+        intent.putExtra("FORWARD_MESSAGE_ID", messageId)
+        intent.putExtra("FORWARD_MESSAGE_GUID", guid)
+        intent.putExtra("FORWARD_MESSAGE_TYPE", message.type)
+        intent.putExtra("FORWARD_MESSAGE_TEXT", message.getText(this))
+
+        // Include media JSON for images/files
+        if (message.type == 1 || message.type == 3) {
+            message.data?.let {
+                intent.putExtra("FORWARD_MESSAGE_JSON", String(it))
+            }
+        }
+
+        startActivityForResult(intent, REQUEST_FORWARD_MESSAGE)
+        return true
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -610,6 +695,91 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             dialog.cancel()
         }
         builder.show()
+    }
+
+    // Forward Message Handling
+
+    private fun handleForwardDestination(data: Intent) {
+        when (data.getStringExtra(ForwardSelectorActivity.RESULT_CHAT_TYPE)) {
+            ForwardSelectorActivity.CHAT_TYPE_SAVED -> saveToSavedMessages(data)
+            ForwardSelectorActivity.CHAT_TYPE_CONTACT -> openContactChatWithForward(data)
+            ForwardSelectorActivity.CHAT_TYPE_GROUP -> openGroupChatWithForward(data)
+        }
+    }
+
+    private fun saveToSavedMessages(data: Intent) {
+        val messageText = data.getStringExtra("FORWARD_MESSAGE_TEXT") ?: ""
+        val messageType = data.getIntExtra("FORWARD_MESSAGE_TYPE", 0)
+        val messageJson = data.getStringExtra("FORWARD_MESSAGE_JSON")
+
+        // Get current user's pubkey for saved messages
+        val accountInfo = getStorage().getAccountInfo(1, 0L)
+        val myPubkey = (accountInfo!!.keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+
+        // Send to ConnectionService which properly handles saved messages (sending to self)
+        val serviceIntent = Intent(this, ConnectionService::class.java)
+        serviceIntent.putExtra("command", "send")
+        serviceIntent.putExtra("pubkey", myPubkey)
+        serviceIntent.putExtra("replyTo", 0L)
+
+        if (messageType == 1 || messageType == 3) {
+            // Media message
+            serviceIntent.putExtra("type", messageType)
+            serviceIntent.putExtra("message", messageJson ?: messageText)
+        } else {
+            // Text message
+            serviceIntent.putExtra("message", messageText)
+        }
+
+        startService(serviceIntent)
+
+        // Show snackbar notification
+        showForwardedToSavedSnackbar()
+    }
+
+    private fun showForwardedToSavedSnackbar() {
+        val rootView = findViewById<View>(android.R.id.content)
+        com.google.android.material.snackbar.Snackbar.make(
+            rootView,
+            getString(R.string.message_saved_to_saved_messages),
+            com.google.android.material.snackbar.Snackbar.LENGTH_LONG
+        ).setAction(getString(R.string.show)) {
+            val intent = Intent(this, ChatActivity::class.java)
+            intent.putExtra("contactId", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+            intent.putExtra("name", getString(R.string.saved_messages))
+            intent.putExtra("savedMessages", true)
+            startActivity(intent, animFromRight.toBundle())
+        }.show()
+    }
+
+    private fun openContactChatWithForward(data: Intent) {
+        val intent = Intent(this, ChatActivity::class.java)
+        intent.putExtra("pubkey", data.getByteArrayExtra(ForwardSelectorActivity.RESULT_PUBKEY))
+        intent.putExtra("name", data.getStringExtra(ForwardSelectorActivity.RESULT_NAME))
+        copyForwardExtras(intent, data)
+        startActivity(intent, animFromRight.toBundle())
+    }
+
+    private fun openGroupChatWithForward(data: Intent) {
+        val intent = Intent(this, GroupChatActivity::class.java)
+        intent.putExtra(GroupChatActivity.EXTRA_CHAT_ID, data.getLongExtra(ForwardSelectorActivity.RESULT_CHAT_ID, 0))
+        intent.putExtra(GroupChatActivity.EXTRA_CHAT_NAME, data.getStringExtra(ForwardSelectorActivity.RESULT_NAME))
+        intent.putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, data.getStringExtra(ForwardSelectorActivity.RESULT_DESCRIPTION))
+        intent.putExtra(GroupChatActivity.EXTRA_IS_OWNER, data.getBooleanExtra(ForwardSelectorActivity.RESULT_IS_OWNER, false))
+        intent.putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, data.getByteArrayExtra(ForwardSelectorActivity.RESULT_MEDIATOR_ADDRESS))
+        copyForwardExtras(intent, data)
+        startActivity(intent, animFromRight.toBundle())
+    }
+
+    private fun copyForwardExtras(target: Intent, source: Intent) {
+        target.putExtra("FORWARD_MODE", true)
+        target.putExtra("FORWARD_MESSAGE_ID", source.getLongExtra("FORWARD_MESSAGE_ID", 0))
+        target.putExtra("FORWARD_MESSAGE_GUID", source.getLongExtra("FORWARD_MESSAGE_GUID", 0))
+        target.putExtra("FORWARD_MESSAGE_TYPE", source.getIntExtra("FORWARD_MESSAGE_TYPE", 0))
+        target.putExtra("FORWARD_MESSAGE_TEXT", source.getStringExtra("FORWARD_MESSAGE_TEXT"))
+        source.getStringExtra("FORWARD_MESSAGE_JSON")?.let {
+            target.putExtra("FORWARD_MESSAGE_JSON", it)
+        }
     }
 
     // Draft Management
