@@ -259,11 +259,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         Log.i(TAG, "Upgrading from $oldVersion to $newVersion")
 
-        if (newVersion > oldVersion && newVersion == 2) {
+        if (oldVersion < 2 && newVersion >= 2) {
             db.execSQL("ALTER TABLE messages ADD COLUMN read BOOL DEFAULT 1")
         }
 
-        if (newVersion > oldVersion && newVersion == 3) {
+        if (oldVersion < 3 && newVersion >= 3) {
             val time = getUtcTime()
             db.execSQL("ALTER TABLE accounts ADD COLUMN info TEXT")
             db.execSQL("ALTER TABLE accounts ADD COLUMN avatar TEXT")
@@ -275,18 +275,18 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             db.execSQL("ALTER TABLE contacts ADD COLUMN redacted BOOL DEFAULT 0")
         }
 
-        if (newVersion > oldVersion && newVersion == 4) {
+        if (oldVersion < 4 && newVersion >= 4) {
             db.execSQL("ALTER TABLE ips ADD COLUMN port INTEGER DEFAULT 5050")
             db.execSQL("ALTER TABLE ips ADD COLUMN priority INTEGER DEFAULT 3")
         }
 
-        if (newVersion > oldVersion && newVersion == 5) {
+        if (oldVersion < 5 && newVersion >= 5) {
             migrateAccountsToBlob(db)
             migrateContactsToBlob(db)
             migrateMessagesToBlob(db)
         }
 
-        if (newVersion > oldVersion && newVersion == 6) {
+        if (oldVersion < 6 && newVersion >= 6) {
             db.execSQL("ALTER TABLE messages ADD COLUMN guid INTEGER DEFAULT 0")
             db.execSQL("ALTER TABLE messages ADD COLUMN replyTo INTEGER DEFAULT 0")
             val columns = arrayOf("id", "time", "message")
@@ -304,38 +304,38 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             cursor.close()
         }
 
-        if (newVersion > oldVersion && newVersion == 7) {
+        if (oldVersion < 7 && newVersion >= 7) {
             db.execSQL("ALTER TABLE messages ADD COLUMN edit INTEGER DEFAULT 0")
         }
 
-        if (newVersion > oldVersion && oldVersion == 7) {
+        if (oldVersion < 8 && newVersion >= 8) {
             // Add group chat support
             db.execSQL(CREATE_GROUP_CHATS)
             db.execSQL(CREATE_GROUP_INVITES)
         }
 
-        if (newVersion > oldVersion && newVersion == 9) {
+        if (oldVersion < 9 && newVersion >= 9) {
             migrateGroupMessageIncomingColumn(db)
         }
 
-        if (newVersion > oldVersion && newVersion == 10) {
+        if (oldVersion < 10 && newVersion >= 10) {
             addOnlineColumnToMembersTables(db)
         }
 
-        if (newVersion > oldVersion && newVersion > 10) {
+        if (oldVersion < 11 && newVersion >= 11) {
             migrateGroupMessageReplyToColumn(db)
         }
 
-        if (newVersion > oldVersion && newVersion == 12) {
+        if (oldVersion < 12 && newVersion >= 12) {
             addGoneColumnToMembersTables(db)
         }
 
-        if (newVersion > oldVersion && newVersion == 13) {
+        if (oldVersion < 13 && newVersion >= 13) {
             // Add drafts table for message composition state persistence
             db.execSQL(CREATE_DRAFTS)
         }
 
-        if (newVersion > oldVersion && newVersion == 14) {
+        if (oldVersion < 14 && newVersion >= 14) {
             // Add last_seen timestamp tracking for group members
             addLastSeenColumnToMembersTables(db)
         }
