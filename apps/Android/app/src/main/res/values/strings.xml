@@ -297,5 +297,6 @@
     <string name="system_msg_role_changed">%1$s changed %2$s role to %3$s</string>
     <string name="error_loading_avatar_picture">Error loading avatar picture!</string>
     <string name="error_loading_file">Error loading the file!</string>
+    <string name="no_app_found_to_open">No app found to open: %1$s, copied to clipboard.</string>
 
 </resources>

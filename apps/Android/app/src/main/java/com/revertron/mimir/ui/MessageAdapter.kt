@@ -1,10 +1,16 @@
 package com.revertron.mimir.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.text.util.Linkify
 import android.util.Log
 import android.util.TypedValue
@@ -13,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
+import java.util.regex.Pattern
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.FileProvider
@@ -27,6 +34,7 @@ import java.io.File
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
+import androidx.core.net.toUri
 
 class MessageAdapter(
     private val storage: SqlStorage,
@@ -39,6 +47,20 @@ class MessageAdapter(
     private val fontSize: Int,
     private val onAvatarClick: View.OnClickListener? = null
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
+
+    companion object {
+        const val TAG = "MessageAdapter"
+
+        // Custom URL scheme patterns for unusual protocols
+        private val CUSTOM_SCHEMES = arrayOf("mimir", "tcp", "tls", "ws", "wss", "quic")
+
+        // Regex pattern that matches URLs with custom schemes
+        // Pattern: (scheme)://[any non-whitespace characters]
+        private val CUSTOM_URL_PATTERN = Pattern.compile(
+            "\\b(" + CUSTOM_SCHEMES.joinToString("|") + ")://[^\\s]+",
+            Pattern.CASE_INSENSITIVE
+        )
+    }
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
@@ -68,6 +90,64 @@ class MessageAdapter(
         val replyToName: AppCompatTextView = view.findViewById(R.id.reply_contact_name)
         val replyToText: AppCompatTextView = view.findViewById(R.id.reply_text)
         val replyToPanel: View = view.findViewById(R.id.reply_panel)
+    }
+
+    /**
+     * Applies custom link patterns to the TextView for unusual URL schemes.
+     * Handles both standard web URLs and custom schemes like mimir://, tcp://, tls://, ws://, wss://
+     */
+    private fun applyCustomLinks(textView: AppCompatTextView, text: CharSequence, context: Context) {
+        // First apply standard web URL linkification
+        textView.autoLinkMask = Linkify.WEB_URLS
+
+        // Then add custom scheme patterns
+        val spannable = SpannableString(text)
+        val matcher = CUSTOM_URL_PATTERN.matcher(text)
+
+        while (matcher.find()) {
+            val url = matcher.group()
+            val clickableSpan = object : ClickableSpan() {
+                override fun onClick(widget: View) {
+                    handleCustomUrl(context, url)
+                }
+            }
+            spannable.setSpan(
+                clickableSpan,
+                matcher.start(),
+                matcher.end(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+
+        textView.text = spannable
+        // Enable link clicking
+        textView.movementMethod = LinkMovementMethod.getInstance()
+    }
+
+    /**
+     * Handles clicks on custom URL schemes.
+     * Opens the URL using an ACTION_VIEW intent.
+     */
+    private fun handleCustomUrl(context: Context, url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            // Try to start the activity
+            try {
+                context.startActivity(intent)
+            } catch (_: android.content.ActivityNotFoundException) {
+                // No app can handle this scheme, show a toast
+                Toast.makeText(context, context.getString(R.string.no_app_found_to_open, url), Toast.LENGTH_SHORT).show()
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Url", url)
+                clipboard.setPrimaryClip(clip)
+                Log.w(TAG, "No app to handle URL: $url")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening custom URL: $url", e)
+            Toast.makeText(context, "Cannot open URL: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -152,19 +232,24 @@ class MessageAdapter(
             holder.name.visibility = View.GONE
             holder.avatar?.visibility = View.GONE
         }
-        // Reset autoLink for non-file messages
-        if (message.type != 3) {
-            holder.message.autoLinkMask = Linkify.WEB_URLS
-        } else {
-            // Disable autoLink to prevent filename from being interpreted as a URL
-            holder.message.autoLinkMask = 0
-        }
-        // Use overloaded getText with chatId for group chats to format system messages properly
-        holder.message.text = if (groupChat) {
+
+        // Get message text first
+        val messageText = if (groupChat) {
             message.getText(holder.itemView.context, storage, chatId)
         } else {
             message.getText(holder.itemView.context)
         }
+
+        // Apply link detection based on message type
+        if (message.type != 3) {
+            // For non-file messages, apply custom link detection (web URLs + custom schemes)
+            applyCustomLinks(holder.message, messageText, holder.itemView.context)
+        } else {
+            // For file attachments, disable autoLink to prevent filename from being interpreted as a URL
+            holder.message.autoLinkMask = 0
+            holder.message.text = messageText
+        }
+
         holder.message.visibility = View.VISIBLE
         holder.message.setCompoundDrawables(null, null, null ,null)
         holder.sent.visibility = if (message.incoming) View.GONE else View.VISIBLE

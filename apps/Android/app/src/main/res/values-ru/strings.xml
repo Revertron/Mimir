@@ -292,4 +292,5 @@
     <string name="error_loading_avatar_picture">Ошибка загрузки картинки для аватара!</string>
     <string name="error_loading_file">Ошибка загрузки файла!</string>
     <string name="action_exit">Закрыть Мимир</string>
+    <string name="no_app_found_to_open">Нечем открыть %1$s, скопировано в буфер.</string>
 </resources>
