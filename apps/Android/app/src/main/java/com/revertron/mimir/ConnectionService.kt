@@ -1262,8 +1262,20 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     override fun onDestroy() {
+        Log.i(TAG, "ConnectionService destroying - cleaning up resources")
+
+        // 1. Disconnect all mediator connections
+        mediatorManager?.disconnectAll()
+        mediatorManager = null
+        App.app.mediatorManager = null
+
+        // 2. Stop P2P server
         mimirServer?.stopServer()
+        mimirServer = null
+
+        // 3. Stop update thread
         updaterThread.quitSafely()
+
         super.onDestroy()
     }
 

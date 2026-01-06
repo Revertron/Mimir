@@ -138,6 +138,9 @@
     <string name="automatic_updates_checking">Автоматическая проверка обновлений</string>
     <string name="automatic_updates_checking_desc">Проверять наличие обновлений каждый час.</string>
     <string name="action_about_desc">Узнать о приложении и его версии.</string>
+    <string name="action_exit_desc">Закрыть приложение и все соединения</string>
+    <string name="exit_confirmation_title">Закрыть Мимир?</string>
+    <string name="exit_confirmation_message">Это разорвет все соединения и закроет приложение. Вы не сможете получать сообщения.</string>
     <string name="collect_logs_desc">Собрать логи из logcat для помощи в решении багов.</string>
     <string name="check_for_updates_desc">Проверить обновления прямо сейчас.</string>
     <string name="enable_domain_links">Пожалуйста, разрешите Мимиру открывать ссылки на его домен.</string>
@@ -288,4 +291,5 @@
     <string name="system_msg_role_changed">%1$s изменил(а) роль %2$s на %3$s</string>
     <string name="error_loading_avatar_picture">Ошибка загрузки картинки для аватара!</string>
     <string name="error_loading_file">Ошибка загрузки файла!</string>
+    <string name="action_exit">Закрыть Мимир</string>
 </resources>

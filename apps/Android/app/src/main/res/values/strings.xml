@@ -151,6 +151,10 @@
     <string name="automatic_updates_checking">Automatic updates checking</string>
     <string name="automatic_updates_checking_desc">Check for updates automatically every hour.</string>
     <string name="action_about_desc"><![CDATA[Get info about app & it\'s version]]></string>
+    <string name="action_exit">Exit Mimir</string>
+    <string name="action_exit_desc">Close the application and stop all connections</string>
+    <string name="exit_confirmation_title">Exit Mimir?</string>
+    <string name="exit_confirmation_message">This will stop all connections and close the app. You will not be able to get any messages.</string>
     <string name="collect_logs_desc">Collect logcat logs to assist in fixing the bugs.</string>
     <string name="check_for_updates_desc">Check for updates right now.</string>
     <string name="enable_domain_links">Please, enable Mimir to open links for it\'s own domain.</string>

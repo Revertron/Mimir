@@ -77,6 +77,14 @@ object SettingsData {
                 descriptionRes = R.string.action_about_desc,
                 isSwitch = false,
                 checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.action_exit,
+                titleRes = R.string.action_exit,
+                descriptionRes = R.string.action_exit_desc,
+                isSwitch = false,
+                checked = false
             )
         )
     }
