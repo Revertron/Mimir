@@ -426,14 +426,13 @@ class MediatorManager(
 
                 try {
                     // Attempt to reconnect
+                    // Note: Resubscription happens in onConnected callback, not here,
+                    // because this thread will be interrupted by onConnected before we can resubscribe
                     val client = getOrCreateClient(mediatorPubkey)
 
-                    // Reset reconnection state on success
-                    info.reset()
-                    Log.i(TAG, "Successfully reconnected to $pubkeyHex")
-
-                    // Resubscribe to all chats on this mediator
-                    resubscribeToChatsOnMediator(mediatorPubkey, client)
+                    if (client.isAlive) {
+                        Log.i(TAG, "Successfully reconnected to $pubkeyHex")
+                    }
 
                 } catch (e: Exception) {
                     Log.e(TAG, "Reconnection attempt ${info.attemptCount} failed for $pubkeyHex", e)
@@ -445,7 +444,7 @@ class MediatorManager(
                         Log.w(TAG, "Max reconnection attempts reached for $pubkeyHex")
                     }
                 }
-            } catch (e: InterruptedException) {
+            } catch (_: InterruptedException) {
                 Log.i(TAG, "Reconnect thread for $pubkeyHex was interrupted")
                 info.reconnectThread = null
             }
@@ -498,6 +497,23 @@ class MediatorManager(
         override fun onConnected() {
             Log.i(TAG, "Connected to mediator: $address")
             connectionStatus[address] = ConnectionState.CONNECTED
+
+            // Check if this is a reconnection (not initial connection)
+            val isReconnection = reconnectionInfo[address]?.attemptCount ?: 0 > 0
+
+            // If this is a reconnection, resubscribe to all chats BEFORE resetting state
+            if (isReconnection) {
+                try {
+                    val mediatorPubkey = Hex.decode(address)
+                    val client = clients[address]
+                    if (client != null) {
+                        Log.i(TAG, "Reconnection detected, resubscribing to chats on mediator $address")
+                        resubscribeToChatsOnMediator(mediatorPubkey, client)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to resubscribe chats after reconnection to $address", e)
+                }
+            }
 
             // Reset reconnection state on successful connection
             reconnectionInfo[address]?.let { info ->
