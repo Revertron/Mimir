@@ -99,7 +99,7 @@ class ContactsAdapter(
             holder.lastMessage.text = draftText
         } else {
             // Set last message
-            val lastMessageText = when (contact.lastMessage?.type) {
+            var lastMessageText = when (contact.lastMessage?.type) {
                 1 -> {
                     "\uD83D\uDDBC\uFE0F " + contact.lastMessage.getText(holder.avatar.context)
                 }
@@ -128,6 +128,9 @@ class ContactsAdapter(
                 else -> {
                     contact.lastMessage?.getText(holder.avatar.context)
                 }
+            }
+            if (lastMessageText == null || lastMessageText.isEmpty()) {
+                lastMessageText = holder.itemView.context.getString(R.string.empty_chat)
             }
             holder.lastMessage.text = lastMessageText
         }

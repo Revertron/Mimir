@@ -24,6 +24,7 @@ import com.revertron.mimir.net.parseSystemMessage
 import com.revertron.mimir.ui.GroupChat
 import com.revertron.mimir.ui.MessageAdapter
 import org.bouncycastle.util.encoders.Hex
+import java.io.File
 
 /**
  * Group chat activity using ConnectionService for server-mediated group messaging.
@@ -534,8 +535,7 @@ class GroupChatActivity : BaseChatActivity() {
                 true
             }
             R.id.clear_history -> {
-                // TODO: Clear message history
-                Toast.makeText(this, "Clear history - TODO", Toast.LENGTH_SHORT).show()
+                showClearHistoryConfirmDialog()
                 true
             }
             R.id.leave_group -> {
@@ -601,6 +601,64 @@ class GroupChatActivity : BaseChatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    // Clear history functionality
+
+    private fun showClearHistoryConfirmDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val builder = AlertDialog.Builder(wrapper)
+        builder.setTitle(getString(R.string.clear_history))
+        builder.setMessage(getString(R.string.clear_history_confirm_text))
+        builder.setIcon(R.drawable.ic_clean_chat_outline)
+        builder.setPositiveButton(getString(R.string.clear)) { _, _ ->
+            clearHistory()
+        }
+        builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
+            dialog.cancel()
+        }
+        builder.show()
+    }
+
+    private fun clearHistory() {
+        Thread {
+            try {
+                // 1. Clear messages from database and get attachment files
+                val attachmentFiles = getStorage().clearGroupChatHistory(groupChat.chatId)
+
+                // 2. Delete attachment files
+                val filesDir = File(filesDir, "files")
+                val cacheDir = File(cacheDir, "files")
+                for (fileName in attachmentFiles) {
+                    File(filesDir, fileName).delete()
+                    File(cacheDir, fileName).delete()
+                }
+
+                Log.i(TAG, "Cleared group history: deleted ${attachmentFiles.size} attachment files")
+
+                // 3. Update UI on main thread
+                runOnUiThread {
+                    // Clear adapter
+                    adapter.clearAllMessages()
+
+                    // Show confirmation toast
+                    Toast.makeText(
+                        this,
+                        getString(R.string.history_cleared),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error clearing group history", e)
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.error_clearing_history),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }.start()
     }
 
     // StorageListener implementation

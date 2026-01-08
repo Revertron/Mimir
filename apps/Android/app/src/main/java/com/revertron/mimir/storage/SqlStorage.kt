@@ -43,7 +43,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 14
+        const val DATABASE_VERSION = 15
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
@@ -51,7 +51,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, guid INTEGER, replyTo INTEGER, incoming BOOL, delivered BOOL, read BOOL, time INTEGER, edit INTEGER, type INTEGER, message BLOB)"
 
         // Group chat tables (version 8+)
-        const val CREATE_GROUP_CHATS = "CREATE TABLE group_chats (chat_id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, avatar TEXT, mediator_pubkey BLOB NOT NULL, owner_pubkey BLOB NOT NULL, shared_key BLOB NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, last_message_time INTEGER DEFAULT 0, unread_count INTEGER DEFAULT 0, muted BOOL DEFAULT 0)"
+        const val CREATE_GROUP_CHATS = "CREATE TABLE group_chats (chat_id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, avatar TEXT, mediator_pubkey BLOB NOT NULL, owner_pubkey BLOB NOT NULL, shared_key BLOB NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, last_message_time INTEGER DEFAULT 0, last_msg_id INTEGER DEFAULT 0, unread_count INTEGER DEFAULT 0, muted BOOL DEFAULT 0)"
         const val CREATE_GROUP_INVITES = "CREATE TABLE group_invites (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, from_pubkey BLOB NOT NULL, timestamp INTEGER NOT NULL, chat_name TEXT NOT NULL, chat_description TEXT, chat_avatar TEXT, encrypted_data BLOB NOT NULL, status INTEGER DEFAULT 0)"
 
         // Drafts table (version 13+)
@@ -338,6 +338,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         if (oldVersion < 14 && newVersion >= 14) {
             // Add last_seen timestamp tracking for group members
             addLastSeenColumnToMembersTables(db)
+        }
+
+        if (oldVersion < 15 && newVersion >= 15) {
+            // Add last_msg_id column to group_chats for better sync state tracking
+            db.execSQL("ALTER TABLE group_chats ADD COLUMN last_msg_id INTEGER DEFAULT 0")
+            Log.i(TAG, "Added last_msg_id column to group_chats table")
         }
     }
 
@@ -1376,6 +1382,87 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         return deleted
     }
 
+    /**
+     * Clears all messages in a group chat while keeping the chat itself.
+     * Returns list of attachment filenames for cleanup.
+     * Preserves sync state by updating last_msg_id in group_chats table.
+     */
+    fun clearGroupChatHistory(chatId: Long): List<String> {
+        val messagesTable = "messages_$chatId"
+        val attachmentFiles = mutableListOf<String>()
+
+        try {
+            // 1. Get max msg_id BEFORE clearing to preserve sync state
+            val maxMsgId = try {
+                val cursor = readableDatabase.rawQuery(
+                    "SELECT MAX(msg_id) FROM $messagesTable WHERE msg_id IS NOT NULL",
+                    null
+                )
+                val id = if (cursor.moveToNext() && !cursor.isNull(0)) {
+                    cursor.getLong(0)
+                } else {
+                    0L
+                }
+                cursor.close()
+                id
+            } catch (e: Exception) {
+                0L
+            }
+            Log.d(TAG, "Max msg_id before clearing: $maxMsgId for chat $chatId")
+
+            // 2. Collect attachment filenames before deletion
+            val cursor = readableDatabase.query(
+                messagesTable,
+                arrayOf("data"),
+                "type IN (1, 3)", // type 1=image, 3=file
+                null,
+                null, null, null
+            )
+
+            while (cursor.moveToNext()) {
+                val data = cursor.getBlobOrNull(0)
+                if (data != null) {
+                    try {
+                        val json = JSONObject(String(data))
+                        val fileName = json.optString("name", "")
+                        if (fileName.isNotEmpty()) {
+                            attachmentFiles.add(fileName)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing attachment data", e)
+                    }
+                }
+            }
+            cursor.close()
+
+            // 3. Delete all messages
+            val deleted = writableDatabase.delete(messagesTable, null, null)
+
+            Log.i(TAG, "Cleared $deleted messages from group chat $chatId")
+
+            // 4. Update last_msg_id to preserve sync state
+            // This prevents re-syncing all messages from mediator on next connection
+            if (maxMsgId > 0) {
+                val values = ContentValues().apply {
+                    put("last_msg_id", maxMsgId)
+                }
+                writableDatabase.update("group_chats", values, "chat_id = ?", arrayOf(chatId.toString()))
+                Log.d(TAG, "Updated last_msg_id=$maxMsgId for chat $chatId")
+            }
+
+            // 5. Reset unread count
+            resetGroupUnreadCount(chatId)
+
+            // 6. Notify listeners (for MainActivity to update)
+            listeners.forEach { it.onGroupChatChanged(chatId) }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing group chat history for chat $chatId", e)
+        }
+
+        return attachmentFiles
+    }
+
     private fun getMessageIdByGuid(guid: Long): Long {
         val db = this.readableDatabase
         val statement = db.compileStatement("SELECT id FROM messages WHERE guid=? LIMIT 1")
@@ -1731,6 +1818,53 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         writableDatabase.delete("messages", "id=?", arrayOf("$messageId"))
     }
 
+    /**
+     * Clears all messages for a contact while keeping the contact itself.
+     * Returns list of attachment filenames for cleanup.
+     */
+    fun clearContactHistory(contactId: Long): List<String> {
+        val attachmentFiles = mutableListOf<String>()
+
+        // 1. Collect attachment filenames before deletion
+        val cursor = readableDatabase.query(
+            "messages",
+            arrayOf("message"),
+            "contact = ? AND type IN (1, 3)", // type 1=image, 3=file
+            arrayOf(contactId.toString()),
+            null, null, null
+        )
+
+        while (cursor.moveToNext()) {
+            val message = cursor.getBlobOrNull(0)
+            if (message != null) {
+                try {
+                    val json = JSONObject(String(message))
+                    val fileName = json.optString("name", "")
+                    if (fileName.isNotEmpty()) {
+                        attachmentFiles.add(fileName)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing attachment data", e)
+                }
+            }
+        }
+        cursor.close()
+
+        // 2. Delete all messages for this contact
+        val deleted = writableDatabase.delete(
+            "messages",
+            "contact = ?",
+            arrayOf(contactId.toString())
+        )
+
+        Log.i(TAG, "Cleared $deleted messages for contact $contactId")
+
+        // 3. Notify listeners (for MainActivity to update last message display)
+        listeners.forEach { it.onContactChanged(contactId) }
+
+        return attachmentFiles
+    }
+
     fun generateGuid(time: Long, data: ByteArray): Long {
         val factory: XXHashFactory = XXHashFactory.fastestInstance()
 
@@ -1859,7 +1993,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         val cursor = readableDatabase.query(
             "group_chats",
             arrayOf("chat_id", "name", "description", "avatar", "mediator_pubkey", "owner_pubkey", "shared_key",
-                "created_at", "updated_at", "last_message_time", "unread_count", "muted"),
+                "created_at", "updated_at", "last_message_time", "last_msg_id", "unread_count", "muted"),
             "chat_id = ?",
             arrayOf(chatId.toString()),
             null, null, null
@@ -1878,8 +2012,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 createdAt = cursor.getLong(7),
                 updatedAt = cursor.getLong(8),
                 lastMessageTime = cursor.getLong(9),
-                unreadCount = cursor.getInt(10),
-                muted = cursor.getInt(11) != 0
+                lastSyncedMsgId = cursor.getLong(10),
+                unreadCount = cursor.getInt(11),
+                muted = cursor.getInt(12) != 0
             )
         }
         cursor.close()
@@ -1894,7 +2029,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         val cursor = readableDatabase.query(
             "group_chats",
             arrayOf("chat_id", "name", "description", "avatar", "mediator_pubkey", "owner_pubkey", "shared_key",
-                "created_at", "updated_at", "last_message_time", "unread_count", "muted"),
+                "created_at", "updated_at", "last_message_time", "last_msg_id", "unread_count", "muted"),
             null, null, null, null,
             "last_message_time DESC"
         )
@@ -1911,8 +2046,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 createdAt = cursor.getLong(7),
                 updatedAt = cursor.getLong(8),
                 lastMessageTime = cursor.getLong(9),
-                unreadCount = cursor.getInt(10),
-                muted = cursor.getInt(11) != 0
+                lastSyncedMsgId = cursor.getLong(10),
+                unreadCount = cursor.getInt(11),
+                muted = cursor.getInt(12) != 0
             ))
         }
         cursor.close()
@@ -2299,9 +2435,17 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         val id = writableDatabase.insert(messagesTable, null, values)
         if (id > 0) {
-            // Update last message time
+            // Update last message time and last_msg_id
             val updateValues = ContentValues().apply {
                 put("last_message_time", timestamp)
+                // Update sync position if this message has a server ID
+                if (serverMsgId != null && serverMsgId > 0) {
+                    // Only update if this msg_id is newer than what we have
+                    val currentMaxId = chatInfo.lastSyncedMsgId
+                    if (serverMsgId > currentMaxId) {
+                        put("last_msg_id", serverMsgId)
+                    }
+                }
             }
             writableDatabase.update("group_chats", updateValues, "chat_id = ?", arrayOf(chatId.toLong().toString()))
 
@@ -2354,28 +2498,61 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             "guid = ? AND msg_id IS NULL",
             arrayOf(guid.toString())
         )
+
+        // Update last_msg_id if this is a newer message
+        if (updated > 0 && serverMsgId > 0) {
+            val chatInfo = getGroupChat(chatId)
+            if (chatInfo != null && serverMsgId > chatInfo.lastSyncedMsgId) {
+                val chatUpdateValues = ContentValues().apply {
+                    put("last_msg_id", serverMsgId)
+                }
+                writableDatabase.update("group_chats", chatUpdateValues, "chat_id = ?", arrayOf(chatId.toString()))
+            }
+        }
+
         return updated > 0
     }
 
     /**
      * Gets the maximum server message ID for a chat.
+     * First checks the last_msg_id column in group_chats table.
+     * If 0 or not available, falls back to querying MAX(msg_id) from messages table.
      * Returns 0 if no messages with server IDs exist.
-     * Uses index on msg_id for efficient querying.
      */
     fun getMaxServerMessageId(chatId: Long): Long {
-        val messagesTable = "messages_$chatId"
-
         return try {
-            val cursor = readableDatabase.rawQuery(
-                "SELECT MAX(msg_id) FROM $messagesTable WHERE msg_id IS NOT NULL",
-                null
+            // First check last_msg_id from group_chats table
+            val chatCursor = readableDatabase.query(
+                "group_chats",
+                arrayOf("last_msg_id"),
+                "chat_id = ?",
+                arrayOf(chatId.toString()),
+                null, null, null
             )
-            val maxId = if (cursor.moveToNext() && !cursor.isNull(0)) {
-                cursor.getLong(0)
+            val lastSyncedId = if (chatCursor.moveToNext()) {
+                chatCursor.getLong(0)
             } else {
                 0L
             }
-            cursor.close()
+            chatCursor.close()
+
+            // If we have a saved sync position, use it
+            if (lastSyncedId > 0) {
+                return lastSyncedId
+            }
+
+            // Fallback: query MAX(msg_id) from messages table
+            val messagesTable = "messages_$chatId"
+            val msgCursor = readableDatabase.rawQuery(
+                "SELECT MAX(msg_id) FROM $messagesTable WHERE msg_id IS NOT NULL",
+                null
+            )
+            val maxId = if (msgCursor.moveToNext() && !msgCursor.isNull(0)) {
+                msgCursor.getLong(0)
+            } else {
+                0L
+            }
+            msgCursor.close()
             maxId
         } catch (e: Exception) {
             Log.e(TAG, "Error getting max server message ID for chat $chatId", e)
@@ -2983,6 +3160,7 @@ data class GroupChatInfo(
     val createdAt: Long,
     val updatedAt: Long,
     val lastMessageTime: Long,
+    val lastSyncedMsgId: Long,
     val unreadCount: Int,
     val muted: Boolean
 )

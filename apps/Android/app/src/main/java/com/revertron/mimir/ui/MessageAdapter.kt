@@ -220,7 +220,12 @@ class MessageAdapter(
             R.layout.message_outgoing_layout
         }
         val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
-        view.findViewById<View>(R.id.message).setOnClickListener(onClick)
+        val message = view.findViewById<View>(R.id.message)
+        message.setOnClickListener(onClick)
+        view.setOnLongClickListener {
+            onClick.onClick(message)
+            true
+        }
         //TODO make item background reflect touches
         view.findViewById<View>(R.id.reply_panel).setOnClickListener(onReplyClick)
         view.findViewById<View>(R.id.picture).setOnClickListener(onPictureClick)
@@ -524,6 +529,12 @@ class MessageAdapter(
                 break
             }
         }
+    }
+
+    fun clearAllMessages() {
+        val oldSize = messageIds.size
+        messageIds.clear()
+        notifyItemRangeRemoved(0, oldSize)
     }
 
     fun setMessageDelivered(id: Long, delivered: Boolean) {

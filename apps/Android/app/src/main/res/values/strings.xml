@@ -166,6 +166,10 @@
     <string name="select_resize_quality">Resave with another quality:</string>
     <string name="mute_contact">Mute</string>
     <string name="clear_history">Clear history</string>
+    <string name="clear">Clear</string>
+    <string name="clear_history_confirm_text">Are you sure you want to delete all messages? This action cannot be undone. The contact/chat will remain.</string>
+    <string name="history_cleared">History cleared</string>
+    <string name="error_clearing_history">Error clearing history</string>
     <string name="block_contact">Block contact</string>
     <string name="my_qr_code">My QR-code</string>
     <string name="copy_my_id">Copy my ID</string>
@@ -298,5 +302,6 @@
     <string name="error_loading_avatar_picture">Error loading avatar picture!</string>
     <string name="error_loading_file">Error loading the file!</string>
     <string name="no_app_found_to_open">No app found to open: %1$s, copied to clipboard.</string>
+    <string name="empty_chat">[ empty chat ]</string>
 
 </resources>

@@ -1,6 +1,7 @@
 package com.revertron.mimir
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -9,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.ContextThemeWrapper
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -24,6 +26,7 @@ import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.MessageAdapter
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import java.io.File
 import java.lang.Thread.sleep
 
 
@@ -226,7 +229,7 @@ class ChatActivity : BaseChatActivity() {
                 return true
             }
             R.id.clear_history -> {
-                // TODO: Implement clear history
+                showClearHistoryConfirmDialog()
                 return true
             }
             else -> {
@@ -243,6 +246,9 @@ class ChatActivity : BaseChatActivity() {
         when (item?.itemId) {
             R.id.contact_call -> {
                 checkAndRequestAudioPermission()
+            }
+            R.id.clear_history -> {
+                showClearHistoryConfirmDialog()
             }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
@@ -290,6 +296,65 @@ class ChatActivity : BaseChatActivity() {
             putExtra("outgoing", true)
         }
         startActivity(callIntent, animFromRight.toBundle())
+    }
+
+    // Clear history functionality
+
+    private fun showClearHistoryConfirmDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val builder = AlertDialog.Builder(wrapper)
+        builder.setTitle(getString(R.string.clear_history))
+        builder.setMessage(getString(R.string.clear_history_confirm_text))
+        builder.setIcon(R.drawable.ic_clean_chat_outline)
+        builder.setPositiveButton(getString(R.string.clear)) { _, _ ->
+            clearHistory()
+        }
+        builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
+            dialog.cancel()
+        }
+        builder.show()
+    }
+
+    private fun clearHistory() {
+        Thread {
+            try {
+                // 1. Clear messages from database and get attachment files
+                val attachmentFiles = getStorage().clearContactHistory(contact.id)
+
+                // 2. Delete attachment files
+                val filesDir = File(filesDir, "files")
+                val cacheDir = File(cacheDir, "files")
+                for (fileName in attachmentFiles) {
+                    File(filesDir, fileName).delete()
+                    File(cacheDir, fileName).delete()
+                }
+
+                Log.i(TAG, "Cleared history: deleted ${attachmentFiles.size} attachment files")
+
+                // 3. Update UI on main thread
+                runOnUiThread {
+                    // Clear adapter
+                    adapter.clearAllMessages()
+
+                    // Show confirmation toast
+                    Toast.makeText(
+                        this,
+                        getString(R.string.history_cleared),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Log.e(TAG, "Error clearing history", e)
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.error_clearing_history),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }.start()
     }
 
     // Empty view handling
