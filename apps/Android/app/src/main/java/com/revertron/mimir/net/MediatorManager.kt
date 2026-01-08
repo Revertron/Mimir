@@ -8,6 +8,8 @@ import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import org.json.JSONArray
+import java.lang.Thread.sleep
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -498,21 +500,27 @@ class MediatorManager(
             Log.i(TAG, "Connected to mediator: $address")
             connectionStatus[address] = ConnectionState.CONNECTED
 
-            // Check if this is a reconnection (not initial connection)
-            val isReconnection = reconnectionInfo[address]?.attemptCount ?: 0 > 0
+            // Check if there are any chats on this mediator that need subscription
+            // This handles both reconnection and initial connection after app restart
+            sleep(2000)
+            try {
+                val mediatorPubkey = Hex.decode(address)
+                val client = clients[address]
 
-            // If this is a reconnection, resubscribe to all chats BEFORE resetting state
-            if (isReconnection) {
-                try {
-                    val mediatorPubkey = Hex.decode(address)
-                    val client = clients[address]
-                    if (client != null) {
-                        Log.i(TAG, "Reconnection detected, resubscribing to chats on mediator $address")
+                if (client != null) {
+                    // Get all chats on this mediator
+                    val allChats = storage.getGroupChatList()
+                    val chatsOnMediator = allChats.filter { it.mediatorPubkey.contentEquals(mediatorPubkey) }
+
+                    if (chatsOnMediator.isNotEmpty()) {
+                        Log.i(TAG, "Found ${chatsOnMediator.size} chats on mediator $address, subscribing...")
                         resubscribeToChatsOnMediator(mediatorPubkey, client)
+                    } else {
+                        Log.i(TAG, "No chats found on mediator $address")
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to resubscribe chats after reconnection to $address", e)
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to subscribe chats after connection to $address", e)
             }
 
             // Reset reconnection state on successful connection

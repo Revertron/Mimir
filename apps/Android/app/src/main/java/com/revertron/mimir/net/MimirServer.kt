@@ -266,6 +266,7 @@ class MimirServer(
 
                     val expiredTtl = getUtcTime() >= lastAnnounceTime + announceTtl
                     if (App.app.online && online && (expiredTtl || forceAnnounce)) {
+                        if (forceAnnounce) sleep(2000)
                         resolver.announce(pubkey, privkey, peer, receiver)
                         listener.onTrackerPing(false)
                         forceAnnounce = false
@@ -300,146 +301,217 @@ class MimirServer(
 
     private fun startOnlineStateThread() {
         Thread {
-            var count = 0
+            var costSampleCount = 0
+            var peerDownStartTime = 0L
+            var lastJumpTime = 0L
+            var waitingForBestPeer = false
+
+            // Configurable timeouts for better slow network handling
+            val PEER_COST_SAMPLES = 5
+            val PEER_SELECTION_DELAY_MS = 15000L  // Wait 15s before selecting best peer (was 10s)
+            val PEER_DOWN_GRACE_PERIOD_MS = 12000L  // Wait 12s before declaring peer dead (was 6s)
+            val MIN_JUMP_INTERVAL_MS = 10000L  // Don't jump more often than every 10s
+            val NETWORK_CHANGE_GRACE_MS = 5000L  // Grace period after network change
+
             while (working.get()) {
                 sleep(3000)
                 val online = NetState.haveNetwork()
+                val now = System.currentTimeMillis()
+
+                // Handle complete network offline state
                 if (!online && !App.app.online) {
-                    // Wait for network to come back, but can be woken up early via signal
-                    //Log.d(TAG, "Network offline, waiting for signal or timeout...")
                     val waitStart = System.currentTimeMillis()
                     synchronized(onlineStateLock) {
                         try {
                             onlineStateLock.wait(60000)
-                        } catch (e: InterruptedException) {
+                        } catch (_: InterruptedException) {
                             // Thread interrupted, continue normally
                         }
                     }
                     val waitDuration = System.currentTimeMillis() - waitStart
-                    if (waitDuration < 9000) {
+                    if (waitDuration < 60000) {
                         Log.i(TAG, "Woken up early after ${waitDuration}ms - network change detected")
+                    }
+                    peerDownStartTime = 0L
+                    costSampleCount = 0
+                    waitingForBestPeer = false
+                    continue
+                }
+
+                // Reset state when network goes offline
+                if (!online) {
+                    peerDownStartTime = 0L
+                    costSampleCount = 0
+                    waitingForBestPeer = false
+                }
+
+                val oldOnlineState = App.app.online
+                val peersJSON = messenger.peersJSON
+
+                // Handle missing or invalid peers JSON
+                if (peersJSON == null || peersJSON == "null") {
+                    Log.i(TAG, "No peers JSON in messenger")
+                    App.app.online = false
+                    if (oldOnlineState) {
+                        onServerStateChanged(false)
+                    }
+                    // Only jump if we have network and enough time has passed since last jump
+                    if (online && now - lastJumpTime >= MIN_JUMP_INTERVAL_MS) {
+                        jumpPeer()
+                        lastJumpTime = now
+                        peerDownStartTime = 0L
+                        costSampleCount = 0
                     }
                     continue
                 }
-                if (!online) {
-                    count = 0
-                }
-                val old = App.app.online
-                val peersJSON = messenger.peersJSON
-                if (peersJSON != null && peersJSON != "null") {
-                    val peers = JSONArray(peersJSON)
-                    val peersCount = peers.length()
-                    if (peersCount > 0) {
-                        val now = System.currentTimeMillis()
-                        val peer = peers.getJSONObject(0)
-                        //Log.i(TAG, "Peer: $peer")
-                        val up = peer.getBoolean("Up")
-                        App.app.online = up
-                        val networkChanged = NetState.networkChangedRecently()
-                        if (old != up)
-                        {
-                            Log.i(TAG, "Online changed to $up ($currentPeer)")
-                            onServerStateChanged(up)
-                            if (up) {
-                                forceAnnounce = true
-                            } else {
-                                if (online && !networkChanged && peersCount == 1) {
-                                    Log.i(TAG, "Seems that peer has gone, jumping")
-                                    peerStats.getOrPut(currentPeer, { PeerStats(0, -1) }).apply {
-                                        fails += 1
-                                    }
-                                    jumpPeer()
-                                    count = 0
-                                }
-                            }
-                        } else {
-                            count += 1
-                            if (count == 5) {
-                                val cost = peer.optInt("Cost", 300)
-                                //Log.i(TAG, "Got cost of $oldPeer: $cost")
-                                if (cost > 0) {
-                                    peerStats.getOrPut(currentPeer, { PeerStats(0, -1) }).apply {
-                                        if (this.cost !in 0..cost) {
-                                            Log.i(TAG, "Setting new cost $cost instead of ${this.cost}")
-                                            this.cost = cost
-                                        }
-                                    }
-                                }
-                                count = 0
-                            }
-                        }
-                        if (online && up && now - currentPeerTime >= 10000) {
-                            var minimalCost = 500
-                            if (peersCount > 1) {
-                                var bestPeer = ""
-                                // Collect all costs and calculate the best peer
-                                for (i in 0..<peersCount) {
-                                    val peer = peers.getJSONObject(i)
-                                    if (BuildConfig.DEBUG) {
-                                        Log.i(TAG, "Peer: $peer")
-                                    }
-                                    val uri = peer.getString("URI")
-                                    val cost = peer.optInt("Cost", minimalCost)
-                                    //Log.i(TAG, "Got cost of $oldPeer: $cost")
-                                    if (cost in 1..<300) {
-                                        peerStats.getOrPut(uri, { PeerStats(0, -1) }).apply {
-                                            if (this.cost !in 0..cost) {
-                                                this.cost = cost
-                                            }
-                                        }
-                                        if (cost < minimalCost) {
-                                            minimalCost = cost
-                                            bestPeer = peer.getString("URI")
-                                        }
-                                    }
-                                }
-                                Log.i(TAG, "Selected the best peer: $bestPeer with cost $minimalCost")
-                                // Remove all the peers except the best one
-                                for (i in 0..<peersCount) {
-                                    val peer = peers.getJSONObject(i)
-                                    val uri = peer.getString("URI")
-                                    if (!uri.contentEquals(bestPeer)) {
-                                        messenger.removePeer(uri)
-                                    }
-                                }
-                                currentPeer = bestPeer
-                            } else {
-                                val cost = peer.optInt("Cost", minimalCost)
-                                if (cost > minimalCost) {
-                                    Log.i(TAG, "High cost $cost on current peer, refreshing")
-                                    jumpPeer()
-                                }
-                            }
-                        }
 
-                        if (!up && !networkChanged && peersCount == 1 && online && now - currentPeerTime > 6000) {
-                            Log.i(TAG, "Seems that peer is dead, jumping")
-                            peerStats.getOrPut(currentPeer, { PeerStats(0, 500) }).apply {
-                                fails += 1
-                            }
-                            jumpPeer()
-                            count = 0
-                        }
-                    } else {
-                        Log.i(TAG, "No peers in messenger")
-                        App.app.online = false
-                        if (old) {
-                            onServerStateChanged(false)
-                        }
-                    }
-                } else {
-                    Log.i(TAG, "No peers JSON in messenger")
+                val peers = JSONArray(peersJSON)
+                val peersCount = peers.length()
+
+                // Handle no peers available
+                if (peersCount == 0) {
+                    Log.i(TAG, "No peers in messenger")
                     App.app.online = false
-                    if (old) {
+                    if (oldOnlineState) {
                         onServerStateChanged(false)
                     }
-                    if (online) {
+                    peerDownStartTime = 0L
+                    costSampleCount = 0
+                    waitingForBestPeer = false
+                    continue
+                }
+
+                // We have at least one peer
+                val currentPeerObj = peers.getJSONObject(0)
+                val peerUp = currentPeerObj.getBoolean("Up")
+                App.app.online = peerUp
+                val networkChanged = NetState.networkChangedRecently()
+                val timeSinceCurrentPeer = now - currentPeerTime
+
+                // Handle online state change
+                if (oldOnlineState != peerUp) {
+                    Log.i(TAG, "Online changed to $peerUp ($currentPeer)")
+                    onServerStateChanged(peerUp)
+
+                    if (peerUp) {
+                        // Peer came back up
+                        forceAnnounce = true
+                        peerDownStartTime = 0L
+                        costSampleCount = 0
+                    } else {
+                        // Peer went down - start grace period timer
+                        if (peerDownStartTime == 0L) {
+                            peerDownStartTime = now
+                            Log.i(TAG, "Peer went down, starting grace period of ${PEER_DOWN_GRACE_PERIOD_MS}ms")
+                        }
+                    }
+                } else if (peerUp) {
+                    // Peer is stable and up - sample cost periodically
+                    costSampleCount++
+                    if (costSampleCount >= PEER_COST_SAMPLES) {
+                        val cost = currentPeerObj.optInt("Cost", 300)
+                        if (cost > 0) {
+                            peerStats.getOrPut(currentPeer, { PeerStats(0, -1) }).apply {
+                                if (this.cost !in 0..cost) {
+                                    Log.i(TAG, "Updating cost: $cost (was ${this.cost})")
+                                    this.cost = cost
+                                }
+                            }
+                        }
+                        costSampleCount = 0
+                    }
+
+                    // Reset down timer when peer is up
+                    peerDownStartTime = 0L
+                }
+
+                // Peer selection phase: after initial connection period, find the best peer
+                if (online && peerUp && !waitingForBestPeer &&
+                    timeSinceCurrentPeer >= PEER_SELECTION_DELAY_MS && peersCount > 1) {
+
+                    Log.i(TAG, "Starting best peer selection from $peersCount candidates")
+                    var minimalCost = 500
+                    var bestPeerUri = ""
+
+                    // Collect costs from all peers
+                    for (i in 0 until peersCount) {
+                        val peerObj = peers.getJSONObject(i)
+                        if (BuildConfig.DEBUG) {
+                            Log.i(TAG, "Peer: $peerObj")
+                        }
+                        val uri = peerObj.getString("URI")
+                        val cost = peerObj.optInt("Cost", minimalCost)
+
+                        if (cost in 1 until 300) {
+                            peerStats.getOrPut(uri, { PeerStats(0, -1) }).apply {
+                                if (this.cost !in 0..cost) {
+                                    this.cost = cost
+                                }
+                            }
+                            if (cost < minimalCost) {
+                                minimalCost = cost
+                                bestPeerUri = uri
+                            }
+                        }
+                    }
+
+                    if (bestPeerUri.isNotEmpty()) {
+                        Log.i(TAG, "Selected best peer: $bestPeerUri with cost $minimalCost")
+                        // Remove all peers except the best one
+                        for (i in 0 until peersCount) {
+                            val uri = peers.getJSONObject(i).getString("URI")
+                            if (uri != bestPeerUri) {
+                                messenger.removePeer(uri)
+                            }
+                        }
+                        currentPeer = bestPeerUri
+                        waitingForBestPeer = true
+                    }
+                } else if (online && peerUp && timeSinceCurrentPeer >= PEER_SELECTION_DELAY_MS &&
+                           peersCount == 1) {
+                    // Only one peer - check if cost is too high
+                    val cost = currentPeerObj.optInt("Cost", 500)
+                    if (cost > 300 && now - lastJumpTime >= MIN_JUMP_INTERVAL_MS) {
+                        Log.i(TAG, "High cost $cost on current peer, jumping to better one")
                         jumpPeer()
-                        count = 0
+                        lastJumpTime = now
+                        peerDownStartTime = 0L
+                        costSampleCount = 0
+                        waitingForBestPeer = false
+                    }
+                }
+
+                // Handle peer down for extended period - but with grace period and rate limiting
+                if (!peerUp && online && !networkChanged && peersCount == 1) {
+                    if (peerDownStartTime == 0L) {
+                        peerDownStartTime = now
+                        Log.i(TAG, "Peer appears down, starting ${PEER_DOWN_GRACE_PERIOD_MS}ms grace period")
+                    }
+
+                    val downDuration = now - peerDownStartTime
+                    val timeSinceLastJump = now - lastJumpTime
+
+                    // Only jump if:
+                    // 1. Grace period has elapsed
+                    // 2. Minimum jump interval has passed
+                    // 3. Peer has been connected long enough to be considered stable
+                    if (downDuration >= PEER_DOWN_GRACE_PERIOD_MS &&
+                        timeSinceLastJump >= MIN_JUMP_INTERVAL_MS &&
+                        timeSinceCurrentPeer > NETWORK_CHANGE_GRACE_MS) {
+
+                        Log.i(TAG, "Peer down for ${downDuration}ms, jumping to another peer")
+                        peerStats.getOrPut(currentPeer, { PeerStats(0, 500) }).apply {
+                            fails += 1
+                        }
+                        jumpPeer()
+                        lastJumpTime = now
+                        peerDownStartTime = 0L
+                        costSampleCount = 0
+                        waitingForBestPeer = false
                     }
                 }
             }
-        }.start()
+        }.apply { name = "OnlineStateThread" }.start()
     }
 
     fun sendMessages() {

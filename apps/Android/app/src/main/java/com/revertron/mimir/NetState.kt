@@ -38,6 +38,10 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
     override fun onAvailable(network: Network) {
         super.onAvailable(network)
         Log.d(TAG, "onAvailable")
+        if (connected) {
+            Log.i(TAG, "Already connected, ignoring")
+            return
+        }
         networkChanged()
         connected = haveNetwork(context)
 

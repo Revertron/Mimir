@@ -137,6 +137,9 @@ class MediatorClient(
     // Pinging loop uses this
     private var lastActivityTime = System.currentTimeMillis()
 
+    // Backoff for handling brief peer flaps
+    private var offlineStartTime = 0L
+
     /**
      * Initialize connection and authenticate synchronously.
      * Blocks until authentication completes or fails.
@@ -927,21 +930,49 @@ class MediatorClient(
     }
 
     fun pingLoop() {
+        // Grace period before stopping client due to offline status (handles peer flapping)
+        val OFFLINE_GRACE_PERIOD_MS = 15000L
+
         while (running) {
             sleep(5000)
-            if (!App.app.online || !running) {
-                Log.i(TAG, "We are offline, stopping client")
-                stopClient()
-                listener.onDisconnected(MediatorException("Client went offline"))
+            val now = System.currentTimeMillis()
+
+            // Handle offline state with backoff to tolerate brief peer flaps
+            if (!App.app.online) {
+                if (offlineStartTime == 0L) {
+                    offlineStartTime = now
+                    Log.i(TAG, "Peer went offline, starting ${OFFLINE_GRACE_PERIOD_MS}ms grace period before stopping client")
+                }
+
+                val offlineDuration = now - offlineStartTime
+                if (offlineDuration >= OFFLINE_GRACE_PERIOD_MS) {
+                    Log.i(TAG, "Offline for ${offlineDuration}ms, stopping client")
+                    stopClient()
+                    listener.onDisconnected(MediatorException("Client went offline"))
+                    break
+                }
+                // Still within grace period, continue waiting
+                continue
+            } else {
+                // We're online - reset offline timer if it was set
+                if (offlineStartTime != 0L) {
+                    val offlineDuration = now - offlineStartTime
+                    Log.i(TAG, "Peer came back online after ${offlineDuration}ms (brief flap)")
+                    offlineStartTime = 0L
+                }
+            }
+
+            if (!running) {
                 break
             }
+
             if (!connection.isAlive) {
                 Log.d(TAG, "Connection is broken, stopping client")
                 stopClient()
                 listener.onDisconnected(MediatorException("Connection not alive"))
                 break
             }
-            if (System.currentTimeMillis() - lastActivityTime > PING_DEADLINE_MS) {
+            if (now - lastActivityTime > PING_DEADLINE_MS) {
                 try {
                     if (!sendPing()) {
                         Log.i(TAG, "Connection broken")
@@ -969,6 +1000,7 @@ class MediatorClient(
                 val reqId = dis.readShort()
                 val len = dis.readInt()
                 if (len < 0) throw MediatorException("negative payload length")
+                if (len > 50 * 1024 * 1024) throw MediatorException("excessive payload length")
                 val payload = ByteArray(len)
                 if (len > 0) dis.readFully(payload)
                 lastActivityTime = System.currentTimeMillis()

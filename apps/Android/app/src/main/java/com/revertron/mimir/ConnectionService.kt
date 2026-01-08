@@ -39,6 +39,7 @@ import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.SettingsData
+import com.revertron.mimir.yggmobile.Yggmobile
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONException
@@ -46,6 +47,7 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
 import java.io.File
+import java.lang.Thread.sleep
 
 class ConnectionService : Service(), EventListener, InfoProvider {
 
@@ -102,7 +104,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         val peers = peerProvider.getPeers()
                         val initialPeer = peers.random()
                         Log.i(TAG, "Creating Messenger with initial peer: $initialPeer")
-                        val messenger = com.revertron.mimir.yggmobile.Yggmobile.newMessenger(initialPeer)
+                        val messenger = Yggmobile.newMessenger(initialPeer)
                         for (peer in peers) {
                             if (peer.contentEquals(initialPeer)) continue
                             messenger.addPeer(peer)
@@ -1016,6 +1018,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     private fun connectAndSubscribeToAllChats(storage: SqlStorage) {
         handler.post {
             try {
+                sleep(3000)
                 Log.i(TAG, "Checking mediator connections...")
                 // Get all unique known mediators from saved chats
                 val knownMediators = storage.getKnownMediators().toMutableList()
