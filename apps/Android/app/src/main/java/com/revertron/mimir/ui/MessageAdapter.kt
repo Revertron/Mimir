@@ -7,11 +7,15 @@ import android.content.Intent
 import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
+import android.text.method.MovementMethod
 import android.text.style.ClickableSpan
 import android.text.util.Linkify
+import android.view.MotionEvent
+import android.widget.TextView
 import android.util.Log
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -62,6 +66,61 @@ class MessageAdapter(
         )
     }
 
+    /**
+     * Custom MovementMethod that handles link clicks while passing
+     * non-link touch events to the parent view for natural onClick handling.
+     */
+    private class LinkAndClickMovementMethod : LinkMovementMethod() {
+        override fun onTouchEvent(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {
+            val action = event.action
+
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_DOWN) {
+                var x = event.x.toInt()
+                var y = event.y.toInt()
+
+                x -= widget.totalPaddingLeft
+                y -= widget.totalPaddingTop
+
+                x += widget.scrollX
+                y += widget.scrollY
+
+                val layout = widget.layout
+                val line = layout.getLineForVertical(y)
+                val off = layout.getOffsetForHorizontal(line, x.toFloat())
+
+                val links = buffer.getSpans(off, off, ClickableSpan::class.java)
+
+                if (links.isNotEmpty()) {
+                    // There's a link at this position, handle it normally
+                    if (action == MotionEvent.ACTION_UP) {
+                        links[0].onClick(widget)
+                    }
+                    return true
+                } else {
+                    // No link - pass the touch event to parent view so it can handle onClick naturally
+                    val parent = widget.parent
+                    if (parent is View) {
+                        // Dispatch the event to parent's touch handling
+                        return parent.onTouchEvent(event)
+                    }
+                }
+            }
+
+            return super.onTouchEvent(widget, buffer, event)
+        }
+
+        companion object {
+            private var sInstance: LinkAndClickMovementMethod? = null
+
+            fun getInstance(): MovementMethod {
+                if (sInstance == null) {
+                    sInstance = LinkAndClickMovementMethod()
+                }
+                return sInstance!!
+            }
+        }
+    }
+
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
 
@@ -95,13 +154,15 @@ class MessageAdapter(
     /**
      * Applies custom link patterns to the TextView for unusual URL schemes.
      * Handles both standard web URLs and custom schemes like mimir://, tcp://, tls://, ws://, wss://
+     * Uses custom MovementMethod to allow clicking on non-link text to trigger the popup menu.
      */
     private fun applyCustomLinks(textView: AppCompatTextView, text: CharSequence, context: Context) {
+        val spannable = SpannableString(text)
+
         // First apply standard web URL linkification
-        textView.autoLinkMask = Linkify.WEB_URLS
+        Linkify.addLinks(spannable, Linkify.WEB_URLS)
 
         // Then add custom scheme patterns
-        val spannable = SpannableString(text)
         val matcher = CUSTOM_URL_PATTERN.matcher(text)
 
         while (matcher.find()) {
@@ -120,8 +181,10 @@ class MessageAdapter(
         }
 
         textView.text = spannable
-        // Enable link clicking
-        textView.movementMethod = LinkMovementMethod.getInstance()
+
+        // Use custom MovementMethod that handles both link clicks and delegates
+        // non-link clicks to the parent view (R.id.message) for the popup menu
+        textView.movementMethod = LinkAndClickMovementMethod.getInstance()
     }
 
     /**
