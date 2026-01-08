@@ -4,11 +4,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/reply_panel"
-    android:layout_width="match_parent"
+    android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:paddingTop="4dp"
     android:paddingBottom="4dp"
+    app:layout_constrainedWidth="true"
+    app:layout_constraintLeft_toLeftOf="parent"
     app:layout_constraintTop_toBottomOf="@id/name"
+    app:layout_constraintWidth_max="300dp"
     tools:showIn="@layout/message_incoming_layout">
 
     <View

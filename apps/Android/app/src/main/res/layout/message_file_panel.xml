@@ -4,15 +4,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/file_panel"
-    android:layout_width="match_parent"
+    android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:visibility="visible"
     android:paddingTop="4dp"
     android:paddingBottom="4dp"
+    app:layout_constrainedWidth="true"
     app:layout_constraintLeft_toLeftOf="parent"
-    app:layout_constraintRight_toRightOf="parent"
-    app:layout_constraintTop_toBottomOf="@id/reply_panel">
+    app:layout_constraintTop_toBottomOf="@id/reply_panel"
+    app:layout_constraintWidth_max="300dp">
 
     <FrameLayout
         android:id="@+id/file_icon_container"
