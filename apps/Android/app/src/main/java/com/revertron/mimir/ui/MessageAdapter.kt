@@ -39,6 +39,7 @@ import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import androidx.core.net.toUri
+import kotlin.math.abs
 
 class MessageAdapter(
     private val storage: SqlStorage,
@@ -69,10 +70,86 @@ class MessageAdapter(
     /**
      * Custom MovementMethod that handles link clicks while passing
      * non-link touch events to the parent view for natural onClick handling.
+     * Clears the pressed state when the user scrolls to prevent stuck highlights.
      */
     private class LinkAndClickMovementMethod : LinkMovementMethod() {
+        private var initialX = 0f
+        private var initialY = 0f
+        private var touchSlop = 0
+        private var isMoving = false
+
         override fun onTouchEvent(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {
             val action = event.action
+
+            // Initialize touch slop on first use
+            if (touchSlop == 0) {
+                touchSlop = android.view.ViewConfiguration.get(widget.context).scaledTouchSlop
+            }
+
+            when (action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // Store initial touch position
+                    initialX = event.x
+                    initialY = event.y
+                    isMoving = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    // Check if movement exceeds touch slop
+                    val deltaX = abs(event.x - initialX)
+                    val deltaY = abs(event.y - initialY)
+
+                    if (deltaX > touchSlop || deltaY > touchSlop) {
+                        // User is scrolling, clear pressed state on both widget and parent
+                        if (!isMoving) {
+                            isMoving = true
+
+                            // Clear pressed state on TextView
+                            widget.cancelLongPress()
+                            widget.isPressed = false
+                            widget.isSelected = false
+                            widget.refreshDrawableState()
+
+                            // Also clear pressed state on parent view
+                            val parent = widget.parent
+                            if (parent is View) {
+                                parent.cancelLongPress()
+                                parent.isPressed = false
+                                parent.isSelected = false
+                                parent.refreshDrawableState()
+                                // Force drawable to jump to current state
+                                parent.background?.jumpToCurrentState()
+                            }
+
+                            // Send ACTION_CANCEL to properly cancel the touch sequence
+                            val cancelEvent = MotionEvent.obtain(event)
+                            cancelEvent.action = MotionEvent.ACTION_CANCEL
+                            widget.onTouchEvent(cancelEvent)
+                            if (parent is View) {
+                                parent.onTouchEvent(cancelEvent)
+                            }
+                            cancelEvent.recycle()
+                        }
+                        // Return false to let RecyclerView handle scrolling
+                        return false
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    // Touch was cancelled (e.g., parent intercepted), clear state
+                    isMoving = false
+                    widget.isPressed = false
+                    widget.isSelected = false
+                    widget.refreshDrawableState()
+
+                    val parent = widget.parent
+                    if (parent is View) {
+                        parent.isPressed = false
+                        parent.isSelected = false
+                        parent.refreshDrawableState()
+                        parent.background?.jumpToCurrentState()
+                    }
+                    return false
+                }
+            }
 
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_DOWN) {
                 var x = event.x.toInt()
