@@ -410,12 +410,16 @@ class MediatorManager(
         // Schedule reconnection attempt
         info.reconnectThread = thread(name = "MediatorReconnect-$pubkeyHex") {
             try {
-                Thread.sleep(delay)
+                sleep(delay)
 
                 // Check again if we're still online before attempting
                 if (!App.app.online) {
-                    Log.i(TAG, "Aborting reconnect to $pubkeyHex - went offline during delay")
-                    info.reset()
+                    // Schedule next attempt if we haven't exceeded max attempts
+                    if (info.shouldAttemptReconnect()) {
+                        scheduleReconnect(mediatorPubkey)
+                    } else {
+                        Log.w(TAG, "Max reconnection attempts reached for $pubkeyHex")
+                    }
                     info.reconnectThread = null
                     return@thread
                 }
@@ -708,13 +712,42 @@ class MediatorManager(
             Log.i(TAG, "Member online status changed in chat $chatId: $pubkeyHex... -> ${if (isOnline) "online" else "offline"} @ $timestamp")
 
             try {
-                // Don't track current user's own status
+                // Check if this is our own status change
                 if (memberPubkey.contentEquals(getPublicKey())) {
-                    Log.d(TAG, "Ignoring own online status change event")
+                    // If mediator is reporting we're offline, we need to re-subscribe
+                    if (!isOnline) {
+                        Log.w(TAG, "Mediator reports we are offline in chat $chatId - re-subscribing to maintain connection")
+
+                        // Get the client for this mediator
+                        val client = clients[address]
+                        if (client != null && client.isRunning()) {
+                            // Re-subscribe in background thread to avoid blocking
+                            thread(name = "ResubscribeChat-$chatId") {
+                                try {
+                                    val serverLastId = client.subscribe(chatId)
+                                    Log.i(TAG, "Successfully re-subscribed to chat $chatId after offline notification, server last ID: $serverLastId")
+
+                                    // Mark chat as subscribed
+                                    markChatSubscribed(chatId)
+
+                                    // Notify callback about successful reconnection
+                                    reconnectionCallback?.onChatReconnected(chatId)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to re-subscribe to chat $chatId after offline notification", e)
+                                    markChatUnsubscribed(chatId)
+                                }
+                            }
+                        } else {
+                            Log.w(TAG, "Cannot re-subscribe to chat $chatId: mediator client not available")
+                            markChatUnsubscribed(chatId)
+                        }
+                    } else {
+                        Log.d(TAG, "Ignoring own online status change event (we're already online)")
+                    }
                     return
                 }
 
-                // Update database with new status and last_seen timestamp
+                // Update database with new status and last_seen timestamp for other members
                 val lastSeenTimestamp = if (isOnline) 0L else timestamp
                 storage.updateGroupMemberOnlineStatus(
                     chatId = chatId,

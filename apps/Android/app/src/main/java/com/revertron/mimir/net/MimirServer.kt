@@ -471,7 +471,7 @@ class MimirServer(
                            peersCount == 1) {
                     // Only one peer - check if cost is too high
                     val cost = currentPeerObj.optInt("Cost", 500)
-                    if (cost > 300 && now - lastJumpTime >= MIN_JUMP_INTERVAL_MS) {
+                    if (cost > 500 && now - lastJumpTime >= MIN_JUMP_INTERVAL_MS) {
                         Log.i(TAG, "High cost $cost on current peer, jumping to better one")
                         jumpPeer()
                         lastJumpTime = now

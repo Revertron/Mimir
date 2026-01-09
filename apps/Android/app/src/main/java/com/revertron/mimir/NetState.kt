@@ -67,7 +67,7 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
         super.onLost(network)
         Log.d(TAG, "onLost")
         networkChanged()
-        connected = haveNetwork(context)
+        connected = false
 
         Thread {
             Thread.sleep(1000)

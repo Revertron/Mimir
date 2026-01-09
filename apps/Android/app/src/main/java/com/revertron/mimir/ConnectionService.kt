@@ -561,7 +561,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
             // Send to mediator
             val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
-            val (messageId, newGuid) = client.sendMessage(chatId, guid, encryptedData)
+            val (messageId, newGuid) = client.sendMessage(chatId, guid, sendTime, encryptedData)
             Log.i(TAG, "Message sent with ID: $messageId, guid = $guid ($newGuid), replyTo = $replyTo")
 
             // Update server message id for later sync

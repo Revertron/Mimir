@@ -177,6 +177,7 @@ class MediatorClient(
         } catch (e: Exception) {
             Log.e(TAG, "Client initialization error", e)
             running = false
+            closeQuietly()
             listener.onDisconnected(e)
             throw e
         }
@@ -489,11 +490,12 @@ class MediatorClient(
     }
 
     /** Sends a message and returns server-assigned incremental message_id. */
-    fun sendMessage(chatId: Long, guid: Long, blob: ByteArray): Pair<Long, Long> {
+    fun sendMessage(chatId: Long, guid: Long, sendTime: Long, blob: ByteArray): Pair<Long, Long> {
         // Build TLV payload
         val payload = ByteArrayOutputStream().apply {
             writeTLVLong(TAG_CHAT_ID, chatId)
             writeTLVLong(TAG_MESSAGE_GUID, guid)
+            writeTLVLong(TAG_TIMESTAMP, sendTime)
             writeTLV(TAG_MESSAGE_BLOB, blob)
         }.toByteArray()
         val resp = request(CMD_SEND_MESSAGE, payload) ?: throw MediatorException("sendMessage timeout")
