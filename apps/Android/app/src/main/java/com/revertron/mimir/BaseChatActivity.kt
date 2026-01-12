@@ -6,7 +6,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.PorterDuff
+import android.graphics.drawable.ColorDrawable
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
@@ -14,8 +16,11 @@ import android.os.Bundle
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
+import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatEditText
@@ -23,7 +28,6 @@ import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.LinearLayoutCompat
-import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
@@ -34,6 +38,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.MessageAdapter
+import com.revertron.mimir.ui.MessageTag
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
@@ -42,6 +47,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.graphics.drawable.toDrawable
 
 /**
  * Base activity for chat screens (1-on-1 and group chats).
@@ -590,34 +596,62 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     // Context Menu
 
     override fun onClick(view: View) {
-        val popup = PopupMenu(this, view, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-        popup.inflate(R.menu.menu_context_message)
-        popup.setForceShowIcon(true)
-        popup.setOnMenuItemClickListener {
-            when (it.itemId) {
-                R.id.menu_copy -> {
-                    handleCopy(view)
-                    true
-                }
-                R.id.menu_reply -> {
-                    handleReply(view)
-                    false
-                }
-                R.id.menu_forward -> {
-                    handleForward(view)
-                    false
-                }
-                R.id.menu_delete -> {
-                    handleDelete(view)
-                    true
-                }
-                else -> {
-                    Log.w(this::class.simpleName, "Not implemented handler for menu item ${it.itemId}")
-                    false
-                }
-            }
+        // Extract coordinates from the tag (set by MessageAdapter)
+        val tag = view.tag as? MessageTag
+        val (x, y) = if (tag != null && tag.touchX != 0 && tag.touchY != 0) {
+            Pair(tag.touchX, tag.touchY)
+        } else {
+            // Fallback: use view center if coordinates not available
+            val location = IntArray(2)
+            view.getLocationOnScreen(location)
+            Pair(location[0] + view.width / 2, location[1] + view.height / 2)
         }
-        popup.show()
+
+        showContextMenuAtLocation(view, x, y)
+    }
+
+    private fun showContextMenuAtLocation(anchorView: View, x: Int, y: Int) {
+        val inflater = LayoutInflater.from(this)
+        val popupView = inflater.inflate(R.layout.popup_message_context_menu, null)
+
+        val popupWindow = PopupWindow(
+            popupView,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        )
+
+        // Enable elevation/shadow - use transparent background to allow CardView shadow to show
+        popupWindow.elevation = 8f * resources.displayMetrics.density
+        popupWindow.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+
+        // Set up menu item click handlers
+        popupView.findViewById<View>(R.id.menu_reply).setOnClickListener {
+            handleReply(anchorView)
+            popupWindow.dismiss()
+        }
+
+        popupView.findViewById<View>(R.id.menu_copy).setOnClickListener {
+            handleCopy(anchorView)
+            popupWindow.dismiss()
+        }
+
+        popupView.findViewById<View>(R.id.menu_forward).setOnClickListener {
+            handleForward(anchorView)
+            popupWindow.dismiss()
+        }
+
+        popupView.findViewById<View>(R.id.menu_delete).setOnClickListener {
+            handleDelete(anchorView)
+            popupWindow.dismiss()
+        }
+
+        // Make popup dismissable by touching outside
+        popupWindow.isOutsideTouchable = true
+        popupWindow.isFocusable = true
+
+        // Show popup at touch location
+        popupWindow.showAtLocation(recyclerView, Gravity.NO_GRAVITY, x, y)
     }
 
     private fun handleCopy(view: View): Boolean {
@@ -629,9 +663,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         return true
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun handleReply(view: View): Boolean {
-        val (_, guid) = view.tag as Pair<Long, Long>
+        // Extract message ID and GUID from tag
+        val tag = view.tag as? MessageTag ?: return false
+        val guid = tag.guid
+
         val replyInfo = getMessageForReply(guid)
         if (replyInfo != null) {
             val (authorName, messageText) = replyInfo
@@ -640,9 +676,12 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         return false
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun handleForward(view: View): Boolean {
-        val (messageId, guid) = view.tag as Pair<Long, Long>
+        // Extract message ID and GUID from tag
+        val tag = view.tag as? MessageTag ?: return false
+        val messageId = tag.messageId
+        val guid = tag.guid
+
         val message = getMessageForForwarding(messageId)
 
         if (message == null) {
@@ -674,9 +713,12 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         return true
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun handleDelete(view: View): Boolean {
-        val (id, guid) = view.tag as Pair<Long, Long>
+        // Extract message ID and GUID from tag
+        val tag = view.tag as? MessageTag ?: return false
+        val id = tag.messageId
+        val guid = tag.guid
+
         showDeleteMessageConfirmDialog(id, guid)
         return true
     }

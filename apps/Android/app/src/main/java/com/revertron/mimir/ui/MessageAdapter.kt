@@ -92,6 +92,19 @@ class MessageAdapter(
                     initialX = event.x
                     initialY = event.y
                     isMoving = false
+                    if (widget.parent is View) {
+                        val p = widget.parent as View
+                        if (p.id == R.id.message) {
+                            // Store touch coordinates for later use
+                            val currentTag = p.tag
+                            if (currentTag is MessageTag) {
+                                p.tag = currentTag.copy(
+                                    touchX = event.rawX.toInt(),
+                                    touchY = event.rawY.toInt()
+                                )
+                            }
+                        }
+                    }
                 }
                 MotionEvent.ACTION_MOVE -> {
                     // Check if movement exceeds touch slop
@@ -297,13 +310,34 @@ class MessageAdapter(
             R.layout.message_outgoing_layout
         }
         val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
-        val message = view.findViewById<View>(R.id.message)
-        message.setOnClickListener(onClick)
-        view.setOnLongClickListener {
-            onClick.onClick(message)
-            true
+
+        // Use touch listener to capture coordinates for popup menu
+        val onTouchListener: (View, MotionEvent) -> Boolean = { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    val view = if (v.id == R.id.message) {
+                        v
+                    } else {
+                        v.findViewById(R.id.message)
+                    }
+                    // Store touch coordinates for later use
+                    val currentTag = view.tag
+                    if (currentTag is MessageTag) {
+                        v.tag = currentTag.copy(
+                            touchX = event.rawX.toInt(),
+                            touchY = event.rawY.toInt()
+                        )
+                    }
+                    false
+                }
+
+                else -> false
+            }
         }
-        //TODO make item background reflect touches
+        view.setOnClickListener(onClick)
+        view.setOnTouchListener(onTouchListener)
+        view.findViewById<View>(R.id.message).setOnTouchListener(onTouchListener)
+
         view.findViewById<View>(R.id.reply_panel).setOnClickListener(onReplyClick)
         view.findViewById<View>(R.id.picture).setOnClickListener(onPictureClick)
         if (!groupChat) {
@@ -498,8 +532,8 @@ class MessageAdapter(
         // which provides comprehensive event descriptions
 
         holder.time.text = formatTime(message.time)
-        // Store both ID (for deletion) and GUID (for replies) as a Pair
-        holder.itemView.findViewById<View>(R.id.message).tag = Pair(message.id, message.guid)
+        // Store message metadata using MessageTag
+        holder.itemView.findViewById<View>(R.id.message).tag = MessageTag(message.id, message.guid)
         holder.sent.tag = message.delivered
 
         // Disable click listener for system messages (type 1000)
