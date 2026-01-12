@@ -83,7 +83,7 @@ class MessageAdapter(
 
             // Initialize touch slop on first use
             if (touchSlop == 0) {
-                touchSlop = android.view.ViewConfiguration.get(widget.context).scaledTouchSlop
+                touchSlop = 16
             }
 
             when (action) {
@@ -98,7 +98,7 @@ class MessageAdapter(
                     val deltaX = abs(event.x - initialX)
                     val deltaY = abs(event.y - initialY)
 
-                    if (deltaX > touchSlop || deltaY > touchSlop) {
+                    if (deltaX >= touchSlop || deltaY >= touchSlop) {
                         // User is scrolling, clear pressed state on both widget and parent
                         if (!isMoving) {
                             isMoving = true
