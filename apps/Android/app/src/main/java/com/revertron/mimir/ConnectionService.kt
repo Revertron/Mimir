@@ -144,6 +144,24 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         mediatorManager = MediatorManager(messenger, storage, accountInfo.keyPair, this, reconnectionCallback)
                         App.app.mediatorManager = mediatorManager
 
+                        // Set PeerManager reference in MediatorManager after it's initialized
+                        // This will be done asynchronously since MimirServer initializes PeerManager in its run() method
+                        Thread {
+                            var attempts = 0
+                            while (attempts < 50) { // Wait up to 5 seconds
+                                mimirServer?.let { server ->
+                                    if (server.isPeerManagerInitialized()) {
+                                        mediatorManager?.setPeerManager(server.peerManager)
+                                        Log.i(TAG, "PeerManager reference set in MediatorManager")
+                                        return@Thread
+                                    }
+                                }
+                                Thread.sleep(100)
+                                attempts++
+                            }
+                            Log.w(TAG, "Timeout waiting for PeerManager initialization")
+                        }.start()
+
                         // Register global invite listener
                         registerInvitesListener(storage)
                         startGlobalChatListener(storage)
@@ -261,15 +279,24 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
                 if (mediatorManager != null) {
                     Thread {
-                        // Wait for App.app.online to become true before connecting to mediators
+                        // Wait for PeerManager to signal online before connecting to mediators
                         // This ensures Yggdrasil network is fully up before mediator connections
                         val maxWaitTime = 15000L // 15 seconds max
                         val startTime = System.currentTimeMillis()
-                        while (!App.app.online && System.currentTimeMillis() - startTime < maxWaitTime) {
-                            Thread.sleep(1000)
+
+                        // First wait for PeerManager to be initialized
+                        while (mimirServer?.isPeerManagerInitialized() == false &&
+                               System.currentTimeMillis() - startTime < maxWaitTime) {
+                            sleep(100)
                         }
 
-                        if (App.app.online) {
+                        // Then wait for it to be online
+                        while (!(mimirServer?.peerManager?.isOnline() ?: false) &&
+                               System.currentTimeMillis() - startTime < maxWaitTime) {
+                            sleep(1000)
+                        }
+
+                        if (mimirServer?.peerManager?.isOnline() == true) {
                             Log.i(TAG, "Yggdrasil network is online, proceeding with mediator connections")
                             // Reconnect to mediators and resubscribe to chats when coming online
                             connectAndSubscribeToAllChats(storage)

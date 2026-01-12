@@ -125,6 +125,9 @@ class MediatorClient(
     // Mediator's public key (extracted from connection)
     private val mediatorPubkey: ByteArray = connection.publicKey()
 
+    // PeerManager for checking online state
+    private var peerManager: PeerManager? = null
+
     @Volatile
     private var running = true
 
@@ -189,6 +192,14 @@ class MediatorClient(
         } catch (e: Throwable) {
             Log.e(TAG, "Error reading from pipe: {$e}")
         }
+    }
+
+    /**
+     * Set the PeerManager instance.
+     * Should be called after MediatorClient is created.
+     */
+    fun setPeerManager(peerManager: PeerManager) {
+        this.peerManager = peerManager
     }
 
     // === Public API (thread/handler friendly, blocking with timeouts) ===
@@ -940,7 +951,7 @@ class MediatorClient(
             val now = System.currentTimeMillis()
 
             // Handle offline state with backoff to tolerate brief peer flaps
-            if (!App.app.online) {
+            if (!(peerManager?.isOnline() ?: false)) {
                 if (offlineStartTime == 0L) {
                     offlineStartTime = now
                     Log.i(TAG, "Peer went offline, starting ${OFFLINE_GRACE_PERIOD_MS}ms grace period before stopping client")

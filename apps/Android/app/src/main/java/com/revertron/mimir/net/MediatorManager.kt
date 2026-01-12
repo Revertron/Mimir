@@ -56,6 +56,9 @@ class MediatorManager(
         }
     }
 
+    // PeerManager for checking online state
+    private var peerManager: PeerManager? = null
+
     // Map: mediator pubkey (hex string) -> MediatorClient
     private val clients = ConcurrentHashMap<String, MediatorClient>()
 
@@ -134,6 +137,14 @@ class MediatorManager(
         }
     }
 
+    /**
+     * Set the PeerManager instance.
+     * Should be called after both MediatorManager and PeerManager are created.
+     */
+    fun setPeerManager(peerManager: PeerManager) {
+        this.peerManager = peerManager
+    }
+
     fun getOrCreateClient(): MediatorClient {
         return getOrCreateClient(getDefaultMediatorPubkey())
     }
@@ -181,6 +192,9 @@ class MediatorManager(
         try {
             val connection = messenger.connect(mediatorPubkey)
             val client = MediatorClient(connection, keyPair, createGlobalListener(pubkeyHex), storage)
+
+            // Set PeerManager reference if available
+            peerManager?.let { client.setPeerManager(it) }
 
             clients[pubkeyHex] = client
             client.start()
@@ -367,7 +381,7 @@ class MediatorManager(
         val pubkeyHex = Hex.toHexString(mediatorPubkey)
 
         // Check if we're online
-        if (!App.app.online) {
+        if (!(peerManager?.isOnline() ?: false)) {
             Log.i(TAG, "Not attempting reconnect to $pubkeyHex - we're offline")
             return
         }
@@ -413,7 +427,7 @@ class MediatorManager(
                 sleep(delay)
 
                 // Check again if we're still online before attempting
-                if (!App.app.online) {
+                if (!(peerManager?.isOnline() ?: false)) {
                     // Schedule next attempt if we haven't exceeded max attempts
                     if (info.shouldAttemptReconnect()) {
                         scheduleReconnect(mediatorPubkey)
@@ -796,7 +810,7 @@ class MediatorManager(
             }
 
             // Trigger automatic reconnection if we're online
-            if (App.app.online) {
+            if (peerManager?.isOnline() == true) {
                 Log.i(TAG, "We're online, scheduling reconnection to $address")
 
                 // Get keypair from reconnection info or storage
