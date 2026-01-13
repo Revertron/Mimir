@@ -12,7 +12,7 @@ import androidx.preference.PreferenceManager
 import java.util.concurrent.atomic.AtomicLong
 
 
-private const val TAG = "NetworkStateCallback"
+private const val TAG = "NetState"
 
 class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
 

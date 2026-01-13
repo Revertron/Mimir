@@ -1019,6 +1019,29 @@ fun haveNetwork(context: Context): Boolean {
     return aliveNetwork
 }
 
+enum class NetType {
+    OFFLINE,
+    CELLULAR,
+    GOOD
+}
+
+fun getNetworkType(context: Context): NetType {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    // is there still a network that is alive
+    val activeNetwork = cm.activeNetwork
+    val caps = cm.getNetworkCapabilities(activeNetwork)
+    if (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
+        return NetType.OFFLINE
+    }
+
+    if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true) {
+        return NetType.CELLULAR
+    }
+
+    return NetType.GOOD
+}
+
 /**
  * Formats last_seen timestamp for display.
  * Returns hybrid format: relative for today, absolute for older.

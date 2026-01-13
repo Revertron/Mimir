@@ -1,6 +1,9 @@
 package com.revertron.mimir.net
 
 import android.util.Log
+import android.content.Context
+import android.content.Intent
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.revertron.mimir.App
 import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.sec.Sign
@@ -9,6 +12,7 @@ import com.revertron.mimir.yggmobile.Connection
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.IOException
@@ -86,7 +90,7 @@ class MediatorClient(
 
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
-        private const val PING_DEADLINE_MS: Long = 120_000 // Ping every 2 minutes, QUIC timeout is 5 minutes
+        private const val PING_DEADLINE_MS: Long = 55_000 // Ping every 55 seconds, QUIC timeout is 5 minutes
 
         // TLV Tag constants (purpose-based)
         private const val TAG_PUBKEY: Byte = 0x01.toByte()
@@ -1640,5 +1644,156 @@ class MediatorClient(
         val bytes = getTLVBytes(tag)
         if (bytes.size != 1) throw IOException("TLV tag 0x${tag.toString(16)}: expected 1 byte, got ${bytes.size}")
         return bytes[0]
+    }
+
+    /**
+     * Syncs missed messages from mediator for this chat.
+     * Fetches messages in batches and saves to storage.
+     *
+     * @param chatId The chat ID to sync
+     * @param storage Storage instance for saving messages
+     * @param broadcastContext Context for broadcasting sync completion
+     * @param serverLastId Optional server last ID (if already known from subscribe())
+     * @return Last synced message ID
+     */
+    fun syncMissedMessages(chatId: Long, storage: SqlStorage, broadcastContext: Context, serverLastId: Long? = null): Long {
+        try {
+            Log.i(TAG, "Starting message sync for chat $chatId")
+
+            // Get last synced message ID from local database
+            val localLastId = storage.getMaxServerMessageId(chatId)
+            Log.d(TAG, "Local last message ID: $localLastId for chat $chatId")
+
+            // Get last message ID from server (use provided value or fetch from server)
+            val serverLastIdValue = serverLastId ?: try {
+                this.getLastMessageId(chatId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get last message ID from server", e)
+                return localLastId
+            }
+
+            Log.i(TAG, "Server last message ID: $serverLastIdValue for chat $chatId")
+
+            if (serverLastIdValue <= localLastId) {
+                Log.i(TAG, "No missed messages for chat $chatId (local=$localLastId, server=$serverLastIdValue)")
+                return localLastId
+            }
+
+            val missedCount = serverLastIdValue - localLastId
+            Log.i(TAG, "Fetching $missedCount missed message(s) for chat $chatId")
+
+            // Get chat info for decryption
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found in storage")
+                return localLastId
+            }
+
+            // Fetch messages in batches (max 100 per request)
+            var currentId = localLastId
+            val batchSize = 100
+
+            while (currentId < serverLastIdValue) {
+                try {
+                    val messages = this.getMessagesSince(chatId, currentId, batchSize)
+                    if (messages.isEmpty()) {
+                        Log.w(TAG, "No messages returned from server, stopping sync")
+                        break
+                    }
+
+                    Log.d(TAG, "Fetched ${messages.size} message(s) for chat $chatId")
+
+                    // Process each message
+                    for (msgPayload in messages) {
+                        try {
+                            // Decrypt message using shared key
+                            val decryptedData = try {
+                                GroupChatCrypto.decryptMessage(msgPayload.data, chatInfo.sharedKey)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to decrypt synced message ${msgPayload.messageId}", e)
+                                // Save error message and continue
+                                storage.addGroupMessage(
+                                    chatId,
+                                    msgPayload.messageId,
+                                    msgPayload.guid,
+                                    msgPayload.author,
+                                    msgPayload.timestamp,
+                                    0,
+                                    false,
+                                    "<Can't decrypt the message>".toByteArray(),
+                                    fromSync = true
+                                )
+                                currentId = msgPayload.messageId
+                                continue
+                            }
+
+                            // Deserialize message structure
+                            val bais = ByteArrayInputStream(decryptedData)
+                            val dis = DataInputStream(bais)
+
+                            // Read header and message
+                            val header = readHeader(dis)
+                            val message = readMessage(dis)
+
+                            if (message == null) {
+                                Log.e(TAG, "Failed to deserialize synced message ${msgPayload.messageId}")
+                                currentId = msgPayload.messageId
+                                continue
+                            }
+
+                            // Save message.data to storage (the actual message content)
+                            val localId = storage.addGroupMessage(
+                                chatId,
+                                msgPayload.messageId,
+                                msgPayload.guid,
+                                msgPayload.author,
+                                msgPayload.timestamp,
+                                message.type,
+                                false, // Not a system message
+                                message.data, // The actual message data
+                                fromSync = true
+                            )
+
+                            if (localId > 0) {
+                                Log.d(TAG, "Synced message ${msgPayload.messageId} (guid=${msgPayload.guid}, type=${message.type}) to local ID $localId")
+                            } else {
+                                Log.d(TAG, "Skipped message ${msgPayload.messageId} (may already exist or failed)")
+                            }
+
+                            currentId = msgPayload.messageId
+
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing synced message ${msgPayload.messageId}", e)
+                            currentId = msgPayload.messageId
+                        }
+                    }
+
+                    // Update currentId to highest processed message
+                    val lastProcessedId = messages.maxOfOrNull { it.messageId } ?: currentId
+                    currentId = lastProcessedId
+
+                    Log.d(TAG, "Batch sync progress: $currentId / $serverLastIdValue for chat $chatId")
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error fetching message batch for chat $chatId", e)
+                    break
+                }
+            }
+
+            Log.i(TAG, "Message sync complete for chat $chatId (synced up to ID $currentId)")
+
+            // Broadcast sync completion
+            val syncIntent = Intent("ACTION_MESSAGES_SYNCED").apply {
+                putExtra("chat_id", chatId)
+                putExtra("last_synced_id", currentId)
+            }
+            LocalBroadcastManager.getInstance(broadcastContext).sendBroadcast(syncIntent)
+
+            return currentId
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing messages for chat $chatId", e)
+            return storage.getMaxServerMessageId(chatId)
+        }
     }
 }

@@ -1,14 +1,21 @@
 package com.revertron.mimir.net
 
+import android.content.Context
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.revertron.mimir.App
 import com.revertron.mimir.sec.GroupChatCrypto
+import com.revertron.mimir.sec.Sign
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONArray
+import java.io.File
 import java.lang.Thread.sleep
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -39,7 +46,8 @@ class MediatorManager(
     private val storage: SqlStorage,
     private val keyPair: AsymmetricCipherKeyPair,
     private val infoProvider: InfoProvider,
-    private val reconnectionCallback: ReconnectionCallback? = null
+    private val reconnectionCallback: ReconnectionCallback? = null,
+    private val context: Context
 ) {
 
     companion object {
@@ -58,6 +66,9 @@ class MediatorManager(
 
     // PeerManager for checking online state
     private var peerManager: PeerManager? = null
+
+    // Handler for UI thread operations
+    private val handler = Handler(Looper.getMainLooper())
 
     // Map: mediator pubkey (hex string) -> MediatorClient
     private val clients = ConcurrentHashMap<String, MediatorClient>()
@@ -108,8 +119,8 @@ class MediatorManager(
     ) {
         companion object {
             private const val BASE_DELAY_MS = 2000L // 2 seconds
-            private const val MAX_DELAY_MS = 60000L // 60 seconds
-            private const val MAX_ATTEMPTS = 30 // After 30 attempts, stop and wait for manual reconnect
+            private const val MAX_DELAY_MS = 120000L // 120 seconds
+            private const val MAX_ATTEMPTS = 300 // After 300 attempts, stop and wait for manual reconnect
         }
 
         fun getNextDelay(): Long {
@@ -833,6 +844,395 @@ class MediatorManager(
                 Log.i(TAG, "We're offline, not scheduling reconnection to $address")
             }
         }
+    }
+
+    /**
+     * Connects to all known mediators and subscribes to all saved group chats.
+     * Called on service start to establish always-on connections.
+     */
+    fun connectAndSubscribeToAllChats(globalMessageListener: ChatMessageListener?, statusBroadcaster: (chatId: Long) -> Unit) {
+        try {
+            sleep(3000)
+            Log.i(TAG, "Checking mediator connections...")
+
+            // Get all unique known mediators from saved chats
+            val knownMediators = storage.getKnownMediators().toMutableList()
+
+            // Always include default mediator for listening to invites
+            val defaultMediator = getDefaultMediatorPubkey()
+            if (!knownMediators.any { it.contentEquals(defaultMediator) }) {
+                knownMediators.add(defaultMediator)
+                Log.i(TAG, "Added default mediator for invite listening")
+            }
+
+            Log.i(TAG, "Found ${knownMediators.size} mediators to connect to")
+
+            // Filter mediators that need connection
+            val mediatorsToConnect = knownMediators.filter { mediatorPubkey ->
+                needsConnection(mediatorPubkey)
+            }
+
+            if (mediatorsToConnect.isEmpty()) {
+                Log.i(TAG, "All mediators already connected, skipping")
+                return
+            }
+
+            Log.i(TAG, "Need to connect to ${mediatorsToConnect.size} mediators")
+
+            // Get all group chats for subscription
+            val allChats = storage.getGroupChatList()
+
+            // Connect to each mediator that needs connection
+            for (mediatorPubkey in mediatorsToConnect) {
+                Thread {
+                    try {
+                        val mediatorHex = Hex.toHexString(mediatorPubkey)
+                        Log.i(TAG, "Connecting to mediator ${mediatorHex.take(8)}...")
+
+                        // Get or create connection to this mediator
+                        val client = getOrCreateClient(mediatorPubkey)
+
+                        // Find all chats on this mediator
+                        val chatsOnThisMediator = allChats.filter {
+                            it.mediatorPubkey.contentEquals(mediatorPubkey)
+                        }
+
+                        Log.i(TAG, "Subscribing to ${chatsOnThisMediator.size} chats on mediator ${mediatorHex.take(8)}")
+
+                        // Subscribe to all chats on this mediator
+                        for (chat in chatsOnThisMediator) {
+                            try {
+                                val serverLastId = client.subscribe(chat.chatId)
+                                Log.i(TAG, "Subscribed to chat ${chat.chatId} (${chat.name}) on mediator ${mediatorHex.take(8)} (server last ID: $serverLastId)")
+
+                                // Register message listener for this chat
+                                globalMessageListener?.let {
+                                    registerMessageListener(chat.chatId, it)
+                                }
+
+                                // Mark chat as subscribed and broadcast status for badge update
+                                markChatSubscribed(chat.chatId)
+                                handler.post {
+                                    statusBroadcaster(chat.chatId)
+                                }
+
+                                Thread {
+                                    // Sync missed messages from server first
+                                    client.syncMissedMessages(chat.chatId, storage, context, serverLastId)
+                                    // Then re-send any undelivered messages
+                                    resendUndeliveredMessages(chat.chatId)
+                                }.start()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to subscribe to chat ${chat.chatId} on mediator ${mediatorHex.take(8)}", e)
+                                // Mark chat as unsubscribed on failure
+                                markChatUnsubscribed(chat.chatId)
+                                handler.post {
+                                    statusBroadcaster(chat.chatId)
+                                }
+                            }
+                        }
+
+                        Log.i(TAG, "Successfully connected to mediator ${mediatorHex.take(8)}")
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to connect to mediator ${Hex.toHexString(mediatorPubkey).take(8)}", e)
+                    }
+                }.start()
+            }
+
+            Log.i(TAG, "Auto-connection to ${mediatorsToConnect.size} mediators initiated")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in connectAndSubscribeToAllChats", e)
+        }
+    }
+
+    /**
+     * Subscribes to a single group chat on its mediator.
+     * Handles subscription, message sync, resend, and listener registration.
+     */
+    fun subscribeToChat(
+        chatId: Long,
+        listener: ChatMessageListener,
+        statusBroadcaster: (chatId: Long) -> Unit
+    ): Boolean {
+        return try {
+            // Get chat info to find mediator
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                return false
+            }
+
+            // Get or create client for this mediator
+            val client = getOrCreateClient(chatInfo.mediatorPubkey)
+
+            Thread {
+                try {
+                    // Subscribe to chat
+                    val serverLastId = client.subscribe(chatId)
+                    Log.i(TAG, "Subscribed to chat $chatId (server last ID: $serverLastId)")
+
+                    // Register listener
+                    registerMessageListener(chatId, listener)
+
+                    // Mark as subscribed
+                    markChatSubscribed(chatId)
+                    handler.post {
+                        statusBroadcaster(chatId)
+                    }
+
+                    // Sync missed messages
+                    client.syncMissedMessages(chatId, storage, context, serverLastId)
+
+                    // Resend undelivered messages
+                    resendUndeliveredMessages(chatId)
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to subscribe to chat $chatId", e)
+                    markChatUnsubscribed(chatId)
+                    handler.post {
+                        statusBroadcaster(chatId)
+                    }
+                    broadcastMediatorError("subscribe", e.message)
+                }
+            }.start()
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in subscribeToChat", e)
+            false
+        }
+    }
+
+    /**
+     * Resends messages that failed to deliver for a specific chat.
+     * Note: This is a placeholder - actual resending is handled by ConnectionService
+     */
+    fun resendUndeliveredMessages(chatId: Long) {
+        // This is called from connectAndSubscribeToAllChats and subscribeToChat
+        // but the actual resending logic remains in ConnectionService for now
+        // due to complexity of message serialization
+        Log.d(TAG, "Resend undelivered messages requested for chat $chatId (handled by ConnectionService)")
+    }
+
+    /**
+     * Creates a new group chat on the mediator.
+     */
+    fun createChat(
+        name: String,
+        description: String,
+        avatar: ByteArray?,
+        mediatorPubkey: ByteArray,
+        listener: ChatMessageListener,
+        successBroadcaster: (chatId: Long) -> Unit,
+        errorBroadcaster: (operation: String, message: String?) -> Unit
+    ) {
+        Thread {
+            try {
+                // Get or create client for this mediator
+                val client = getOrCreateClient(mediatorPubkey)
+
+                // Create chat on mediator (returns chat ID)
+                val chatId = client.createChat(name, description, avatar)
+                Log.i(TAG, "Chat created on mediator: $chatId")
+
+                // Generate shared encryption key for this chat
+                val sharedKey = GroupChatCrypto.generateSharedKey()
+
+                // Get our public key
+                val ourPubkey = getPublicKey()
+
+                // Save chat to storage
+                storage.saveGroupChat(
+                    chatId,
+                    name,
+                    description,
+                    null, // avatarPath - will be set separately if avatar is provided
+                    mediatorPubkey,
+                    ourPubkey,
+                    sharedKey
+                )
+
+                // Save avatar if provided
+                avatar?.let {
+                    storage.updateGroupChatAvatar(chatId, it)
+                }
+
+                Log.i(TAG, "Chat $chatId saved to storage")
+
+                // Subscribe to the new chat
+                val serverLastId = client.subscribe(chatId)
+                Log.i(TAG, "Subscribed to new chat $chatId (server last ID: $serverLastId)")
+
+                // Register message listener
+                registerMessageListener(chatId, listener)
+
+                // Mark as subscribed
+                markChatSubscribed(chatId)
+
+                // Broadcast success
+                handler.post {
+                    successBroadcaster(chatId)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error creating chat", e)
+                errorBroadcaster("create_chat", e.message ?: "Unknown error")
+            }
+        }.start()
+    }
+
+    /**
+     * Deletes a group chat (owner only).
+     */
+    fun deleteGroupChat(chatId: Long): Boolean {
+        return try {
+            // Get chat info
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                return false
+            }
+
+            // Get client for this mediator
+            val client = getOrCreateClient(chatInfo.mediatorPubkey)
+
+            // Delete chat on mediator first
+            val success = client.deleteChat(chatId)
+
+            if (success) {
+                Log.i(TAG, "Chat $chatId deleted on mediator")
+                // Delete from local storage
+                storage.deleteGroupChat(chatId)
+                Log.i(TAG, "Chat $chatId deleted from storage")
+                true
+            } else {
+                Log.e(TAG, "Failed to delete chat $chatId on mediator")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting chat", e)
+            false
+        }
+    }
+
+    /**
+     * Leaves a group chat.
+     */
+    fun leaveGroupChat(chatId: Long): Boolean {
+        return try {
+            // Get chat info
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                return false
+            }
+
+            // Get client for this mediator
+            val client = getOrCreateClient(chatInfo.mediatorPubkey)
+
+            // Leave chat on mediator
+            client.leaveChat(chatId)
+            Log.i(TAG, "Left chat $chatId on mediator")
+
+            // Delete from local storage
+            storage.deleteGroupChat(chatId)
+            Log.i(TAG, "Chat $chatId deleted from storage")
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error leaving chat", e)
+            false
+        }
+    }
+
+    /**
+     * Sends a group chat invitation to a specific user.
+     */
+    fun sendInviteToGroupChat(chatId: Long, recipientPubkey: ByteArray): Boolean {
+        return try {
+            // Get chat info to retrieve shared key
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                return false
+            }
+
+            // Encrypt shared key for recipient
+            val encryptedKey = GroupChatCrypto.encryptSharedKey(chatInfo.sharedKey, recipientPubkey)
+
+            // Send invite via mediator
+            val client = getOrCreateClient(chatInfo.mediatorPubkey)
+            client.sendInvite(chatId, recipientPubkey, encryptedKey)
+
+            Log.i(TAG, "Invite sent for chat $chatId to ${Hex.toHexString(recipientPubkey).take(8)}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending invite", e)
+            false
+        }
+    }
+
+    /**
+     * Bans a user from a group chat.
+     */
+    fun banUserFromGroupChat(chatId: Long, userPubkey: ByteArray): Boolean {
+        return try {
+            // Get chat info
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                return false
+            }
+
+            // Get client for this mediator
+            val client = getOrCreateClient(chatInfo.mediatorPubkey)
+
+            // Ban user (deleteUser command)
+            client.deleteUser(chatId, userPubkey)
+            Log.i(TAG, "User banned from chat $chatId")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error banning user", e)
+            false
+        }
+    }
+
+    /**
+     * Changes a member's permissions in a group chat.
+     */
+    fun changeMemberRole(chatId: Long, userPubkey: ByteArray, newPermissions: Byte): Boolean {
+        return try {
+            // Get chat info
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found")
+                return false
+            }
+
+            // Get client for this mediator
+            val client = getOrCreateClient(chatInfo.mediatorPubkey)
+
+            // Change member status (convert Byte to Int as required by changeMemberStatus)
+            client.changeMemberStatus(chatId, userPubkey, newPermissions.toInt() and 0xFF)
+            Log.i(TAG, "Changed permissions for user in chat $chatId to $newPermissions")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error changing member role", e)
+            false
+        }
+    }
+
+    /**
+     * Broadcasts mediator error to UI.
+     */
+    private fun broadcastMediatorError(operation: String, message: String?) {
+        val intent = Intent("ACTION_MEDIATOR_ERROR").apply {
+            putExtra("operation", operation)
+            putExtra("message", message ?: "Unknown error")
+        }
+        LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
     }
 
     /**

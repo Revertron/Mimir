@@ -4,7 +4,10 @@ import android.content.Context
 import android.util.Log
 import com.revertron.mimir.App
 import com.revertron.mimir.BuildConfig
+import com.revertron.mimir.ConnectionService
 import com.revertron.mimir.NetState
+import com.revertron.mimir.NetType
+import com.revertron.mimir.getNetworkType
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.yggmobile.Messenger
 import org.json.JSONArray
@@ -277,6 +280,7 @@ class PeerManager(
             sleep(ONLINE_CHECK_INTERVAL_MS)
             val networkOnline = NetState.haveNetwork()
             val now = System.currentTimeMillis()
+            //Log.d(TAG, "pathsJSON: " + messenger.pathsJSON)
 
             // Handle complete network offline state
             if (!networkOnline && !online) {
@@ -344,6 +348,12 @@ class PeerManager(
             // Handle online state change
             if (oldOnlineState != peerUp) {
                 Log.i(TAG, "Online changed to $peerUp ($currentPeer)")
+                if (getNetworkType(context) == NetType.CELLULAR && peerUp) {
+                    //Log.d(TAG, "Before: " + messenger.treeJSON)
+                    //Log.d(TAG, "Wait a bit before connecting to mediator...")
+                    sleep(8000)
+                    //Log.d(TAG, "After : " + messenger.treeJSON)
+                }
                 notifyStateChange(peerUp)
 
                 if (peerUp) {
@@ -362,7 +372,7 @@ class PeerManager(
                 // Peer is stable and up - sample cost periodically
                 costSampleCount++
                 if (costSampleCount >= PEER_COST_SAMPLES) {
-                    val cost = currentPeerObj.optInt("Cost", 300)
+                    val cost = currentPeerObj.optInt("Cost", 500)
                     if (cost > 0) {
                         peerStats.getOrPut(currentPeer, { PeerStats(0, -1) }).apply {
                             if (this.cost !in 0..cost) {
@@ -376,6 +386,11 @@ class PeerManager(
 
                 // Reset down timer when peer is up
                 peerDownStartTime = 0L
+
+                val paths = messenger.pathsJSON
+                if (paths == null || paths == "null") {
+                    onForceAnnounce?.invoke()
+                }
             }
 
             // Peer selection phase: after initial connection period, find the best peer

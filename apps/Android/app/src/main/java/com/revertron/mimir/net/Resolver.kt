@@ -101,7 +101,7 @@ class Resolver(private val messenger: Messenger, trackersList: List<String>) {
             socket?.write(request)
 
             val buf = ByteArray(1024)
-            val length = socket!!.readWithTimeout(buf, 2500)
+            val length = socket!!.readWithTimeout(buf, 4000)
             setTime(tracker, (System.currentTimeMillis() - start).toInt())
 
             val results = parseGetAddrsResponse(buf.copyOfRange(0, length.toInt()), pubkey)
