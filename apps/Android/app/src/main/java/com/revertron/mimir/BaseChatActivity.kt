@@ -624,6 +624,42 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         // Enable elevation/shadow - use transparent background to allow CardView shadow to show
         popupWindow.elevation = 8f * resources.displayMetrics.density
         popupWindow.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+        // Tell the popup to not interact with input method (keeps keyboard stable)
+        popupWindow.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
+
+        // **Measure the popup view to get its dimensions**
+        popupView.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val popupWidth = popupView.measuredWidth
+        val popupHeight = popupView.measuredHeight
+
+        // **Get screen dimensions**
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+
+        // **Adjust position based on screen location**
+        var adjustedX = x
+        var adjustedY = y
+
+        // Shift left if in right half of screen
+        if (x > screenWidth / 2) {
+            adjustedX = x - popupWidth
+        }
+
+        // Shift up if in bottom half of screen
+        if (y > screenHeight / 2) {
+            adjustedY = y - popupHeight
+        }
+
+        // **Optional: Add padding/margin**
+        val margin = (8 * resources.displayMetrics.density).toInt()
+
+        // Ensure popup stays within screen bounds
+        adjustedX = adjustedX.coerceIn(margin, screenWidth - popupWidth - margin)
+        adjustedY = adjustedY.coerceIn(margin, screenHeight - popupHeight - margin)
 
         // Set up menu item click handlers
         popupView.findViewById<View>(R.id.menu_reply).setOnClickListener {
@@ -651,7 +687,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         popupWindow.isFocusable = true
 
         // Show popup at touch location
-        popupWindow.showAtLocation(recyclerView, Gravity.NO_GRAVITY, x, y)
+        popupWindow.showAtLocation(recyclerView, Gravity.NO_GRAVITY, adjustedX, adjustedY)
     }
 
     private fun handleCopy(view: View): Boolean {
