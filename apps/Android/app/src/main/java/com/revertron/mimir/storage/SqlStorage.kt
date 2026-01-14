@@ -62,7 +62,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         const val CHAT_TYPE_GROUP = 1
 
         // Special contact ID for saved messages
-        const val SAVED_MESSAGES_CONTACT_ID = -1L
+        const val SAVED_MESSAGES_CONTACT_ID = -100L
     }
 
     data class Message(
@@ -245,6 +245,41 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     @SuppressLint("HardwareIds")
     private val androidId: Int = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.hashCode() ?: 0
     private var myPublicKey: ByteArray? = null
+
+    init {
+        // One-time migration: Update saved messages contact ID from -1 to -100
+        migrateSavedMessagesContactId()
+    }
+
+    private fun migrateSavedMessagesContactId() {
+        try {
+            val db = writableDatabase
+
+            // Migrate messages table
+            val messagesCursor = db.rawQuery("SELECT COUNT(*) FROM messages WHERE contact = -1", null)
+            if (messagesCursor.moveToFirst()) {
+                val count = messagesCursor.getInt(0)
+                if (count > 0) {
+                    db.execSQL("UPDATE messages SET contact = -100 WHERE contact = -1")
+                    Log.i(TAG, "Migrated $count saved messages from contact ID -1 to -100")
+                }
+            }
+            messagesCursor.close()
+
+            // Migrate drafts table
+            val draftsCursor = db.rawQuery("SELECT COUNT(*) FROM drafts WHERE chat_type = 0 AND chat_id = -1", null)
+            if (draftsCursor.moveToFirst()) {
+                val count = draftsCursor.getInt(0)
+                if (count > 0) {
+                    db.execSQL("UPDATE drafts SET chat_id = -100 WHERE chat_type = 0 AND chat_id = -1")
+                    Log.i(TAG, "Migrated $count saved messages drafts from chat ID -1 to -100")
+                }
+            }
+            draftsCursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error migrating saved messages contact ID", e)
+        }
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(CREATE_ACCOUNTS)
@@ -3144,6 +3179,186 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             return false
         } finally {
             db.endTransaction()
+        }
+    }
+
+    /**
+     * Fixes corrupted group chat messages by processing unprocessed wire format data.
+     * This scans messages of type 1 (images) and type 3 (files) and processes any that
+     * still contain the raw wire format [jsonSize(4 bytes)][JSON][fileBytes] instead of
+     * just the JSON metadata.
+     *
+     * @return Pair of (fixed count, total scanned count)
+     */
+    fun fixCorruptedGroupMessages(): Pair<Int, Int> {
+        var fixedCount = 0
+        var totalScanned = 0
+        val db = writableDatabase
+
+        try {
+            // Get all group chats
+            val chatListCursor = db.rawQuery("SELECT chat_id FROM group_chats", null)
+            val chatIds = mutableListOf<Long>()
+
+            while (chatListCursor.moveToNext()) {
+                chatIds.add(chatListCursor.getLong(0))
+            }
+            chatListCursor.close()
+
+            Log.i(TAG, "Scanning ${chatIds.size} group chats for corrupted messages")
+
+            // Process each group chat's messages table
+            for (chatId in chatIds) {
+                val messagesTable = "messages_$chatId"
+
+                // Check if table exists
+                val tableExistsCursor = db.rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    arrayOf(messagesTable)
+                )
+                val tableExists = tableExistsCursor.count > 0
+                tableExistsCursor.close()
+
+                if (!tableExists) {
+                    continue
+                }
+
+                // Scan messages of type 1 (images) and type 3 (files) - these should have JSON data
+                val groupMessagesCursor = db.rawQuery(
+                    "SELECT id, guid, type, data FROM $messagesTable WHERE (type = 1 OR type = 3) AND data IS NOT NULL",
+                    null
+                )
+
+                while (groupMessagesCursor.moveToNext()) {
+                    totalScanned++
+                    val id = groupMessagesCursor.getLong(0)
+                    val guid = groupMessagesCursor.getLong(1)
+                    val type = groupMessagesCursor.getInt(2)
+                    val messageData = groupMessagesCursor.getBlob(3)
+
+                    if (messageData == null || messageData.size < 5) {
+                        continue
+                    }
+
+                    // Check if data is valid JSON already
+                    var needsFix = false
+                    try {
+                        val dataStr = String(messageData, Charsets.UTF_8)
+                        if (dataStr.isEmpty() || dataStr[0] != '{') {
+                            needsFix = true
+                        } else {
+                            JSONObject(dataStr)
+                            // Valid JSON, no fix needed
+                        }
+                    } catch (e: JSONException) {
+                        needsFix = true
+                    }
+
+                    if (needsFix) {
+                        // Try to process as wire format: [jsonSize(4 bytes)][JSON][fileBytes]
+                        try {
+                            var offset = 0
+
+                            // Read JSON length (first 4 bytes, big-endian)
+                            val jsonSize = ((messageData[offset].toInt() and 0xFF) shl 24) or
+                                    ((messageData[offset + 1].toInt() and 0xFF) shl 16) or
+                                    ((messageData[offset + 2].toInt() and 0xFF) shl 8) or
+                                    (messageData[offset + 3].toInt() and 0xFF)
+                            offset += 4
+
+                            // Sanity check: JSON size should be reasonable
+                            if (jsonSize <= 0 || jsonSize > messageData.size - 4) {
+                                Log.w(TAG, "Invalid JSON size $jsonSize for message $id in chat $chatId, wrapping as text")
+                                // Wrap as plain text
+                                val jsonData = JSONObject()
+                                jsonData.put("text", String(messageData, Charsets.UTF_8))
+                                jsonData.put("name", "")
+                                val newData = jsonData.toString().toByteArray()
+
+                                val values = ContentValues().apply {
+                                    put("data", newData)
+                                }
+                                db.update(messagesTable, values, "id = ?", arrayOf(id.toString()))
+                                fixedCount++
+                                continue
+                            }
+
+                            // Extract JSON metadata
+                            val originalJson = JSONObject(String(messageData, offset, jsonSize, Charsets.UTF_8))
+                            offset += jsonSize
+
+                            // Extract file bytes (if any)
+                            val fileBytes = if (offset < messageData.size) {
+                                messageData.copyOfRange(offset, messageData.size)
+                            } else {
+                                ByteArray(0)
+                            }
+
+                            // Generate new filename and save file if we have file data
+                            if (fileBytes.isNotEmpty()) {
+                                val fileName = com.revertron.mimir.randomString(16)
+                                val ext = if (type == 1) {
+                                    com.revertron.mimir.getImageExtensionOrNull(fileBytes)
+                                } else {
+                                    originalJson.optString("originalName", "file").substringAfterLast('.', "bin")
+                                }
+                                val fullName = "$fileName.$ext"
+
+                                com.revertron.mimir.saveFileForMessage(context, fullName, fileBytes)
+                                Log.i(TAG, "Saved file for message $id: $fullName (${fileBytes.size} bytes)")
+
+                                // Update JSON with new filename
+                                originalJson.put("name", fullName)
+                            } else {
+                                // No file bytes, just ensure name field exists
+                                if (!originalJson.has("name")) {
+                                    originalJson.put("name", "")
+                                }
+                            }
+
+                            // Save the processed JSON to database
+                            val newData = originalJson.toString().toByteArray()
+                            val values = ContentValues().apply {
+                                put("data", newData)
+                            }
+
+                            val updated = db.update(
+                                messagesTable,
+                                values,
+                                "id = ?",
+                                arrayOf(id.toString())
+                            )
+
+                            if (updated > 0) {
+                                fixedCount++
+                                Log.i(TAG, "Fixed message id=$id guid=$guid in chat $chatId")
+                            }
+
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing message $id in chat $chatId: ${e.message}", e)
+                            // Wrap as error text
+                            val jsonData = JSONObject()
+                            jsonData.put("text", "<Message data corrupted>")
+                            jsonData.put("name", "")
+                            val newData = jsonData.toString().toByteArray()
+
+                            val values = ContentValues().apply {
+                                put("data", newData)
+                            }
+                            db.update(messagesTable, values, "id = ?", arrayOf(id.toString()))
+                            fixedCount++
+                        }
+                    }
+                }
+                groupMessagesCursor.close()
+            }
+
+            Log.i(TAG, "Message fix complete: Fixed $fixedCount out of $totalScanned scanned")
+            return Pair(fixedCount, totalScanned)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fixing corrupted group messages", e)
+            return Pair(fixedCount, totalScanned)
         }
     }
 }

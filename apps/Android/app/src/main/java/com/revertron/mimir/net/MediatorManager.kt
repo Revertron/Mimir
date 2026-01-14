@@ -6,16 +6,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.revertron.mimir.App
 import com.revertron.mimir.sec.GroupChatCrypto
-import com.revertron.mimir.sec.Sign
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.yggmobile.Messenger
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
-import org.json.JSONArray
-import java.io.File
 import java.lang.Thread.sleep
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -202,7 +198,7 @@ class MediatorManager(
 
         try {
             val connection = messenger.connect(mediatorPubkey)
-            val client = MediatorClient(connection, keyPair, createGlobalListener(pubkeyHex), storage)
+            val client = MediatorClient(context, connection, keyPair, createGlobalListener(pubkeyHex), storage)
 
             // Set PeerManager reference if available
             peerManager?.let { client.setPeerManager(it) }
@@ -483,6 +479,61 @@ class MediatorManager(
     }
 
     /**
+     * Refreshes the complete member list from the mediator to ensure local consistency.
+     * Called after membership changes (user left, banned, etc.) to verify the complete member list.
+     *
+     * @param chatId The chat ID to refresh members for
+     * @param mediatorAddress The mediator address (hex string)
+     */
+    private fun refreshMemberListFromMediator(chatId: Long, mediatorAddress: String) {
+        thread(name = "RefreshMembers-$chatId") {
+            try {
+                // Get the client for this mediator
+                val client = clients[mediatorAddress]
+                if (client == null || !client.isRunning()) {
+                    Log.w(TAG, "Cannot refresh member list for chat $chatId: mediator not connected")
+                    return@thread
+                }
+
+                Log.i(TAG, "Refreshing member list from mediator for chat $chatId")
+
+                // Fetch complete member list from mediator
+                val members = client.getMembers(chatId)
+                Log.i(TAG, "Fetched ${members.size} member(s) from mediator for chat $chatId")
+
+                // Update database with fresh member list
+                for (member in members) {
+                    try {
+                        storage.updateGroupMemberStatus(
+                            chatId = chatId,
+                            pubkey = member.pubkey,
+                            permissions = member.permissions,
+                            online = member.online
+                        )
+
+                        // Update last seen if available
+                        if (member.lastSeen > 0) {
+                            storage.updateGroupMemberOnlineStatus(
+                                chatId = chatId,
+                                pubkey = member.pubkey,
+                                online = member.online,
+                                lastSeen = member.lastSeen
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating member status for chat $chatId", e)
+                    }
+                }
+
+                Log.i(TAG, "Successfully refreshed member list for chat $chatId")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error refreshing member list for chat $chatId", e)
+            }
+        }
+    }
+
+    /**
      * Resubscribes to all chats on a specific mediator after reconnection.
      * This ensures we continue receiving messages after a disconnection.
      * Also triggers retry of undelivered messages after successful resubscription.
@@ -611,10 +662,18 @@ class MediatorManager(
                         // User left - delete from members table
                         storage.deleteGroupMember(chatId, sysMsg.user)
                         Log.i(TAG, "Removed member from chat $chatId due to UserLeft system message")
+
+                        // Refresh member list from mediator to ensure consistency
+                        refreshMemberListFromMediator(chatId, address)
+                    }
+                    is SystemMessage.UserBanned -> {
+                        // User banned - refresh member list to get updated permissions/status
+                        Log.i(TAG, "User banned in chat $chatId, refreshing member list")
+                        refreshMemberListFromMediator(chatId, address)
                     }
                     else -> {
                         // Other system messages don't require immediate action here
-                        // (UserAdded/UserBanned are handled via member info sync)
+                        // (UserAdded is handled via member info sync)
                     }
                 }
             } else {

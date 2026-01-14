@@ -294,4 +294,13 @@
     <string name="action_exit">Закрыть Мимир</string>
     <string name="no_app_found_to_open">Нечем открыть %1$s, скопировано в буфер.</string>
     <string name="empty_chat">[ пустой чат ]</string>
+    <string name="advanced">Расширенные настройки</string>
+    <string name="advanced_desc">Расширенные настройки и инструменты.</string>
+    <string name="advanced_settings">Расширенные настройки</string>
+    <string name="fix_corrupted_messages">Исправить поломанные сообщения</string>
+    <string name="fix_corrupted_messages_desc">Просканировать и исправить сообщения в группах в неверном формате.</string>
+    <string name="fixing_messages">Исправление сообщений…</string>
+    <string name="messages_fixed">Исправлено %1$d сообщений из %2$d просканированных</string>
+    <string name="no_messages_to_fix">Не найдено поломанных сообщений</string>
+    <string name="error_fixing_messages">Ошибка исправления сообщений: %s</string>
 </resources>

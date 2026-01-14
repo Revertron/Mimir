@@ -31,6 +31,7 @@ import com.revertron.mimir.net.Message
 import com.revertron.mimir.net.MimirServer
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.net.SystemMessage
+import com.revertron.mimir.net.parseAndSaveGroupMessage
 import com.revertron.mimir.net.parseSystemMessage
 import com.revertron.mimir.net.readHeader
 import com.revertron.mimir.net.readMessage
@@ -148,6 +149,11 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         mediatorManager = MediatorManager(messenger, storage, accountInfo.keyPair, this, reconnectionCallback, this)
                         App.app.mediatorManager = mediatorManager
 
+                        // Register global listeners immediately after mediatorManager creation
+                        // This ensures listeners are always available when mediatorManager exists
+                        registerInvitesListener(storage)
+                        startGlobalChatListener(storage)
+
                         // Set PeerManager reference in MediatorManager after it's initialized
                         // This will be done asynchronously since MimirServer initializes PeerManager in its run() method
                         Thread {
@@ -165,10 +171,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                             }
                             Log.w(TAG, "Timeout waiting for PeerManager initialization")
                         }.start()
-
-                        // Register global invite listener
-                        registerInvitesListener(storage)
-                        startGlobalChatListener(storage)
 
                         // Connect to all known mediators and subscribe to saved chats
                         if (haveNetwork(this)) {
@@ -521,7 +523,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun sendGroupChatMessage(chatId: Long, storage: SqlStorage, guid: Long, replyTo: Long, sendTime: Long, type: Int, messageData: String) {
         try {
-            // Get chat info for encryption
+            // Get chat info for encryption and mediator lookup
             val chatInfo = storage.getGroupChat(chatId)
             if (chatInfo == null) {
                 Log.e(TAG, "Chat $chatId not found")
@@ -542,8 +544,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             // Encrypt the serialized message
             val encryptedData = GroupChatCrypto.encryptMessage(baos.toByteArray(), chatInfo.sharedKey)
 
-            // Send to mediator
-            val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
+            // Send to the chat's mediator, not the default one
+            val client = mediatorManager!!.getOrCreateClient(chatInfo.mediatorPubkey)
             val (messageId, newGuid) = client.sendMessage(chatId, guid, sendTime, encryptedData)
             Log.i(TAG, "Message sent with ID: $messageId, guid = $guid ($newGuid), replyTo = $replyTo")
 
@@ -575,7 +577,16 @@ class ConnectionService : Service(), EventListener, InfoProvider {
 
     private fun subscribeToChat(chatId: Long, storage: SqlStorage) {
         try {
-            val client = mediatorManager!!.getOrCreateClient(MediatorManager.getDefaultMediatorPubkey())
+            // Get chat info to find the correct mediator
+            val chatInfo = storage.getGroupChat(chatId)
+            if (chatInfo == null) {
+                Log.e(TAG, "Chat $chatId not found in storage")
+                broadcastMediatorError("subscribe", "Chat not found")
+                return
+            }
+
+            // Use the chat's mediator, not the default one
+            val client = mediatorManager!!.getOrCreateClient(chatInfo.mediatorPubkey)
             val serverLastId = client.subscribe(chatId)
             Log.i(TAG, "Subscribed to chat $chatId (server last message ID: $serverLastId)")
 
@@ -612,238 +623,6 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     /**
-     * Validates message data before saving to database.
-     * For attachment messages (type 1 and 3), verifies the data is valid JSON.
-     * Corrupted data is replaced with an error placeholder.
-     *
-     * @param data The message data to validate
-     * @param type The message type (1=image, 3=file, 0=text, etc.)
-     * @param guid The message GUID (for logging)
-     * @return Validated data, or error placeholder if validation fails
-     */
-    private fun validateMessageData(data: ByteArray, type: Int, guid: Long): ByteArray {
-        // Only validate JSON for attachment types
-        if (type != 1 && type != 3) {
-            return data
-        }
-
-        if (data.isEmpty()) {
-            Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - data is empty")
-            return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
-        }
-
-        try {
-            val dataStr = String(data, Charsets.UTF_8)
-
-            // Check if it starts with valid JSON
-            if (dataStr.isEmpty() || dataStr[0] != '{') {
-                Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - data doesn't start with '{'. First 4 bytes: ${data.take(4).joinToString(" ") { "0x%02x".format(it) }}")
-                return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
-            }
-
-            // Verify it's parseable JSON
-            JSONObject(dataStr)
-            return data // Valid
-
-        } catch (e: JSONException) {
-            Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - JSON parsing failed: ${e.message}. Data length: ${data.size}")
-            return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
-        } catch (e: Exception) {
-            Log.e(TAG, "CORRUPTED MESSAGE: guid=$guid type=$type - validation error: ${e.message}")
-            return """{"text":"<Message data corrupted>","name":""}""".toByteArray()
-        }
-    }
-
-    /**
-     * Parses and saves a group chat message.
-     * Handles decryption, deserialization, media attachments, deduplication, and database storage.
-     *
-     * @param chatId The group chat ID
-     * @param messageId The server message ID
-     * @param guid The message GUID (for deduplication)
-     * @param author The message author's public key
-     * @param encryptedData The encrypted message data
-     * @param storage The storage instance
-     * @param broadcast Whether to broadcast the message to activities (true for real-time, false for sync)
-     * @param fromSync Whether this message is being synced from server (true) or received real-time (false)
-     * @return Local message ID if successful, 0 if skipped/failed
-     */
-    private fun parseAndSaveGroupMessage(
-        chatId: Long,
-        messageId: Long,
-        guid: Long,
-        timestamp: Long,
-        author: ByteArray,
-        encryptedData: ByteArray,
-        storage: SqlStorage,
-        broadcast: Boolean = true,
-        fromSync: Boolean = false
-    ): Long {
-        try {
-            // Check if this is a system message from the mediator (not encrypted)
-            val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
-            if (author.contentEquals(mediatorPubkey)) {
-                Log.d(TAG, "Processing system message $messageId for chat $chatId (not encrypted)")
-
-                // Parse system message to handle member management
-                val sysMsg = parseSystemMessage(encryptedData)
-                // Handle message deletion - this is an invisible system message
-                if (sysMsg is SystemMessage.MessageDeleted) {
-                    Log.i(TAG, "Deleting message with guid ${sysMsg.deletedGuid} from chat $chatId")
-                    storage.deleteGroupMessageByGuid(chatId, sysMsg.deletedGuid)
-                    // Don't save this system message to DB - it's invisible
-                    return 0
-                }
-
-                // System messages are not encrypted, save directly to database
-                // Format: [event_code(1)][...event-specific data...]
-                val localId = storage.addGroupMessage(
-                    chatId,
-                    messageId,
-                    guid,
-                    author,
-                    timestamp, // Use current time for system messages
-                    1000, // System messages are type 1000
-                    true, // Mark as system message
-                    encryptedData, // This is actually unencrypted system message data
-                    fromSync = fromSync
-                )
-
-                Log.i(TAG, "System message saved with local ID: $localId")
-                return localId
-            }
-
-            // Get chat info to retrieve shared key
-            val chatInfo = storage.getGroupChat(chatId)
-            if (chatInfo == null) {
-                Log.e(TAG, "Chat $chatId not found in database")
-                return 0
-            }
-
-            // Decrypt message using shared key
-            val decryptedData = try {
-                GroupChatCrypto.decryptMessage(encryptedData, chatInfo.sharedKey)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to decrypt message $messageId (${encryptedData.size} bytes)", e)
-
-                // Save failed message to DB with error text
-                val errorMessage = "<Can't decrypt the message>".toByteArray()
-                val localId = storage.addGroupMessage(
-                    chatId,
-                    messageId,
-                    guid,
-                    author,
-                    System.currentTimeMillis(), // Use current time since we can't decrypt the real timestamp
-                    0, // Text message type
-                    false, // Not a system message
-                    errorMessage,
-                    fromSync = fromSync
-                )
-
-                return localId
-            }
-
-            // Deserialize message using the standard readMessage function
-            val bais = ByteArrayInputStream(decryptedData)
-            val dis = DataInputStream(bais)
-
-            // Read header and message
-            val header = readHeader(dis)
-            val message = readMessage(dis)
-
-            if (message == null) {
-                Log.e(TAG, "Failed to deserialize message for chat $chatId")
-                return 0
-            }
-
-            Log.d(TAG, "Got message for chat $chatId: guid = ${message.guid}, replyTo = ${message.replyTo}")
-
-            var m = ByteArray(0)
-            // Handle different message types
-            if (message.type == 1 || message.type == 3) {
-                // Media attachment: extract file and get text from JSON
-                // Type 1 = image, Type 2 = general file
-                val typeLabel = if (message.type == 1) "image" else "file"
-                Log.i(TAG, "Processing $typeLabel attachment for chat $chatId")
-
-                try {
-                    // Parse wire format: [jsonSize(u32)][JSON][fileBytes]
-                    var offset = 0
-
-                    // Read JSON length (first 4 bytes, big-endian)
-                    val jsonSize = ((message.data[offset].toInt() and 0xFF) shl 24) or
-                            ((message.data[offset + 1].toInt() and 0xFF) shl 16) or
-                            ((message.data[offset + 2].toInt() and 0xFF) shl 8) or
-                            (message.data[offset + 3].toInt() and 0xFF)
-                    offset += 4
-
-                    // Extract original JSON metadata
-                    val originalJson = JSONObject(String(message.data, offset, jsonSize, Charsets.UTF_8))
-                    offset += jsonSize
-
-                    // Extract file bytes
-                    val fileBytes = message.data.copyOfRange(offset, message.data.size)
-
-                    // Generate new filename and save file bytes
-                    val fileName = randomString(16)
-                    val ext = if (message.type == 1) {
-                        // For images, detect extension from image bytes
-                        getImageExtensionOrNull(fileBytes)
-                    } else {
-                        // For files, use original extension from metadata
-                        originalJson.optString("originalName", "file").substringAfterLast('.', "bin")
-                    }
-                    val fullName = "$fileName.$ext"
-
-                    saveFileForMessage(this@ConnectionService, fullName, fileBytes)
-                    Log.i(TAG, "Saved $typeLabel attachment: $fullName (${fileBytes.size} bytes)")
-
-                    // Update JSON with new filename, keep all other fields (text, size, hash, originalName, mimeType)
-                    originalJson.put("name", fullName)
-                    m = originalJson.toString().toByteArray()
-
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing attachment: ${e.message}", e)
-                }
-            } else {
-                // Plain text message
-                m = message.data
-            }
-
-            //Log.i(TAG, "Decrypted message from ${author.take(8)}: $message")
-
-            // Check if message already exists (dedup by GUID)
-            if (storage.checkGroupMessageExists(chatId, message.guid)) {
-                Log.i(TAG, "Message with guid=${message.guid} already exists, doing nothing")
-                return 0
-            }
-
-            // Validate message data before saving to prevent database corruption
-            val validatedData = validateMessageData(m, message.type, message.guid)
-
-            // Save to database
-            val localId = storage.addGroupMessage(
-                chatId,
-                messageId,
-                message.guid,
-                author,
-                message.sendTime,
-                message.type,
-                false, // not a system message
-                validatedData,
-                message.replyTo,
-                fromSync = fromSync
-            )
-
-            Log.i(TAG, "Message saved with local ID: $localId")
-            return localId
-        } catch (e: Exception) {
-            Log.e(TAG, "Error processing message for chat $chatId", e)
-            return 0
-        }
-    }
-
-    /**
      * Syncs missed messages from mediator for a group chat.
      * Fetches all messages since the last confirmed server message ID.
      * Uses batch API for efficiency (up to 100 messages per request).
@@ -866,16 +645,20 @@ class ConnectionService : Service(), EventListener, InfoProvider {
     }
 
     private fun createChat(name: String, description: String, avatar: ByteArray?) {
+        val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
         mediatorManager?.createChat(
             name,
             description,
             avatar,
-            MediatorManager.getDefaultMediatorPubkey(),
+            mediatorPubkey,
             globalMessageListener!!,
             successBroadcaster = { chatId ->
-                // Broadcast success
+                // Broadcast success with all necessary data for opening the chat
                 val broadcastIntent = Intent("ACTION_MEDIATOR_CHAT_CREATED").apply {
                     putExtra("chat_id", chatId)
+                    putExtra("name", name)
+                    putExtra("description", description)
+                    putExtra("mediator_address", mediatorPubkey)
                 }
                 LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
             },
@@ -953,6 +736,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 Thread {
                     // Use shared parsing logic with broadcast enabled (real-time messages)
                     parseAndSaveGroupMessage(
+                        this@ConnectionService,
                         chatId,
                         messageId,
                         guid,

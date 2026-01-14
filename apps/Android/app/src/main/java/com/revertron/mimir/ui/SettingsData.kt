@@ -64,9 +64,9 @@ object SettingsData {
             ),
 
             SettingsAdapter.Item(
-                id = R.string.collect_logs,
-                titleRes = R.string.collect_logs,
-                descriptionRes = R.string.collect_logs_desc,
+                id = R.string.advanced,
+                titleRes = R.string.advanced,
+                descriptionRes = R.string.advanced_desc,
                 isSwitch = false,
                 checked = false
             ),
@@ -75,14 +75,6 @@ object SettingsData {
                 id = R.string.action_about,
                 titleRes = R.string.action_about,
                 descriptionRes = R.string.action_about_desc,
-                isSwitch = false,
-                checked = false
-            ),
-
-            SettingsAdapter.Item(
-                id = R.string.action_exit,
-                titleRes = R.string.action_exit,
-                descriptionRes = R.string.action_exit_desc,
                 isSwitch = false,
                 checked = false
             )

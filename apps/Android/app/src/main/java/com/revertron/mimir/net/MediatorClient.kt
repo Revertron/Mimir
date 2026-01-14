@@ -4,7 +4,6 @@ import android.util.Log
 import android.content.Context
 import android.content.Intent
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.revertron.mimir.App
 import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.sec.Sign
 import com.revertron.mimir.storage.SqlStorage
@@ -12,7 +11,6 @@ import com.revertron.mimir.yggmobile.Connection
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.IOException
@@ -34,6 +32,7 @@ import kotlin.concurrent.thread
  *   (No chatId present in push; if subscribed to several chats, the server protocol does not disambiguate.)
  */
 class MediatorClient(
+    private val context: Context,
     private val connection: Connection,
     private val keyPair: AsymmetricCipherKeyPair,
     private val listener: MediatorListener,
@@ -1703,59 +1702,24 @@ class MediatorClient(
 
                     Log.d(TAG, "Fetched ${messages.size} message(s) for chat $chatId")
 
-                    // Process each message
+                    // Process each message using shared parsing logic from ConnectionService
                     for (msgPayload in messages) {
                         try {
-                            // Decrypt message using shared key
-                            val decryptedData = try {
-                                GroupChatCrypto.decryptMessage(msgPayload.data, chatInfo.sharedKey)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed to decrypt synced message ${msgPayload.messageId}", e)
-                                // Save error message and continue
-                                storage.addGroupMessage(
-                                    chatId,
-                                    msgPayload.messageId,
-                                    msgPayload.guid,
-                                    msgPayload.author,
-                                    msgPayload.timestamp,
-                                    0,
-                                    false,
-                                    "<Can't decrypt the message>".toByteArray(),
-                                    fromSync = true
-                                )
-                                currentId = msgPayload.messageId
-                                continue
-                            }
-
-                            // Deserialize message structure
-                            val bais = ByteArrayInputStream(decryptedData)
-                            val dis = DataInputStream(bais)
-
-                            // Read header and message
-                            val header = readHeader(dis)
-                            val message = readMessage(dis)
-
-                            if (message == null) {
-                                Log.e(TAG, "Failed to deserialize synced message ${msgPayload.messageId}")
-                                currentId = msgPayload.messageId
-                                continue
-                            }
-
-                            // Save message.data to storage (the actual message content)
-                            val localId = storage.addGroupMessage(
+                            val localId = parseAndSaveGroupMessage(
+                                context,
                                 chatId,
                                 msgPayload.messageId,
                                 msgPayload.guid,
-                                msgPayload.author,
                                 msgPayload.timestamp,
-                                message.type,
-                                false, // Not a system message
-                                message.data, // The actual message data
-                                fromSync = true
+                                msgPayload.author, // This is encrypted data from mediator
+                                msgPayload.data,
+                                storage, // Don't broadcast during sync
+                                broadcast = false,
+                                fromSync = true    // Mark as synced message
                             )
 
                             if (localId > 0) {
-                                Log.d(TAG, "Synced message ${msgPayload.messageId} (guid=${msgPayload.guid}, type=${message.type}) to local ID $localId")
+                                Log.d(TAG, "Synced message ${msgPayload.messageId} (guid=${msgPayload.guid}) to local ID $localId")
                             } else {
                                 Log.d(TAG, "Skipped message ${msgPayload.messageId} (may already exist or failed)")
                             }

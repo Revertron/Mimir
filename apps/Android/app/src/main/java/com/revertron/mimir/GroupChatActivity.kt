@@ -76,6 +76,15 @@ class GroupChatActivity : BaseChatActivity() {
                         }
                     }
                 }
+                "ACTION_MEDIATOR_CHAT_DELETED" -> {
+                    val chatId = intent.getLongExtra("chat_id", 0)
+                    if (chatId == groupChat.chatId) {
+                        Log.i(TAG, "Chat $chatId deleted successfully, closing activity")
+                        mainHandler.post {
+                            finish()
+                        }
+                    }
+                }
                 "ACTION_MEDIATOR_LEFT_CHAT" -> {
                     val chatId = intent.getLongExtra("chat_id", 0)
                     if (chatId == groupChat.chatId) {
@@ -332,6 +341,7 @@ class GroupChatActivity : BaseChatActivity() {
     override fun setupBroadcastReceivers() {
         val filter = IntentFilter().apply {
             addAction("ACTION_MEDIATOR_MESSAGE_SENT")
+            addAction("ACTION_MEDIATOR_CHAT_DELETED")
             addAction("ACTION_MEDIATOR_LEFT_CHAT")
             addAction("ACTION_MEDIATOR_ERROR")
         }

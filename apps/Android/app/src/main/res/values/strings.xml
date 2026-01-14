@@ -303,5 +303,14 @@
     <string name="error_loading_file">Error loading the file!</string>
     <string name="no_app_found_to_open">No app found to open: %1$s, copied to clipboard.</string>
     <string name="empty_chat">[ empty chat ]</string>
+    <string name="advanced">Advanced</string>
+    <string name="advanced_desc">Advanced settings and maintenance tools.</string>
+    <string name="advanced_settings">Advanced Settings</string>
+    <string name="fix_corrupted_messages">Fix corrupted messages</string>
+    <string name="fix_corrupted_messages_desc">Scan and repair group chat messages with invalid data format.</string>
+    <string name="fixing_messages">Fixing messages…</string>
+    <string name="messages_fixed">Fixed %1$d messages out of %2$d scanned</string>
+    <string name="no_messages_to_fix">No corrupted messages found</string>
+    <string name="error_fixing_messages">Error fixing messages: %s</string>
 
 </resources>

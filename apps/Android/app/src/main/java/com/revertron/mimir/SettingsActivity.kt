@@ -1,11 +1,8 @@
 package com.revertron.mimir
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.os.Process
-import android.view.ContextThemeWrapper
 import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.widget.Toolbar
@@ -79,46 +76,20 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 val intent = Intent(this, BackupActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
+            R.string.advanced -> {
+                val intent = Intent(this, AdvancedSettingsActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+            }
             R.string.check_for_updates -> {
                 val intent = Intent(this@SettingsActivity, ConnectionService::class.java).apply {
                     putExtra("command", "check_updates")
                 }
                 startService(intent)
             }
-            R.string.collect_logs -> {
-                val intent = Intent(this, LogActivity::class.java)
-                startActivity(intent, animFromRight.toBundle())
-            }
             R.string.action_about -> {
                 val intent = Intent(this, AboutActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
-            R.string.action_exit -> {
-                showExitConfirmation()
-            }
         }
-    }
-
-    private fun showExitConfirmation() {
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        AlertDialog.Builder(wrapper)
-            .setTitle(R.string.exit_confirmation_title)
-            .setMessage(R.string.exit_confirmation_message)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                exitApplication()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun exitApplication() {
-        // Stop the ConnectionService (triggers onDestroy cleanup)
-        stopService(Intent(this, ConnectionService::class.java))
-
-        // Close all activities in the task
-        finishAffinity()
-
-        // Force process termination to ensure complete exit
-        Process.killProcess(Process.myPid())
     }
 }
