@@ -16,14 +16,6 @@ object SettingsData {
 
         return listOf(
             SettingsAdapter.Item(
-                id = R.string.configure_peers,
-                titleRes = R.string.configure_peers,
-                descriptionRes = R.string.configure_peers_description,
-                isSwitch = false,
-                checked = false
-            ),
-
-            SettingsAdapter.Item(
                 id = R.string.resize_big_pics,
                 titleRes = R.string.resize_big_pics,
                 descriptionRes = R.string.resize_big_pics_desc,

@@ -25,6 +25,13 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
 
         val items = listOf(
             SettingsAdapter.Item(
+                id = R.string.configure_peers,
+                titleRes = R.string.configure_peers,
+                descriptionRes = R.string.configure_peers_description,
+                isSwitch = false,
+                checked = false
+            ),
+            SettingsAdapter.Item(
                 id = R.string.fix_corrupted_messages,
                 titleRes = R.string.fix_corrupted_messages,
                 descriptionRes = R.string.fix_corrupted_messages_desc,
@@ -73,6 +80,10 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
 
     override fun onItemClicked(id: Int) {
         when (id) {
+            R.string.configure_peers -> {
+                val intent = Intent(this, PeersActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+            }
             R.string.fix_corrupted_messages -> {
                 showFixCorruptedMessagesDialog()
             }

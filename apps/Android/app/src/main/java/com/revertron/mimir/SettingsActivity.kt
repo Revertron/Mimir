@@ -60,10 +60,6 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
 
     override fun onItemClicked(id: Int) {
         when (id) {
-            R.string.configure_peers -> {
-                val intent = Intent(this, PeersActivity::class.java)
-                startActivity(intent, animFromRight.toBundle())
-            }
             R.string.resize_big_pics -> {
                 val intent = Intent(this, ImageSettingsActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
