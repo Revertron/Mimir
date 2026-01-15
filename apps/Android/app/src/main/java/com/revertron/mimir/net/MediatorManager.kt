@@ -1066,13 +1066,97 @@ class MediatorManager(
 
     /**
      * Resends messages that failed to deliver for a specific chat.
-     * Note: This is a placeholder - actual resending is handled by ConnectionService
+     * Handles serialization, encryption, and transmission of undelivered messages.
      */
     fun resendUndeliveredMessages(chatId: Long) {
-        // This is called from connectAndSubscribeToAllChats and subscribeToChat
-        // but the actual resending logic remains in ConnectionService for now
-        // due to complexity of message serialization
-        Log.d(TAG, "Resend undelivered messages requested for chat $chatId (handled by ConnectionService)")
+        Thread {
+            try {
+                val undelivered = storage.getUndeliveredGroupMessages(chatId)
+
+                if (undelivered.isEmpty()) {
+                    Log.d(TAG, "No undelivered messages for chat $chatId")
+                    return@Thread
+                }
+
+                Log.i(TAG, "Retrying ${undelivered.size} undelivered message(s) for chat $chatId")
+
+                // Get chat info for encryption and mediator lookup
+                val chatInfo = storage.getGroupChat(chatId)
+                if (chatInfo == null) {
+                    Log.e(TAG, "Chat $chatId not found in storage, cannot resend messages")
+                    return@Thread
+                }
+
+                // Get or create client for this chat's mediator
+                val client = getOrCreateClient(chatInfo.mediatorPubkey)
+
+                // Get files directory for attachment serialization
+                val filesDir = context.filesDir
+                val filePath = java.io.File(filesDir, "files").absolutePath
+
+                for (msg in undelivered) {
+                    try {
+                        // Convert ByteArray data back to String for Message object
+                        val messageData = String(msg.data ?: ByteArray(0))
+
+                        Log.d(TAG, "Retrying message guid=${msg.guid}, type=${msg.type}")
+
+                        // Serialize message for wire transmission
+                        val baos = java.io.ByteArrayOutputStream()
+                        val dos = java.io.DataOutputStream(baos)
+
+                        val message = Message(
+                            guid = msg.guid,
+                            replyTo = msg.replyTo,
+                            sendTime = msg.timestamp,
+                            editTime = 0,
+                            type = msg.type,
+                            data = messageData.toByteArray()
+                        )
+
+                        // Serialize - for attachments, writeMessage needs file path to read file
+                        val messageFilePath = if (msg.type == 1 || msg.type == 3) filePath else ""
+                        com.revertron.mimir.net.writeMessage(dos, message, messageFilePath)
+
+                        // Encrypt the serialized message with chat's shared key
+                        val encryptedData = GroupChatCrypto.encryptMessage(baos.toByteArray(), chatInfo.sharedKey)
+
+                        // Send to mediator
+                        val (messageId, newGuid) = client.sendMessage(chatId, msg.guid, msg.timestamp, encryptedData)
+                        Log.i(TAG, "Retried message sent with ID: $messageId, guid = ${msg.guid} ($newGuid)")
+
+                        // Update server message ID for later sync
+                        storage.updateGroupMessageServerId(chatId, msg.guid, messageId)
+
+                        // Update GUID if server changed it
+                        if (newGuid != 0L && newGuid != msg.guid) {
+                            storage.changeGroupMessageGuid(chatId, msg.guid, newGuid)
+                        }
+
+                        // Mark message as delivered after successful send
+                        storage.setGroupMessageDelivered(chatId, msg.guid, true)
+
+                        // Broadcast success for UI update
+                        val broadcastIntent = Intent("ACTION_MEDIATOR_MESSAGE_SENT").apply {
+                            putExtra("chat_id", chatId)
+                            putExtra("message_id", messageId)
+                            putExtra("guid", msg.guid)
+                        }
+                        LocalBroadcastManager.getInstance(context).sendBroadcast(broadcastIntent)
+
+                        // Small delay between retries to avoid overwhelming the mediator
+                        sleep(100)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to retry message guid=${msg.guid}: ${e.message}", e)
+                        // Continue with next message even if this one fails
+                    }
+                }
+
+                Log.i(TAG, "Completed retrying undelivered messages for chat $chatId")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in resendUndeliveredMessages for chat $chatId", e)
+            }
+        }.start()
     }
 
     /**
