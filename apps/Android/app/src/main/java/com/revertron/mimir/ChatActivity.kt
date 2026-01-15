@@ -174,7 +174,7 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
-    override fun getMessageForForwarding(messageId: Long): SqlStorage.Message? {
+    override fun getMessageFromStorage(messageId: Long): SqlStorage.Message? {
         return getStorage().getMessage(messageId, byGuid = false)
     }
 

@@ -88,6 +88,7 @@
     <string name="select_contact_to_share">Выберите контакт</string>
     <string name="select_chat_to_forward">Выберите чат для пересылки</string>
     <string name="message_saved_to_saved_messages">Сообщение сохранено в Избранное</string>
+    <string name="file_saved_to_downloads">Файл сохранён в Загрузки/Mimir</string>
     <string name="show">Показать</string>
     <string name="forwarded_message">Переслано сообщение</string>
     <string name="add_custom_peer">Добавить свой узел</string>
@@ -303,4 +304,6 @@
     <string name="messages_fixed">Исправлено %1$d сообщений из %2$d просканированных</string>
     <string name="no_messages_to_fix">Не найдено поломанных сообщений</string>
     <string name="error_fixing_messages">Ошибка исправления сообщений: %s</string>
+    <string name="menu_save">Сохранить</string>
+    <string name="file_not_found_in_storage">Файл не найден в хранилище.</string>
 </resources>

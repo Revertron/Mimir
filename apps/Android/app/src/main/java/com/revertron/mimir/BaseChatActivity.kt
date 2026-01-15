@@ -8,11 +8,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PorterDuff
-import android.graphics.drawable.ColorDrawable
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
@@ -69,6 +71,7 @@ import androidx.core.graphics.drawable.toDrawable
 abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
 
     companion object {
+        const val TAG = "BaseChatActivity"
         const val PICK_IMAGE_REQUEST_CODE = 123
         const val TAKE_PHOTO_REQUEST_CODE = 124
         const val PICK_FILE_REQUEST_CODE = 125
@@ -184,9 +187,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     protected abstract fun getMessageForReply(messageId: Long): Pair<String, String>? // Returns (authorName, messageText)
 
     /**
-     * Gets a message for forwarding purposes.
+     * Gets a  correct message from storage.
      */
-    protected abstract fun getMessageForForwarding(messageId: Long): SqlStorage.Message?
+    protected abstract fun getMessageFromStorage(messageId: Long): SqlStorage.Message?
 
     // Shared UI Setup
 
@@ -661,6 +664,15 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         adjustedX = adjustedX.coerceIn(margin, screenWidth - popupWidth - margin)
         adjustedY = adjustedY.coerceIn(margin, screenHeight - popupHeight - margin)
 
+        // Get message type from tag to determine which menu items to show
+        val tag = anchorView.tag as? MessageTag
+        val messageType = tag?.messageType ?: 0
+
+        // Hide "Save" menu item for messages without file attachments (type != 1 and type != 3)
+        if (messageType != 1 && messageType != 3) {
+            popupView.findViewById<View>(R.id.menu_save).visibility = View.GONE
+        }
+
         // Set up menu item click handlers
         popupView.findViewById<View>(R.id.menu_reply).setOnClickListener {
             handleReply(anchorView)
@@ -679,6 +691,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
         popupView.findViewById<View>(R.id.menu_delete).setOnClickListener {
             handleDelete(anchorView)
+            popupWindow.dismiss()
+        }
+
+        popupView.findViewById<View>(R.id.menu_save).setOnClickListener {
+            handleSave(anchorView)
             popupWindow.dismiss()
         }
 
@@ -718,7 +735,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val messageId = tag.messageId
         val guid = tag.guid
 
-        val message = getMessageForForwarding(messageId)
+        val message = getMessageFromStorage(messageId)
 
         if (message == null) {
             Toast.makeText(this, "Message not found", Toast.LENGTH_SHORT).show()
@@ -747,6 +764,95 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
         startActivityForResult(intent, REQUEST_FORWARD_MESSAGE)
         return true
+    }
+
+    private fun handleSave(view: View): Boolean {
+        // Extract message ID and GUID from tag
+        val tag = view.tag as? MessageTag ?: return false
+        val id = tag.messageId
+
+        val message = getMessageFromStorage(id)
+        if (message == null) {
+            Toast.makeText(this, "Message not found", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        // Only save image (type 1) or file (type 3) attachments
+        if (message.type != 1 && message.type != 3) {
+            Toast.makeText(this, "This message has no file to save", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        if (message.data == null) {
+            Toast.makeText(this, "No file data available", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        try {
+            val json = JSONObject(String(message.data))
+            val fileName = json.getString("name")
+            val originalName = json.optString("originalName", fileName)
+
+            // Get the file from internal storage
+            val filesDir = File(this.filesDir, "files")
+            val sourceFile = File(filesDir, fileName)
+
+            if (!sourceFile.exists()) {
+                Toast.makeText(this, getString(R.string.file_not_found_in_storage), Toast.LENGTH_SHORT).show()
+                return false
+            }
+
+            // Save to Downloads/Mimir folder
+            saveFileToDownloads(sourceFile, originalName)
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving file", e)
+            Toast.makeText(this, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
+            return false
+        }
+    }
+
+    private fun saveFileToDownloads(sourceFile: File, originalName: String) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ (API 29+): Use MediaStore API
+                val values = android.content.ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, originalName)
+                    put(MediaStore.Downloads.MIME_TYPE, getMimeTypeFromFilename(originalName))
+                    put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Mimir")
+                }
+
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri != null) {
+                    contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        sourceFile.inputStream().use { inputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                    Toast.makeText(this, getString(R.string.file_saved_to_downloads), Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Failed to create file in Downloads", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Android 9 and below (API 21-28): Use classic file path
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val mimirDir = File(downloadsDir, "Mimir")
+                if (!mimirDir.exists()) {
+                    mimirDir.mkdirs()
+                }
+
+                val destFile = File(mimirDir, originalName)
+                sourceFile.inputStream().use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Toast.makeText(this, getString(R.string.file_saved_to_downloads), Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving file to Downloads", e)
+            Toast.makeText(this, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun handleDelete(view: View): Boolean {

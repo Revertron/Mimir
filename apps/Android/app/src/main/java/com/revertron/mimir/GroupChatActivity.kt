@@ -270,7 +270,7 @@ class GroupChatActivity : BaseChatActivity() {
         return Pair(authorName, message.getText(this))
     }
 
-    override fun getMessageForForwarding(messageId: Long): com.revertron.mimir.storage.SqlStorage.Message? {
+    override fun getMessageFromStorage(messageId: Long): com.revertron.mimir.storage.SqlStorage.Message? {
         return getStorage().getGroupMessage(groupChat.chatId, messageId, byGuid = false)
     }
 

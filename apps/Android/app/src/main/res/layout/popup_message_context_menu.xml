@@ -103,6 +103,34 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/menu_save"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="@drawable/contact_background"
+            android:clickable="true"
+            android:focusable="true"
+            android:duplicateParentState="false">
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_folder_download_outline"
+                android:tint="?attr/colorOnSurface"
+                android:layout_marginEnd="16dp" />
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/menu_save"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/menu_delete"
             android:layout_width="match_parent"
             android:layout_height="48dp"

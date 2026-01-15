@@ -97,6 +97,7 @@
     <string name="select_contact_to_share">Select contact</string>
     <string name="select_chat_to_forward">Select chat to forward to</string>
     <string name="message_saved_to_saved_messages">Message saved to Saved Messages</string>
+    <string name="file_saved_to_downloads">File saved to Downloads/Mimir</string>
     <string name="show">Show</string>
     <string name="forwarded_message">Forwarded message</string>
     <string name="add_custom_peer">Add custom peer</string>
@@ -312,5 +313,7 @@
     <string name="messages_fixed">Fixed %1$d messages out of %2$d scanned</string>
     <string name="no_messages_to_fix">No corrupted messages found</string>
     <string name="error_fixing_messages">Error fixing messages: %s</string>
+    <string name="menu_save">Save file</string>
+    <string name="file_not_found_in_storage">File not found in storage</string>
 
 </resources>

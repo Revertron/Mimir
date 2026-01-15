@@ -715,6 +715,22 @@ fun getMimeType(context: Context, uri: Uri): String? {
     return extension
 }
 
+fun getMimeTypeFromFilename(filename: String): String {
+    val extension = filename.substringAfterLast('.', "").lowercase()
+    return when (extension) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "pdf" -> "application/pdf"
+        "txt" -> "text/plain"
+        "zip" -> "application/zip"
+        "mp4" -> "video/mp4"
+        "mp3" -> "audio/mpeg"
+        else -> "application/octet-stream"
+    }
+}
+
 fun getImagePreview(context: Context, fileName: String, maxSize: Int, quality: Int): Bitmap? {
     val imagesDir = File(context.filesDir, "files")
     val cacheDir = File(context.cacheDir, "files")

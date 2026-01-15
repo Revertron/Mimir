@@ -533,7 +533,7 @@ class MessageAdapter(
 
         holder.time.text = formatTime(message.time)
         // Store message metadata using MessageTag
-        holder.itemView.findViewById<View>(R.id.message).tag = MessageTag(message.id, message.guid)
+        holder.itemView.findViewById<View>(R.id.message).tag = MessageTag(message.id, message.guid, message.type)
         holder.sent.tag = message.delivered
 
         // Disable click listener for system messages (type 1000)
