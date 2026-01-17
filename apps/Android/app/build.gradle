@@ -11,8 +11,8 @@ android {
         applicationId "com.revertron.mimir"
         minSdk 23
         targetSdk 33
-        versionCode 32
-        versionName "2.0.0b12"
+        versionCode 33
+        versionName "2.0.0b13"
         resourceConfigurations += ['en', 'ru']
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
