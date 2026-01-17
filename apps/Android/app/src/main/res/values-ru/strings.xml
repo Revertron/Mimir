@@ -306,4 +306,8 @@
     <string name="error_fixing_messages">Ошибка исправления сообщений: %s</string>
     <string name="menu_save">Сохранить</string>
     <string name="file_not_found_in_storage">Файл не найден в хранилище.</string>
+    <string name="crash_report_title">Отчёт об ошибке</string>
+    <string name="crash_report_description">Приложение упало.</string>
+    <string name="crash_report_subject">Отчёт об ошибке в Мимире</string>
+    <string name="close">Закрыть</string>
 </resources>

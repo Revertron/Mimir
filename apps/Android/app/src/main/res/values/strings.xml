@@ -315,5 +315,9 @@
     <string name="error_fixing_messages">Error fixing messages: %s</string>
     <string name="menu_save">Save file</string>
     <string name="file_not_found_in_storage">File not found in storage</string>
+    <string name="crash_report_title">Crash Report</string>
+    <string name="crash_report_description">The app crashed unexpectedly. You can share this report with the developer to help fix the issue.</string>
+    <string name="crash_report_subject">Mimir Crash Report</string>
+    <string name="close">Close</string>
 
 </resources>
