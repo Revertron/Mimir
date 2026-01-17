@@ -22,6 +22,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.Toast
 import java.util.regex.Pattern
 import androidx.appcompat.widget.AppCompatImageView
@@ -55,6 +56,18 @@ class MessageAdapter(
 
     companion object {
         const val TAG = "MessageAdapter"
+
+        // Emoji mapping from identifiers to Unicode characters
+        val EMOJI_MAP = mapOf(
+            "thumbsup" to "\uD83D\uDC4D",    // 👍
+            "heart" to "\u2764\uFE0F",        // ❤️
+            "laugh" to "\uD83D\uDE02",        // 😂
+            "surprised" to "\uD83D\uDE2E",   // 😮
+            "sad" to "\uD83D\uDE22",          // 😢
+            "angry" to "\uD83D\uDE20",        // 😠
+            "clap" to "\uD83D\uDC4F",         // 👏
+            "fire" to "\uD83D\uDD25"          // 🔥
+        )
 
         // Custom URL scheme patterns for unusual protocols
         private val CUSTOM_SCHEMES = arrayOf("mimir", "tcp", "tls", "ws", "wss", "quic")
@@ -239,6 +252,7 @@ class MessageAdapter(
         val replyToName: AppCompatTextView = view.findViewById(R.id.reply_contact_name)
         val replyToText: AppCompatTextView = view.findViewById(R.id.reply_text)
         val replyToPanel: View = view.findViewById(R.id.reply_panel)
+        val reactionsRow: LinearLayout = view.findViewById(R.id.reactions_row)
     }
 
     /**
@@ -531,6 +545,9 @@ class MessageAdapter(
         // System messages (type 1000) are now handled by getText() method above
         // which provides comprehensive event descriptions
 
+        // Display reactions for this message
+        displayReactions(holder, message)
+
         holder.time.text = formatTime(message.time)
         // Store message metadata using MessageTag
         holder.itemView.findViewById<View>(R.id.message).tag = MessageTag(message.id, message.guid, message.type)
@@ -602,6 +619,62 @@ class MessageAdapter(
         }
     }
 
+    /**
+     * Displays reactions for a message as emoji chips in the reactions row.
+     */
+    private fun displayReactions(holder: ViewHolder, message: SqlStorage.Message) {
+        val reactions = message.reactions
+
+        if (reactions.isEmpty()) {
+            holder.reactionsRow.visibility = View.GONE
+            return
+        }
+
+        holder.reactionsRow.removeAllViews()
+        holder.reactionsRow.visibility = View.VISIBLE
+
+        val context = holder.itemView.context
+        val density = context.resources.displayMetrics.density
+
+        for (reaction in reactions) {
+            val emojiChar = reaction.emoji
+            val displayText = if (reaction.count > 1) {
+                "$emojiChar ${reaction.count}"
+            } else {
+                emojiChar
+            }
+
+            val textView = AppCompatTextView(context).apply {
+                text = displayText
+                textSize = 13f
+                setPadding(
+                    (8 * density).toInt(),
+                    (4 * density).toInt(),
+                    (8 * density).toInt(),
+                    (4 * density).toInt()
+                )
+                setBackgroundResource(
+                    if (reaction.userReacted) R.drawable.reaction_background_selected
+                    else R.drawable.reaction_background
+                )
+
+                // Add margin between reaction chips
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    marginEnd = (4 * density).toInt()
+                }
+                layoutParams = params
+
+                // Store reaction info for click handling
+                tag = reaction.emoji
+            }
+
+            holder.reactionsRow.addView(textView)
+        }
+    }
+
     private fun formatTime(time: Long): String {
         val date = Date(time)
         val diff = Date().time - date.time
@@ -637,6 +710,16 @@ class MessageAdapter(
             if (message.first == messageId) {
                 messageIds.removeAt(index)
                 notifyItemRemoved(index)
+                break
+            }
+        }
+    }
+
+    fun notifyMessageChanged(messageId: Long) {
+        for ((index, message) in messageIds.withIndex()) {
+            if (message.first == messageId) {
+                messageIds.removeAt(index)
+                notifyItemChanged(index)
                 break
             }
         }

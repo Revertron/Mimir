@@ -19,6 +19,7 @@ const val MSG_TYPE_INFO_REQUEST = 6
 const val MSG_TYPE_INFO_RESPONSE = 7
 const val MSG_TYPE_PING = 8
 const val MSG_TYPE_PONG = 9
+const val MSG_TYPE_REACTION = 10
 const val MSG_TYPE_MESSAGE_TEXT = 1000
 const val MSG_TYPE_MESSAGE_FILE = 1001
 const val MSG_TYPE_CALL_OFFER = 2000

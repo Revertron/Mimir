@@ -995,6 +995,7 @@ class MediatorManager(
 
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to connect to mediator ${Hex.toHexString(mediatorPubkey).take(8)}", e)
+                        scheduleReconnect(mediatorPubkey)
                     }
                 }.start()
             }
@@ -1141,6 +1142,8 @@ class MediatorManager(
                             putExtra("chat_id", chatId)
                             putExtra("message_id", messageId)
                             putExtra("guid", msg.guid)
+                            putExtra("type", message.type)
+                            putExtra("replyTo", message.replyTo)
                         }
                         LocalBroadcastManager.getInstance(context).sendBroadcast(broadcastIntent)
 

@@ -18,6 +18,7 @@ import android.widget.Toast
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.revertron.mimir.net.MSG_TYPE_REACTION
 import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.net.SystemMessage
 import com.revertron.mimir.net.parseSystemMessage
@@ -65,10 +66,16 @@ class GroupChatActivity : BaseChatActivity() {
                     val chatId = intent.getLongExtra("chat_id", 0)
                     val messageId = intent.getLongExtra("message_id", 0)
                     val guid = intent.getLongExtra("guid", 0L)
+                    val type = intent.getIntExtra("type", 0)
+                    val replyTo = intent.getLongExtra("replyTo", 0L)
 
                     if (chatId == groupChat.chatId) {
                         Log.i(TAG, "Message sent successfully: msgId=$messageId, guid=$guid")
                         mainHandler.post {
+                            if (type == MSG_TYPE_REACTION) {
+                                adapter.notifyMessageChanged(replyTo)
+                                return@post
+                            }
                             startShortSound(R.raw.message_sent)
                             // Message sent successfully, refresh UI
                             adapter.notifyDataSetChanged()
@@ -272,6 +279,63 @@ class GroupChatActivity : BaseChatActivity() {
 
     override fun getMessageFromStorage(messageId: Long): com.revertron.mimir.storage.SqlStorage.Message? {
         return getStorage().getGroupMessage(groupChat.chatId, messageId, byGuid = false)
+    }
+
+    override fun handleReaction(targetGuid: Long, emoji: String, currentEmoji: String?) {
+        // Toggle behavior: if clicking the same emoji, remove it
+        val finalEmoji = if (emoji == currentEmoji) "" else emoji
+
+        // Create reaction message data as JSON
+        val reactionData = org.json.JSONObject().apply {
+            put("emoji", finalEmoji)
+            put("replyTo", targetGuid)
+        }.toString()
+
+        Thread {
+            try {
+                val sendTime = System.currentTimeMillis()
+                val guid = getStorage().generateGuid(sendTime, reactionData.toByteArray())
+
+                // Store reaction locally (type = 10)
+                val localId = getStorage().addGroupMessage(
+                    chatId = groupChat.chatId,
+                    serverMsgId = null,
+                    guid = guid,
+                    author = publicKey,
+                    timestamp = sendTime,
+                    type = 10,  // Reaction type
+                    system = false,
+                    data = reactionData.toByteArray(),
+                    replyTo = targetGuid
+                )
+
+                Log.i(TAG, "Stored reaction locally with ID: $localId, targetGuid = $targetGuid")
+
+                // Send reaction to mediator via ConnectionService
+                val intent = Intent(this, ConnectionService::class.java)
+                intent.putExtra("command", "mediator_send")
+                intent.putExtra("chat_id", groupChat.chatId)
+                intent.putExtra("guid", guid)
+                intent.putExtra("reply_to", targetGuid)
+                intent.putExtra("send_time", sendTime)
+                intent.putExtra("type", 10)  // Reaction type
+                intent.putExtra("message", reactionData)
+                startService(intent)
+
+                Log.i(TAG, "Sent reaction to ConnectionService for chat ${groupChat.chatId}")
+
+                // Refresh the message list to show updated reactions
+                runOnUiThread {
+                    adapter.notifyDataSetChanged()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending reaction", e)
+            }
+        }.start()
+    }
+
+    override fun getUserCurrentReaction(targetGuid: Long): String? {
+        return getStorage().getUserReactionForGroupMessage(groupChat.chatId, targetGuid)
     }
 
     override fun sendMessage(text: String, replyTo: Long) {
@@ -673,11 +737,15 @@ class GroupChatActivity : BaseChatActivity() {
 
     // StorageListener implementation
 
-    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean {
+    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         if (chatId == groupChat.chatId) {
             runOnUiThread {
                 val message = getStorage().getGroupMessage(chatId, id, false)
                 if (message != null) {
+                    if (type == MSG_TYPE_REACTION) {
+                        adapter.notifyMessageChanged(replyTo)
+                        return@runOnUiThread
+                    }
                     val isAtEnd = recyclerView.isAtEnd()
                     adapter.addMessageId(id, message.incoming) // Add the message ID like broadcasts do
                     if (isAtEnd) {

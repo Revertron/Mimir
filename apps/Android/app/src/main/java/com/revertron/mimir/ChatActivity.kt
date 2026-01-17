@@ -20,6 +20,7 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.net.MSG_TYPE_REACTION
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.Contact
@@ -176,6 +177,50 @@ class ChatActivity : BaseChatActivity() {
 
     override fun getMessageFromStorage(messageId: Long): SqlStorage.Message? {
         return getStorage().getMessage(messageId, byGuid = false)
+    }
+
+    override fun handleReaction(targetGuid: Long, emoji: String, currentEmoji: String?) {
+        // Toggle behavior: if clicking the same emoji, remove it
+        val finalEmoji = if (emoji == currentEmoji) "" else emoji
+
+        // Create reaction message data as JSON
+        val reactionData = org.json.JSONObject().apply {
+            put("emoji", finalEmoji)
+            put("replyTo", targetGuid)
+        }.toString()
+
+        // Generate GUID for the reaction message
+        val sendTime = getUtcTime()
+        val guid = getStorage().generateGuid(sendTime, reactionData.toByteArray())
+
+        // Store reaction locally (type = 10)
+        getStorage().addMessage(
+            contact = contact.pubkey,
+            guid = guid,
+            replyTo = targetGuid,
+            incoming = false,
+            delivered = false,
+            sendTime = sendTime,
+            editTime = 0L,
+            type = 10,
+            message = reactionData.toByteArray()
+        )
+
+        // Send reaction to peer via ConnectionService
+        val intent = Intent(this, ConnectionService::class.java)
+        intent.putExtra("command", "send")
+        intent.putExtra("pubkey", contact.pubkey)
+        intent.putExtra("replyTo", targetGuid)
+        intent.putExtra("type", 10)
+        intent.putExtra("message", reactionData)
+        startService(intent)
+
+        // Refresh the message list to show updated reactions
+        adapter.notifyDataSetChanged()
+    }
+
+    override fun getUserCurrentReaction(targetGuid: Long): String? {
+        return getStorage().getUserReactionForMessage(contact.id, targetGuid)
     }
 
     override fun sendMessage(text: String, replyTo: Long) {
@@ -488,10 +533,14 @@ class ChatActivity : BaseChatActivity() {
 
     // StorageListener implementation
 
-    override fun onMessageSent(id: Long, contactId: Long) {
+    override fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {
         runOnUiThread {
             Log.i(TAG, "Message $id sent to $contactId")
             if (contact.id == contactId) {
+                if (type == MSG_TYPE_REACTION) {
+                    adapter.notifyMessageChanged(replyTo)
+                    return@runOnUiThread
+                }
                 val isAtEnd = recyclerView.isAtEnd()
                 adapter.addMessageId(id, false)
                 if (isAtEnd) {
@@ -509,10 +558,14 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
-    override fun onMessageReceived(id: Long, contactId: Long): Boolean {
+    override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         Log.i(TAG, "Message $id from $contactId")
         if (contact.id == contactId) {
             runOnUiThread {
+                if (type == MSG_TYPE_REACTION) {
+                    adapter.notifyMessageChanged(replyTo)
+                    return@runOnUiThread
+                }
                 Log.i(TAG, "Adding message")
                 val isAtEnd = recyclerView.isAtEnd()
                 adapter.addMessageId(id, true)

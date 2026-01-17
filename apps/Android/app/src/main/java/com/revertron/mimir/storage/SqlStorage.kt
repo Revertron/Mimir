@@ -18,6 +18,7 @@ import com.revertron.mimir.formatDuration
 import com.revertron.mimir.getImageExtensionOrNull
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.loadRoundedAvatar
+import com.revertron.mimir.net.MSG_TYPE_REACTION
 import com.revertron.mimir.net.SystemMessage
 import com.revertron.mimir.randomString
 import com.revertron.mimir.ui.Contact
@@ -30,7 +31,6 @@ import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import org.json.JSONException
 import org.json.JSONObject
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -65,6 +65,21 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         const val SAVED_MESSAGES_CONTACT_ID = -100L
     }
 
+    /**
+     * Represents a reaction to a message with aggregated data.
+     *
+     * @property emoji The emoji identifier (e.g., "thumbsup", "heart")
+     * @property count The total number of users who reacted with this emoji
+     * @property senders List of contact IDs who sent this reaction (-1 for self)
+     * @property userReacted True if the current user has reacted with this emoji
+     */
+    data class Reaction(
+        val emoji: String,
+        val count: Int,
+        val senders: List<Long>,
+        val userReacted: Boolean
+    )
+
     data class Message(
         val id: Long,
         val contact: Long,
@@ -76,7 +91,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         val time: Long,
         val edit: Long,
         val type: Int,
-        val data: ByteArray?
+        val data: ByteArray?,
+        val reactions: List<Reaction> = emptyList()
     ) {
         fun getText(context: Context): String {
             return if (data != null) {
@@ -389,7 +405,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 val messagesTable = "messages_$chatId"
 
                 val cursor = readableDatabase.rawQuery(
-                    "SELECT COUNT(id) FROM $messagesTable WHERE read == 0",
+                    "SELECT COUNT(id) FROM $messagesTable WHERE read == 0 AND type != 10",
                     null
                 )
                 val count = if (cursor.moveToNext() && !cursor.isNull(0)) {
@@ -882,22 +898,23 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("edit", editTime)
             put("type", type)
             put("message", message)
-            put("read", !incoming || type == 2)
+            // Mark as read if: outgoing, call message (type 2), or reaction (type 10)
+            put("read", !incoming || type == 2 || type == MSG_TYPE_REACTION)
         }
         return this.writableDatabase.insert("messages", null, values).also {
             var processed = false
             for (listener in listeners) {
                 if (!incoming) {
-                    listener.onMessageSent(it, id)
+                    listener.onMessageSent(it, id, type, replyTo)
                 } else {
-                    processed = processed or listener.onMessageReceived(it, id)
+                    processed = processed or listener.onMessageReceived(it, id, type, replyTo)
                 }
             }
             if (!incoming) {
-                notificationManager.onMessageSent(it, id)
+                notificationManager.onMessageSent(it, id, type, replyTo)
             } else {
                 if (!processed) {
-                    notificationManager.onMessageReceived(it, id)
+                    notificationManager.onMessageReceived(it, id, type, replyTo)
                 }
             }
         }
@@ -1007,7 +1024,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
     fun getMessageIds(userId: Long): List<Pair<Long, Boolean>> {
         val list = mutableListOf<Pair<Long, Boolean>>()
-        val cursor = readableDatabase.query("messages", arrayOf("id", "incoming"), "contact = ?", arrayOf("$userId"), null, null, "id")
+        // Filter out reaction messages (type = 10) from the list
+        val cursor = readableDatabase.query("messages", arrayOf("id", "incoming"), "contact = ? AND type != 10", arrayOf("$userId"), null, null, "id")
         while (cursor.moveToNext()) {
             list.add(cursor.getLong(0) to (cursor.getInt(1) != 0))
         }
@@ -1023,7 +1041,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         val list = mutableListOf<Pair<Long, Boolean>>()
 
         try {
-            val cursor = readableDatabase.query(messagesTable, arrayOf("id", "incoming"), null, null, null, null, "id")
+            // Filter out reaction messages (type = 10) from the list
+            val cursor = readableDatabase.query(messagesTable, arrayOf("id", "incoming"), "type != 10", null, null, null, "id")
             while (cursor.moveToNext()) {
                 list.add(cursor.getLong(0) to (cursor.getInt(1) != 0))
             }
@@ -1032,6 +1051,222 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             Log.e(TAG, "Error getting group message IDs for chat $chatId", e)
         }
         return list
+    }
+
+    /**
+     * Gets aggregated reactions for a 1-on-1 message.
+     * Queries reaction messages (type = 10) with replyTo pointing to the target message GUID.
+     * Only the latest reaction from each user is considered (allows changing/removing reactions).
+     *
+     * @param contactId The contact ID for this conversation
+     * @param targetGuid The GUID of the message to get reactions for
+     * @return List of aggregated Reaction objects grouped by emoji
+     */
+    fun getReactionsForMessage(contactId: Long, targetGuid: Long): List<Reaction> {
+        // Map of sender (-1 for self, contactId for peer) to their latest emoji
+        val latestReactionBySender = mutableMapOf<Long, String>()
+
+        try {
+            // Order by time DESC to get latest reactions first
+            val cursor = readableDatabase.query(
+                "messages",
+                arrayOf("message", "incoming", "time"),
+                "contact = ? AND replyTo = ? AND type = 10",
+                arrayOf("$contactId", "$targetGuid"),
+                null, null, "time DESC"
+            )
+
+            while (cursor.moveToNext()) {
+                val data = cursor.getBlob(0)
+                val incoming = cursor.getInt(1) != 0
+                val senderId = if (incoming) contactId else -1L
+
+                // Only process if we haven't seen this sender yet (we want only the latest)
+                if (senderId !in latestReactionBySender && data != null) {
+                    try {
+                        val json = JSONObject(String(data))
+                        val emoji = json.optString("emoji", "")
+                        // Store the emoji (even if empty - means reaction was removed)
+                        latestReactionBySender[senderId] = emoji
+                    } catch (e: JSONException) {
+                        Log.w(TAG, "Failed to parse reaction data", e)
+                    }
+                }
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting reactions for message $targetGuid", e)
+        }
+
+        // Aggregate reactions by emoji (excluding empty emojis = removed reactions)
+        val reactions = mutableMapOf<String, MutableList<Long>>()
+        val userReacted = latestReactionBySender[-1L]?.isNotEmpty() == true
+
+        for ((senderId, emoji) in latestReactionBySender) {
+            if (emoji.isNotEmpty()) {
+                val senderList = reactions.getOrPut(emoji) { mutableListOf() }
+                senderList.add(senderId)
+            }
+        }
+
+        return reactions.map { (emoji, senders) ->
+            Reaction(emoji, senders.size, senders.toList(), userReacted && latestReactionBySender[-1L] == emoji)
+        }
+    }
+
+    /**
+     * Gets aggregated reactions for a group chat message.
+     * Queries reaction messages (type = 10) with replyTo pointing to the target message GUID.
+     * Only the latest reaction from each user is considered (allows changing/removing reactions).
+     *
+     * @param chatId The group chat ID
+     * @param targetGuid The GUID of the message to get reactions for
+     * @return List of aggregated Reaction objects grouped by emoji
+     */
+    fun getReactionsForGroupMessage(chatId: Long, targetGuid: Long): List<Reaction> {
+        val messagesTable = "messages_$chatId"
+        // Map of senderId to their latest emoji
+        val latestReactionBySender = mutableMapOf<Long, String>()
+        // Track which senderId is "self" (outgoing message)
+        var mySenderId: Long? = null
+
+        try {
+            // Order by timestamp DESC to get latest reactions first
+            val cursor = readableDatabase.query(
+                messagesTable,
+                arrayOf("data", "senderId", "incoming", "timestamp"),
+                "replyTo = ? AND type = 10",
+                arrayOf("$targetGuid"),
+                null, null, "timestamp DESC"
+            )
+
+            while (cursor.moveToNext()) {
+                val data = cursor.getBlob(0)
+                val senderId = cursor.getLong(1)
+                val incoming = cursor.getInt(2) != 0
+
+                // Track our own senderId
+                if (!incoming && mySenderId == null) {
+                    mySenderId = senderId
+                }
+
+                // Only process if we haven't seen this sender yet (we want only the latest)
+                if (senderId !in latestReactionBySender && data != null) {
+                    try {
+                        val json = JSONObject(String(data))
+                        val emoji = json.optString("emoji", "")
+                        // Store the emoji (even if empty - means reaction was removed)
+                        latestReactionBySender[senderId] = emoji
+                    } catch (e: JSONException) {
+                        Log.w(TAG, "Failed to parse reaction data", e)
+                    }
+                }
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting reactions for group message $targetGuid in chat $chatId", e)
+        }
+
+        // Aggregate reactions by emoji (excluding empty emojis = removed reactions)
+        val reactions = mutableMapOf<String, MutableList<Long>>()
+        val myEmoji = mySenderId?.let { latestReactionBySender[it] }
+        val userReacted = myEmoji?.isNotEmpty() == true
+
+        for ((senderId, emoji) in latestReactionBySender) {
+            if (emoji.isNotEmpty()) {
+                val senderList = reactions.getOrPut(emoji) { mutableListOf() }
+                senderList.add(senderId)
+            }
+        }
+
+        return reactions.map { (emoji, senders) ->
+            Reaction(emoji, senders.size, senders.toList(), userReacted && myEmoji == emoji)
+        }
+    }
+
+    /**
+     * Gets the current user's reaction for a 1-on-1 message.
+     *
+     * @param contactId The contact ID for this conversation
+     * @param targetGuid The GUID of the message to check
+     * @return The emoji string if user has reacted, null otherwise
+     */
+    fun getUserReactionForMessage(contactId: Long, targetGuid: Long): String? {
+        var emoji: String? = null
+
+        try {
+            val cursor = readableDatabase.query(
+                "messages",
+                arrayOf("message"),
+                "contact = ? AND replyTo = ? AND type = 10 AND incoming = 0",
+                arrayOf("$contactId", "$targetGuid"),
+                null, null, "time DESC", "1"
+            )
+
+            if (cursor.moveToFirst()) {
+                val data = cursor.getBlob(0)
+                if (data != null) {
+                    try {
+                        val json = JSONObject(String(data))
+                        emoji = json.optString("emoji", null)
+                        // Empty string means reaction was removed
+                        if (emoji.isNullOrEmpty()) {
+                            emoji = null
+                        }
+                    } catch (e: JSONException) {
+                        Log.w(TAG, "Failed to parse reaction data", e)
+                    }
+                }
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user reaction for message $targetGuid", e)
+        }
+
+        return emoji
+    }
+
+    /**
+     * Gets the current user's reaction for a group chat message.
+     *
+     * @param chatId The group chat ID
+     * @param targetGuid The GUID of the message to check
+     * @return The emoji string if user has reacted, null otherwise
+     */
+    fun getUserReactionForGroupMessage(chatId: Long, targetGuid: Long): String? {
+        val messagesTable = "messages_$chatId"
+        var emoji: String? = null
+
+        try {
+            val cursor = readableDatabase.query(
+                messagesTable,
+                arrayOf("data"),
+                "replyTo = ? AND type = 10 AND incoming = 0",
+                arrayOf("$targetGuid"),
+                null, null, "timestamp DESC", "1"
+            )
+
+            if (cursor.moveToFirst()) {
+                val data = cursor.getBlob(0)
+                if (data != null) {
+                    try {
+                        val json = JSONObject(String(data))
+                        emoji = json.optString("emoji", null)
+                        // Empty string means reaction was removed
+                        if (emoji.isNullOrEmpty()) {
+                            emoji = null
+                        }
+                    } catch (e: JSONException) {
+                        Log.w(TAG, "Failed to parse reaction data", e)
+                    }
+                }
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user reaction for group message $targetGuid in chat $chatId", e)
+        }
+
+        return emoji
     }
 
     /**
@@ -1102,8 +1337,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
     private fun getLastMessageDelivered(userId: Long): Boolean? {
         val db = this.readableDatabase
+        // Exclude reaction messages (type = 10) from last message delivery check
         val cursor =
-            db.query("messages", arrayOf("delivered"), "contact = ? AND incoming = 0", arrayOf("$userId"), null, null, "id DESC", "1")
+            db.query("messages", arrayOf("delivered"), "contact = ? AND incoming = 0 AND type != 10", arrayOf("$userId"), null, null, "id DESC", "1")
         val result = if (cursor.moveToNext()) {
             cursor.getInt(0) > 0
         } else {
@@ -1197,7 +1433,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     private fun getLastMessage(userId: Long): Message? {
         var result: Message? = null
         val columns = arrayOf("id", "contact", "guid", "replyTo", "incoming", "delivered", "read", "time", "edit", "type", "message")
-        val cursor = readableDatabase.query("messages", columns, "contact = ?", arrayOf("$userId"), null, null, "id DESC", "1")
+        // Exclude reaction messages (type = 10) from last message
+        val cursor = readableDatabase.query("messages", columns, "contact = ? AND type != 10", arrayOf("$userId"), null, null, "id DESC", "1")
         if (cursor.moveToNext()) {
             val id = cursor.getLong(0)
             val contactId = cursor.getLong(1)
@@ -1220,10 +1457,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     fun getLastSavedMessage(): Message? {
         var result: Message? = null
         val columns = arrayOf("id", "contact", "guid", "replyTo", "incoming", "delivered", "read", "time", "edit", "type", "message")
+        // Exclude reaction messages (type = 10) from last message
         val cursor = readableDatabase.query(
             "messages",
             columns,
-            "contact = ?",
+            "contact = ? AND type != 10",
             arrayOf(SAVED_MESSAGES_CONTACT_ID.toString()),
             null, null,
             "time DESC",
@@ -1252,10 +1490,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         var result: Message? = null
 
         try {
+            // Exclude system messages and reaction messages (type = 10) from last message
             val cursor = readableDatabase.query(
                 messagesTable,
                 arrayOf("id", "guid", "senderId", "incoming", "timestamp", "type", "data", "delivered", "read", "replyTo"),
-                "system = 0", null, null, null,
+                "system = 0 AND type != 10", null, null, null,
                 "id DESC",
                 "1"
             )
@@ -1314,11 +1553,15 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             val edit = cursor.getLong(7)
             val type = cursor.getInt(8)
             val message = cursor.getBlobOrNull(9)
-            //Log.i(TAG, "$messageId: $guid")
+
+            // Get the GUID for reactions lookup
+            val guid = if (byGuid) messageId else idOrGuid
+            val reactions = getReactionsForMessage(contactId, guid)
+
             result = if (byGuid) {
-                Message(idOrGuid, contactId, messageId, replyTo, incoming, delivered, read, time, edit, type, message)
+                Message(idOrGuid, contactId, messageId, replyTo, incoming, delivered, read, time, edit, type, message, reactions)
             } else {
-                Message(messageId, contactId, idOrGuid, replyTo, incoming, delivered, read, time, edit, type, message)
+                Message(messageId, contactId, idOrGuid, replyTo, incoming, delivered, read, time, edit, type, message, reactions)
             }
         }
         cursor.close()
@@ -1360,6 +1603,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 val read = cursor.getInt(8) != 0
                 val replyTo = cursor.getLong(9)
 
+                // Get reactions for this message
+                val reactions = getReactionsForGroupMessage(chatId, guid)
+
                 result = Message(
                     id = id,
                     contact = senderId,
@@ -1371,7 +1617,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     time = timestamp,
                     edit = 0L,
                     type = type,
-                    data = data
+                    data = data,
+                    reactions = reactions
                 )
             }
             cursor.close()
@@ -2464,7 +2711,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             // Incoming messages are always delivered
             // Outgoing messages: delivered if synced from server (already sent), pending if newly created locally
             put("delivered", incoming || fromSync)
-            put("read", false)
+            // Mark as read if: outgoing, system message, or reaction (type 10)
+            put("read", !incoming || system || type == MSG_TYPE_REACTION)
             put("replyTo", replyTo)
         }
 
@@ -2484,28 +2732,26 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             }
             writableDatabase.update("group_chats", updateValues, "chat_id = ?", arrayOf(chatId.toLong().toString()))
 
-            // Increment unread count for incoming non-system messages
-            if (senderId != -1L && incoming) {
+            // Increment unread count for incoming non-system, non-reaction messages
+            if (senderId != -1L && incoming && type != MSG_TYPE_REACTION) {
                 incrementGroupUnreadCount(chatId)
             }
 
             // Notify listeners - track if any listener processed it
             var processed = false
             for (listener in listeners) {
-                processed = processed or listener.onGroupMessageReceived(chatId, id, senderId)
+                processed = processed or listener.onGroupMessageReceived(chatId, id, senderId, type, replyTo)
             }
             Log.w(TAG, "Processed: $processed")
 
             // Only show notification if not processed by any listener (i.e., chat not open)
             // Don't show notifications for system messages
-            if (!processed && senderId != -1L) {
-                notificationManager.onGroupMessageReceived(chatId, id, senderId)
+            if (!processed && senderId != -1L && type != MSG_TYPE_REACTION) {
+                notificationManager.onGroupMessageReceived(chatId, id, senderId, type, replyTo)
             }
         }
         return id
     }
-
-
 
     fun checkGroupMessageExists(chatId: Long, guid: Long): Boolean {
         val messagesTable = "messages_$chatId"
@@ -3426,13 +3672,13 @@ interface StorageListener {
     fun onContactRemoved(id: Long) {}
     fun onContactChanged(id: Long) {}
 
-    fun onMessageSent(id: Long, contactId: Long) {}
+    fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {}
     fun onMessageDelivered(id: Long, delivered: Boolean) {}
-    fun onMessageReceived(id: Long, contactId: Long): Boolean { return false }
+    fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean { return false }
     fun onMessageRead(id: Long, contactId: Long) {}
     fun onMessageDeleted(messageId: Long, contactId: Long) {}
 
-    fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean { return false }
+    fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean { return false }
     fun onGroupMessageDeleted(chatId: Long, messageId: Long) {}
     fun onGroupMessageRead(chatId: Long, id: Long) {}
     fun onGroupChatChanged(chatId: Long): Boolean { return false }

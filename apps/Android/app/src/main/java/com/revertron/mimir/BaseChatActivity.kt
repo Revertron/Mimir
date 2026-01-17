@@ -191,6 +191,23 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
      */
     protected abstract fun getMessageFromStorage(messageId: Long): SqlStorage.Message?
 
+    /**
+     * Handles adding/removing a reaction to a message.
+     *
+     * @param targetGuid The GUID of the message to react to
+     * @param emoji The emoji identifier to add (e.g., "thumbsup")
+     * @param currentEmoji The user's current reaction emoji, if any
+     */
+    protected abstract fun handleReaction(targetGuid: Long, emoji: String, currentEmoji: String?)
+
+    /**
+     * Gets the user's current reaction for a message.
+     *
+     * @param targetGuid The GUID of the message to check
+     * @return The emoji identifier if user has reacted, null otherwise
+     */
+    protected abstract fun getUserCurrentReaction(targetGuid: Long): String?
+
     // Shared UI Setup
 
     private fun setupToolbar() {
@@ -616,6 +633,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     private fun showContextMenuAtLocation(anchorView: View, x: Int, y: Int) {
         val inflater = LayoutInflater.from(this)
         val popupView = inflater.inflate(R.layout.popup_message_context_menu, null)
+        val elevation = 8f * resources.displayMetrics.density
+        popupView.findViewById<View>(R.id.reactions_card).elevation = elevation
+        popupView.findViewById<View>(R.id.menu_card).elevation = elevation
 
         val popupWindow = PopupWindow(
             popupView,
@@ -625,7 +645,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         )
 
         // Enable elevation/shadow - use transparent background to allow CardView shadow to show
-        popupWindow.elevation = 8f * resources.displayMetrics.density
+        //popupWindow.elevation = 8f * resources.displayMetrics.density
         popupWindow.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
         // Tell the popup to not interact with input method (keeps keyboard stable)
         popupWindow.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
@@ -671,6 +691,37 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         // Hide "Save" menu item for messages without file attachments (type != 1 and type != 3)
         if (messageType != 1 && messageType != 3) {
             popupView.findViewById<View>(R.id.menu_save).visibility = View.GONE
+        }
+
+        // Hide emoji row for system messages
+        if (messageType == 1000) {
+            popupView.findViewById<View>(R.id.emoji_row).visibility = View.GONE
+        } else {
+            // Set up emoji reaction click handlers
+            val targetGuid = tag?.guid ?: 0L
+            val currentEmoji = getUserCurrentReaction(targetGuid)
+
+            val emojiButtons = listOf(
+                R.id.emoji_thumbsup to "\uD83D\uDC4D",
+                R.id.emoji_heart to "❤\uFE0F",
+                R.id.emoji_fire to "\uD83D\uDD25",
+                R.id.emoji_laugh to "\uD83D\uDE02",
+                R.id.emoji_surprised to "\uD83D\uDE2E",
+                R.id.emoji_sad to "\uD83D\uDE22",
+                R.id.emoji_angry to "\uD83D\uDE21",
+                R.id.emoji_crap to "\uD83D\uDCA9"
+            )
+
+            for ((viewId, emojiId) in emojiButtons) {
+                popupView.findViewById<View>(viewId).setOnClickListener {
+                    handleReaction(targetGuid, emojiId, currentEmoji)
+                    popupWindow.dismiss()
+                }
+            }
+        }
+
+        popupView.setOnClickListener {
+            popupWindow.dismiss()
         }
 
         // Set up menu item click handlers

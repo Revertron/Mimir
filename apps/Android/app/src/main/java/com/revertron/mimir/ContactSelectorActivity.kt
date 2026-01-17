@@ -11,7 +11,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
-import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
 import org.bouncycastle.util.encoders.Hex
 
@@ -181,8 +180,8 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener, StorageLis
         runOnUiThread { refreshContacts() }
     }
 
-    override fun onMessageSent(id: Long, contactId: Long) {}
+    override fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {}
     override fun onMessageDelivered(id: Long, delivered: Boolean) {}
     override fun onMessageRead(id: Long, contactId: Long) {}
-    override fun onMessageReceived(id: Long, contactId: Long): Boolean = false
+    override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean = false
 }

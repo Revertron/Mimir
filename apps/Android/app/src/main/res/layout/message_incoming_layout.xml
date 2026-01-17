@@ -78,6 +78,16 @@
             app:layout_constraintWidth_max="300dp"
             tools:text="Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum." />
 
+        <LinearLayout
+            android:id="@+id/reactions_row"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp"
+            android:visibility="gone"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/text" />
+
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/time"
             android:layout_width="wrap_content"
@@ -86,7 +96,7 @@
             android:lines="1"
             android:textSize="11sp"
             app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text"
+            app:layout_constraintTop_toBottomOf="@id/reactions_row"
             tools:text="12:00:00" />
 
         <androidx.appcompat.widget.AppCompatImageView
@@ -96,7 +106,7 @@
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="@id/time"
             app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text"
+            app:layout_constraintTop_toBottomOf="@id/reactions_row"
             app:srcCompat="@drawable/ic_message_delivered" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>

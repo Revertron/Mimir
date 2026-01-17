@@ -21,6 +21,7 @@ import androidx.core.app.TaskStackBuilder
 import com.revertron.mimir.storage.StorageListener
 import org.bouncycastle.util.encoders.Hex
 import androidx.core.net.toUri
+import com.revertron.mimir.net.MSG_TYPE_REACTION
 import com.revertron.mimir.net.MediatorManager
 
 /**
@@ -687,7 +688,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
         // No action needed
     }
 
-    override fun onMessageSent(id: Long, contactId: Long) {
+    override fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {
         // No action needed
     }
 
@@ -715,11 +716,11 @@ class NotificationHelper(private val context: Context) : StorageListener {
      * @param contactId Contact database ID
      * @return True to allow other listeners to process, false to stop propagation
      */
-    override fun onMessageReceived(id: Long, contactId: Long): Boolean {
+    override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         val message = App.app.storage.getMessage(id)
 
         // Skip notification for empty messages or type 2 messages
-        if (message?.data == null || message.type == 2) {
+        if (message?.data == null || message.type == 2 || message.type == MSG_TYPE_REACTION) {
             return false
         }
 
@@ -875,7 +876,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
      * @param contactId Contact database ID of sender (-1 if unknown)
      * @return True to allow other listeners to process, false to stop propagation
      */
-    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean {
+    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         val message = App.app.storage.getGroupMessage(chatId, id)
 
         // Skip notification for empty messages or type 2 messages

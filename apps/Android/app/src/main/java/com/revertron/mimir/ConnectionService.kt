@@ -30,11 +30,7 @@ import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.net.Message
 import com.revertron.mimir.net.MimirServer
 import com.revertron.mimir.net.PeerStatus
-import com.revertron.mimir.net.SystemMessage
 import com.revertron.mimir.net.parseAndSaveGroupMessage
-import com.revertron.mimir.net.parseSystemMessage
-import com.revertron.mimir.net.readHeader
-import com.revertron.mimir.net.readMessage
 import com.revertron.mimir.net.writeMessage
 import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.storage.PeerProvider
@@ -43,7 +39,6 @@ import com.revertron.mimir.ui.SettingsData
 import com.revertron.mimir.yggmobile.Yggmobile
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
-import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
@@ -266,7 +261,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         Log.i(TAG, "Saved message $id")
                         // Notify listeners
                         for (listener in storage.listeners) {
-                            listener.onMessageSent(id, SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+                            listener.onMessageSent(id, SqlStorage.SAVED_MESSAGES_CONTACT_ID, type, replyTo)
                         }
                     } else {
                         // Normal message - existing code
@@ -563,6 +558,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 putExtra("chat_id", chatId)
                 putExtra("message_id", messageId)
                 putExtra("guid", guid)
+                putExtra("type", type)
+                putExtra("replyTo", replyTo)
             }
             LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
         } catch (e: Exception) {

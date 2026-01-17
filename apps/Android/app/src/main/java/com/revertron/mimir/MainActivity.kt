@@ -22,7 +22,6 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.PopupMenu
@@ -221,14 +220,14 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         return true
     }
 
-    override fun onMessageReceived(id: Long, contactId: Long): Boolean {
+    override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         runOnUiThread {
             refreshContacts()
         }
         return false
     }
 
-    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long): Boolean {
+    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         runOnUiThread {
             refreshContacts()
         }
