@@ -96,7 +96,7 @@ class MessageAdapter(
 
             // Initialize touch slop on first use
             if (touchSlop == 0) {
-                touchSlop = 16
+                touchSlop = android.view.ViewConfiguration.get(widget.context).scaledTouchSlop / 3
             }
 
             when (action) {

@@ -678,11 +678,13 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
 
         // **Optional: Add padding/margin**
-        val margin = (8 * resources.displayMetrics.density).toInt()
+        val margin = (4 * resources.displayMetrics.density).toInt()
 
-        // Ensure popup stays within screen bounds
-        adjustedX = adjustedX.coerceIn(margin, screenWidth - popupWidth - margin)
-        adjustedY = adjustedY.coerceIn(margin, screenHeight - popupHeight - margin)
+        // Ensure popup stays within screen bounds (handle cases where popup is larger than screen)
+        val maxX = maxOf(margin, screenWidth - popupWidth - margin)
+        val maxY = maxOf(margin, screenHeight - popupHeight - margin)
+        adjustedX = adjustedX.coerceIn(margin, maxX)
+        adjustedY = adjustedY.coerceIn(margin, maxY)
 
         // Get message type from tag to determine which menu items to show
         val tag = anchorView.tag as? MessageTag
