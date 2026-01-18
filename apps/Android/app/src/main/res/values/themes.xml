@@ -24,7 +24,7 @@
         <item name="iconInvertedColor">@color/white</item>
         <item name="unreadBadgeBackColor">@color/gray_80</item>
         <item name="unreadBadgeColor">@color/white</item>
-        <item name="replySignColor">@color/message_outgoing_dark_normal</item>
+        <item name="replySignColor">#FF305090</item>
 
         <item name="switchStyle">@style/MimirSwitch</item>
         <item name="android:switchStyle">@style/MimirSwitch</item>

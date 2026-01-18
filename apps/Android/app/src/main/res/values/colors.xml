@@ -19,11 +19,11 @@
     <color name="mimir_light">#FF63fac0</color>
     <color name="status_online">#FF108F10</color>
 
-    <color name="message_outgoing_light_normal">#FFA0C0FF</color>
-    <color name="message_outgoing_light_pressed">#FF80A0FF</color>
+    <color name="message_outgoing_normal">#FFA0C0FF</color>
+    <color name="message_outgoing_pressed">#FF80A0FF</color>
 
-    <color name="message_outgoing_dark_normal">#FF305090</color>
-    <color name="message_outgoing_dark_pressed">#FF4565A5</color>
+    <color name="bg_message_incoming_simple">@color/white</color>
+    <color name="bg_message_outgoing_simple">@color/message_outgoing_normal</color>
 
     <color name="transparent">#00000000</color>
 </resources>
