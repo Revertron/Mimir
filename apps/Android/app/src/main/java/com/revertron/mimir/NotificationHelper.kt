@@ -724,6 +724,12 @@ class NotificationHelper(private val context: Context) : StorageListener {
             return false
         }
 
+        // Skip notification if contact is muted
+        if (App.app.storage.isContactMuted(contactId)) {
+            Log.d(TAG, "Skipping notification for muted contact $contactId")
+            return false
+        }
+
         // Build message text with caching for multiple messages
         val messageText = synchronized(messageCache) {
             var text = message.getText(context)

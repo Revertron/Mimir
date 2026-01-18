@@ -267,6 +267,19 @@ class ChatActivity : BaseChatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        super.onPrepareOptionsMenu(menu)
+        if (!isSavedMessages) {
+            val isMuted = getStorage().isContactMuted(contact.id)
+            menu.findItem(R.id.mute_contact)?.title = if (isMuted) {
+                getString(R.string.unmute)
+            } else {
+                getString(R.string.mute)
+            }
+        }
+        return true
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.contact_call -> {
@@ -275,6 +288,10 @@ class ChatActivity : BaseChatActivity() {
             }
             R.id.clear_history -> {
                 showClearHistoryConfirmDialog()
+                return true
+            }
+            R.id.mute_contact -> {
+                toggleMuteContact()
                 return true
             }
             else -> {
@@ -295,11 +312,27 @@ class ChatActivity : BaseChatActivity() {
             R.id.clear_history -> {
                 showClearHistoryConfirmDialog()
             }
+            R.id.mute_contact -> {
+                toggleMuteContact()
+            }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
             }
         }
         return true
+    }
+
+    private fun toggleMuteContact() {
+        val isMuted = getStorage().isContactMuted(contact.id)
+        val newMutedStatus = !isMuted
+        getStorage().setContactMuted(contact.id, newMutedStatus)
+        val message = if (newMutedStatus) {
+            getString(R.string.mute) + ": " + contact.name
+        } else {
+            getString(R.string.unmute) + ": " + contact.name
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        invalidateOptionsMenu()
     }
 
     // Audio call functionality

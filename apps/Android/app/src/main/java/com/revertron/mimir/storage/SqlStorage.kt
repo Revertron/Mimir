@@ -43,10 +43,10 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 15
+        const val DATABASE_VERSION = 16
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
-        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER)"
+        const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER, muted BOOL DEFAULT 0)"
         const val CREATE_IPS = "CREATE TABLE ips (id INTEGER, client INTEGER, address TEXT, port INTEGER DEFAULT 5050, priority INTEGER DEFAULT 3, expiration INTEGER DEFAULT 3600)"
         const val CREATE_MESSAGES = "CREATE TABLE messages (id INTEGER PRIMARY KEY, contact INTEGER, guid INTEGER, replyTo INTEGER, incoming BOOL, delivered BOOL, read BOOL, time INTEGER, edit INTEGER, type INTEGER, message BLOB)"
 
@@ -395,6 +395,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             // Add last_msg_id column to group_chats for better sync state tracking
             db.execSQL("ALTER TABLE group_chats ADD COLUMN last_msg_id INTEGER DEFAULT 0")
             Log.i(TAG, "Added last_msg_id column to group_chats table")
+        }
+
+        if (oldVersion < 16 && newVersion >= 16) {
+            // Add muted column to contacts for per-contact notification muting
+            db.execSQL("ALTER TABLE contacts ADD COLUMN muted BOOL DEFAULT 0")
+            Log.i(TAG, "Added muted column to contacts table")
         }
     }
 
@@ -1939,6 +1945,53 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
      */
     fun removeContactPeer(address: String) {
         writableDatabase.delete("ips", "address = ?", arrayOf(address))
+    }
+
+    /**
+     * Checks if a contact is muted.
+     */
+    fun isContactMuted(contactId: Long): Boolean {
+        val cursor = readableDatabase.query(
+            "contacts",
+            arrayOf("muted"),
+            "id = ?",
+            arrayOf(contactId.toString()),
+            null, null, null
+        )
+        val muted = if (cursor.moveToNext()) {
+            cursor.getInt(0) != 0
+        } else {
+            false
+        }
+        cursor.close()
+        return muted
+    }
+
+    /**
+     * Sets the muted status for a contact.
+     */
+    fun setContactMuted(contactId: Long, muted: Boolean): Boolean {
+        return try {
+            val values = ContentValues().apply {
+                put("muted", if (muted) 1 else 0)
+            }
+            val rowsUpdated = writableDatabase.update(
+                "contacts",
+                values,
+                "id = ?",
+                arrayOf(contactId.toString())
+            )
+            if (rowsUpdated > 0) {
+                Log.d(TAG, "Contact $contactId muted status updated to $muted")
+                true
+            } else {
+                Log.w(TAG, "Failed to update muted status for contact $contactId")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating muted status for contact $contactId", e)
+            false
+        }
     }
 
     fun getAccountInfo(id: Int, ifUpdatedSince: Long): AccountInfo? {
