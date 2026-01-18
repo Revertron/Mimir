@@ -708,6 +708,17 @@ class NotificationHelper(private val context: Context) : StorageListener {
     }
 
     /**
+     * Called when all messages for a contact are marked as read.
+     * Cancels the notification and clears cached message text.
+     */
+    override fun onAllMessagesRead(contactId: Long) {
+        cancelMessageNotification(context, contactId)
+        synchronized(messageCache) {
+            messageCache.remove(contactId)
+        }
+    }
+
+    /**
      * Called when a new message is received.
      * Creates and displays notification with message preview.
      * Caches message text for subsequent messages from same contact.
@@ -866,6 +877,17 @@ class NotificationHelper(private val context: Context) : StorageListener {
      * Cancels the notification and clears cached message text.
      */
     override fun onGroupMessageRead(chatId: Long, id: Long) {
+        cancelGroupChatNotification(context, chatId)
+        synchronized(groupMessageCache) {
+            groupMessageCache.remove(chatId)
+        }
+    }
+
+    /**
+     * Called when all messages in a group chat are marked as read.
+     * Cancels the notification and clears cached message text.
+     */
+    override fun onAllGroupMessagesRead(chatId: Long) {
         cancelGroupChatNotification(context, chatId)
         synchronized(groupMessageCache) {
             groupMessageCache.remove(chatId)

@@ -955,6 +955,46 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
+    /**
+     * Marks all incoming messages for a contact as read.
+     */
+    fun markAllMessagesRead(contactId: Long) {
+        val values = ContentValues().apply {
+            put("read", true)
+        }
+        val updated = writableDatabase.update(
+            "messages",
+            values,
+            "contact = ? AND read = 0 AND incoming = 1",
+            arrayOf(contactId.toString())
+        )
+        if (updated > 0) {
+            notificationManager.onAllMessagesRead(contactId)
+        }
+    }
+
+    /**
+     * Marks all incoming messages in a group chat as read.
+     */
+    fun markAllGroupMessagesRead(chatId: Long) {
+        val messagesTable = "messages_$chatId"
+        try {
+            val values = ContentValues().apply {
+                put("read", true)
+            }
+            writableDatabase.update(
+                messagesTable,
+                values,
+                "read = 0 AND incoming = 1",
+                null
+            )
+            resetGroupUnreadCount(chatId)
+            notificationManager.onAllGroupMessagesRead(chatId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking all messages read for chat $chatId", e)
+        }
+    }
+
     fun isGroupMessageUnread(chatId: Long, id: Long): Boolean {
         val messagesTable = "messages_$chatId"
         return try {
@@ -3729,11 +3769,13 @@ interface StorageListener {
     fun onMessageDelivered(id: Long, delivered: Boolean) {}
     fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean { return false }
     fun onMessageRead(id: Long, contactId: Long) {}
+    fun onAllMessagesRead(contactId: Long) {}
     fun onMessageDeleted(messageId: Long, contactId: Long) {}
 
     fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean { return false }
     fun onGroupMessageDeleted(chatId: Long, messageId: Long) {}
     fun onGroupMessageRead(chatId: Long, id: Long) {}
+    fun onAllGroupMessagesRead(chatId: Long) {}
     fun onGroupChatChanged(chatId: Long): Boolean { return false }
     fun onGroupInviteReceived(inviteId: Long, chatId: Long, fromPubkey: ByteArray) {}
 }

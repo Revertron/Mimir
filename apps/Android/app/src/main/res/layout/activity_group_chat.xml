@@ -84,6 +84,21 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent" />
 
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/scroll_to_bottom_fab"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
+        android:src="@drawable/ic_chevron_double_down"
+        app:backgroundTint="?attr/colorPrimaryVariant"
+        app:tint="@color/white"
+        app:shapeAppearanceOverlay="@style/RoundedSquareFab"
+        android:visibility="gone"
+        app:fabSize="mini"
+        app:layout_constraintBottom_toTopOf="@id/tools"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <androidx.appcompat.widget.LinearLayoutCompat
         android:id="@+id/tools"
         android:layout_width="match_parent"

@@ -37,6 +37,7 @@ import androidx.core.content.FileProvider
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.MessageAdapter
@@ -97,6 +98,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     // UI Components - Message List
     protected lateinit var adapter: MessageAdapter
     protected lateinit var recyclerView: RecyclerView
+    protected var scrollToBottomFab: FloatingActionButton? = null
+    private var isFabShowing = false
 
     // State
     protected var isChatVisible: Boolean = false
@@ -365,6 +368,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
 
+        // Setup scroll-to-bottom FAB
+        setupScrollToBottomFab()
+
         // Scroll to first unread message if any, otherwise scroll to end
         val firstUnreadId = getFirstUnreadMessageId()
         if (firstUnreadId != null) {
@@ -372,8 +378,112 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             if (position >= 0) {
                 recyclerView.post {
                     recyclerView.scrollToPosition(position)
+                    // Check FAB visibility after initial scroll
+                    recyclerView.post { updateFabVisibility() }
                 }
             }
+        }
+    }
+
+    private fun updateFabVisibility() {
+        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
+        val lastVisiblePosition = layoutManager.findLastVisibleItemPosition()
+        val itemCount = adapter.itemCount
+
+        if (itemCount == 0) {
+            hideFab()
+            return
+        }
+
+        // Use hysteresis to prevent flickering: show at higher threshold, hide at lower
+        val showThresholdPx = (600 * resources.displayMetrics.density).toInt()
+        val hideThresholdPx = (400 * resources.displayMetrics.density).toInt()
+
+        // Use fixed item height estimate for stability
+        val avgItemHeight = (70 * resources.displayMetrics.density).toInt()
+        val itemsFromEnd = itemCount - 1 - lastVisiblePosition
+        val distanceFromEnd = itemsFromEnd * avgItemHeight
+
+        if (!isFabShowing && distanceFromEnd > showThresholdPx) {
+            showFab()
+        } else if (isFabShowing && distanceFromEnd < hideThresholdPx) {
+            hideFab()
+        }
+    }
+
+    private fun setupScrollToBottomFab() {
+        scrollToBottomFab = findViewById(R.id.scroll_to_bottom_fab)
+        scrollToBottomFab?.let { fab ->
+            // Click listener to scroll to end
+            fab.setOnClickListener {
+                scrollToEndSmart()
+                markAllMessagesAsRead()
+                hideFab()
+            }
+
+            // Scroll listener to show/hide FAB based on distance from end
+            recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+                    updateFabVisibility()
+                }
+            })
+        }
+    }
+
+    private fun scrollToEndSmart() {
+        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
+        val lastVisiblePosition = layoutManager.findLastVisibleItemPosition()
+        val itemCount = adapter.itemCount
+        val lastPosition = itemCount - 1
+
+        if (lastPosition < 0) return
+
+        val itemsFromEnd = lastPosition - lastVisiblePosition
+        // If more than 30 items away, scroll instantly; otherwise animate
+        if (itemsFromEnd > 30) {
+            recyclerView.scrollToPosition(lastPosition)
+        } else {
+            recyclerView.smoothScrollToPosition(lastPosition)
+        }
+    }
+
+    private fun markAllMessagesAsRead() {
+        if (isGroupChat()) {
+            getStorage().markAllGroupMessagesRead(getChatId())
+        } else {
+            getStorage().markAllMessagesRead(getChatId())
+        }
+    }
+
+    private fun showFab() {
+        if (isFabShowing) return
+        scrollToBottomFab?.let { fab ->
+            isFabShowing = true
+            fab.clearAnimation()
+            fab.visibility = View.VISIBLE
+            fab.alpha = 0f
+            fab.animate()
+                .alpha(1f)
+                .setDuration(300)
+                .start()
+        }
+    }
+
+    private fun hideFab() {
+        if (!isFabShowing) return
+        scrollToBottomFab?.let { fab ->
+            isFabShowing = false
+            fab.clearAnimation()
+            fab.animate()
+                .alpha(0f)
+                .setDuration(300)
+                .withEndAction {
+                    if (!isFabShowing) {
+                        fab.visibility = View.GONE
+                    }
+                }
+                .start()
         }
     }
 

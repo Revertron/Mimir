@@ -76,4 +76,8 @@
         <item name="android:textColor">?attr/iconColor</item>
     </style>
 
+    <style name="RoundedSquareFab" parent="">
+        <item name="cornerSize">6dp</item>
+    </style>
+
 </resources>
