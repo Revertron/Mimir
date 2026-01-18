@@ -1680,14 +1680,20 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         return this.writableDatabase.delete(messagesTable, "id = ?", arrayOf(messageId.toString())) > 0
     }
 
-    fun deleteGroupMessageByGuid(chatId: Long, guid: Long): Boolean {
+    /**
+     * Deletes a group message by GUID.
+     * Returns a Pair of (deleted: Boolean, attachmentFileName: String?).
+     * Caller is responsible for deleting the actual files if attachmentFileName is not null.
+     */
+    fun deleteGroupMessageByGuid(chatId: Long, guid: Long): Pair<Boolean, String?> {
         val messagesTable = "messages_$chatId"
 
-        // First, get the message ID before deleting so we can notify listeners
+        // First, get the message ID and attachment info before deleting
         var messageId: Long? = null
+        var attachmentFileName: String? = null
         val cursor = readableDatabase.query(
             messagesTable,
-            arrayOf("id"),
+            arrayOf("id", "type", "data"),
             "guid = ?",
             arrayOf(guid.toString()),
             null, null, null
@@ -1695,6 +1701,22 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         cursor.use {
             if (it.moveToFirst()) {
                 messageId = it.getLong(0)
+                val type = it.getInt(1)
+                // Check if message has an attachment (type 1=image, 3=file)
+                if (type == 1 || type == 3) {
+                    val messageData = it.getBlobOrNull(2)
+                    if (messageData != null) {
+                        try {
+                            val json = JSONObject(String(messageData))
+                            attachmentFileName = json.optString("name", "")
+                            if (attachmentFileName.isNullOrEmpty()) {
+                                attachmentFileName = null
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing attachment data for group message guid $guid", e)
+                        }
+                    }
+                }
             }
         }
 
@@ -1707,7 +1729,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             listeners.forEach { it.onGroupMessageDeleted(chatId, messageId!!) }
         }
 
-        return deleted
+        return Pair(deleted, attachmentFileName)
     }
 
     /**
@@ -2189,8 +2211,45 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
-    fun deleteMessage(messageId: Long) {
+    /**
+     * Deletes a message by ID.
+     * Returns the attachment filename if the message had media (type 1=image or 3=file),
+     * or null if no attachment. Caller is responsible for deleting the actual files.
+     */
+    fun deleteMessage(messageId: Long): String? {
+        var attachmentFileName: String? = null
+
+        // Check if message has an attachment (type 1=image, 3=file)
+        val cursor = readableDatabase.query(
+            "messages",
+            arrayOf("type", "message"),
+            "id = ?",
+            arrayOf(messageId.toString()),
+            null, null, null
+        )
+
+        cursor.use {
+            if (it.moveToFirst()) {
+                val type = it.getInt(0)
+                if (type == 1 || type == 3) {
+                    val messageData = it.getBlobOrNull(1)
+                    if (messageData != null) {
+                        try {
+                            val json = JSONObject(String(messageData))
+                            attachmentFileName = json.optString("name", "")
+                            if (attachmentFileName.isNullOrEmpty()) {
+                                attachmentFileName = null
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing attachment data for message $messageId", e)
+                        }
+                    }
+                }
+            }
+        }
+
         writableDatabase.delete("messages", "id=?", arrayOf("$messageId"))
+        return attachmentFileName
     }
 
     /**
@@ -2238,6 +2297,82 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         listeners.forEach { it.onContactChanged(contactId) }
 
         return attachmentFiles
+    }
+
+    /**
+     * Collects all media filenames referenced in the database.
+     * Scans both contact messages and all group chat messages.
+     * Returns a Set of filenames that are still in use.
+     */
+    fun getAllMediaFileNames(): Set<String> {
+        val fileNames = mutableSetOf<String>()
+
+        // 1. Collect from contact messages (type 1=image, 3=file)
+        readableDatabase.query(
+            "messages",
+            arrayOf("message"),
+            "type IN (1, 3)",
+            null, null, null, null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val messageData = cursor.getBlobOrNull(0)
+                if (messageData != null) {
+                    try {
+                        val json = JSONObject(String(messageData))
+                        val fileName = json.optString("name", "")
+                        if (fileName.isNotEmpty()) {
+                            fileNames.add(fileName)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing attachment data in messages table", e)
+                    }
+                }
+            }
+        }
+
+        // 2. Collect from all group chat messages
+        val groupChatIds = mutableListOf<Long>()
+        readableDatabase.query(
+            "group_chats",
+            arrayOf("chat_id"),
+            null, null, null, null, null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                groupChatIds.add(cursor.getLong(0))
+            }
+        }
+
+        for (chatId in groupChatIds) {
+            val messagesTable = "messages_$chatId"
+            try {
+                readableDatabase.query(
+                    messagesTable,
+                    arrayOf("data"),
+                    "type IN (1, 3)",
+                    null, null, null, null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val messageData = cursor.getBlobOrNull(0)
+                        if (messageData != null) {
+                            try {
+                                val json = JSONObject(String(messageData))
+                                val fileName = json.optString("name", "")
+                                if (fileName.isNotEmpty()) {
+                                    fileNames.add(fileName)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error parsing attachment data in $messagesTable", e)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error querying $messagesTable for media files", e)
+            }
+        }
+
+        Log.i(TAG, "Found ${fileNames.size} media files referenced in database")
+        return fileNames
     }
 
     fun generateGuid(time: Long, data: ByteArray): Long {

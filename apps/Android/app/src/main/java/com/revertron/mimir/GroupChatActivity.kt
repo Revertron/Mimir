@@ -253,13 +253,23 @@ class GroupChatActivity : BaseChatActivity() {
                 // Request deletion from mediator
                 mediatorClient.deleteMessage(groupChat.chatId, guid)
 
-                // Success - the delete message locally
-                getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
+                // Success - delete message locally and get attachment filename
+                val (_, attachmentFileName) = getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
+                // Delete attachment files if present
+                if (attachmentFileName != null) {
+                    File(File(filesDir, "files"), attachmentFileName).delete()
+                    File(File(cacheDir, "files"), attachmentFileName).delete()
+                }
                 Log.i(TAG, "Message deletion request sent successfully for guid $guid")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete message", e)
                 if (e.toString().contains("message not found")) {
-                    getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
+                    val (_, attachmentFileName) = getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
+                    // Delete attachment files if present
+                    if (attachmentFileName != null) {
+                        File(File(filesDir, "files"), attachmentFileName).delete()
+                        File(File(cacheDir, "files"), attachmentFileName).delete()
+                    }
                 } else {
                     runOnUiThread {
                         Toast.makeText(this, getString(R.string.failed_to_delete_message), Toast.LENGTH_SHORT).show()

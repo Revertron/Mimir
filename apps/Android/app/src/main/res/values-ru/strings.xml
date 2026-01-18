@@ -304,6 +304,12 @@
     <string name="messages_fixed">Исправлено %1$d сообщений из %2$d просканированных</string>
     <string name="no_messages_to_fix">Не найдено поломанных сообщений</string>
     <string name="error_fixing_messages">Ошибка исправления сообщений: %s</string>
+    <string name="delete_orphaned_media">Удалить потерянные медиафайлы</string>
+    <string name="delete_orphaned_media_desc">Найти и удалить медиафайлы, на которые не ссылается ни одно сообщение.</string>
+    <string name="scanning_media">Сканирование медиафайлов…</string>
+    <string name="orphaned_media_deleted">Удалено %1$d потерянных файлов (освобождено %2$s)</string>
+    <string name="no_orphaned_media">Потерянные медиафайлы не найдены</string>
+    <string name="error_deleting_orphaned_media">Ошибка удаления потерянных медиафайлов: %s</string>
     <string name="menu_save">Сохранить</string>
     <string name="file_not_found_in_storage">Файл не найден в хранилище.</string>
     <string name="crash_report_title">Отчёт об ошибке</string>

@@ -313,6 +313,12 @@
     <string name="messages_fixed">Fixed %1$d messages out of %2$d scanned</string>
     <string name="no_messages_to_fix">No corrupted messages found</string>
     <string name="error_fixing_messages">Error fixing messages: %s</string>
+    <string name="delete_orphaned_media">Delete orphaned media</string>
+    <string name="delete_orphaned_media_desc">Find and delete media files that are no longer referenced by any message.</string>
+    <string name="scanning_media">Scanning media files…</string>
+    <string name="orphaned_media_deleted">Deleted %1$d orphaned files (%2$s freed)</string>
+    <string name="no_orphaned_media">No orphaned media files found</string>
+    <string name="error_deleting_orphaned_media">Error deleting orphaned media: %s</string>
     <string name="menu_save">Save file</string>
     <string name="file_not_found_in_storage">File not found in storage</string>
     <string name="crash_report_title">Crash Report</string>

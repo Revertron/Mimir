@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.os.Process
+import android.text.format.Formatter
 import android.view.ContextThemeWrapper
 import android.view.MenuItem
 import android.view.View
@@ -12,6 +13,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.ui.SettingsAdapter
+import java.io.File
 
 class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
 
@@ -35,6 +37,13 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 id = R.string.fix_corrupted_messages,
                 titleRes = R.string.fix_corrupted_messages,
                 descriptionRes = R.string.fix_corrupted_messages_desc,
+                isSwitch = false,
+                checked = false
+            ),
+            SettingsAdapter.Item(
+                id = R.string.delete_orphaned_media,
+                titleRes = R.string.delete_orphaned_media,
+                descriptionRes = R.string.delete_orphaned_media_desc,
                 isSwitch = false,
                 checked = false
             ),
@@ -87,6 +96,9 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
             R.string.fix_corrupted_messages -> {
                 showFixCorruptedMessagesDialog()
             }
+            R.string.delete_orphaned_media -> {
+                showDeleteOrphanedMediaDialog()
+            }
             R.string.collect_logs -> {
                 val intent = Intent(this, LogActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
@@ -138,6 +150,86 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                     AlertDialog.Builder(wrapper)
                         .setTitle(R.string.fix_corrupted_messages)
                         .setMessage(getString(R.string.error_fixing_messages, e.message))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                }
+            }
+        }.start()
+    }
+
+    private fun showDeleteOrphanedMediaDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val progressDialog = AlertDialog.Builder(wrapper)
+            .setTitle(R.string.delete_orphaned_media)
+            .setMessage(R.string.scanning_media)
+            .setCancelable(false)
+            .create()
+
+        progressDialog.show()
+
+        // Run the cleanup in a background thread
+        Thread {
+            try {
+                val storage = App.app.storage
+
+                // 1. Get all valid filenames from database
+                val validFileNames = storage.getAllMediaFileNames()
+
+                // 2. Scan files directory and cache directory
+                val filesDir = File(filesDir, "files")
+                val cacheDir = File(cacheDir, "files")
+
+                var deletedCount = 0
+                var freedBytes = 0L
+
+                // Check files in main files directory
+                if (filesDir.exists() && filesDir.isDirectory) {
+                    filesDir.listFiles()?.forEach { file ->
+                        if (file.isFile && !validFileNames.contains(file.name)) {
+                            freedBytes += file.length()
+                            if (file.delete()) {
+                                deletedCount++
+                            }
+                        }
+                    }
+                }
+
+                // Check files in cache directory
+                if (cacheDir.exists() && cacheDir.isDirectory) {
+                    cacheDir.listFiles()?.forEach { file ->
+                        if (file.isFile && !validFileNames.contains(file.name)) {
+                            freedBytes += file.length()
+                            if (file.delete()) {
+                                deletedCount++
+                            }
+                        }
+                    }
+                }
+
+                // Show result on UI thread
+                runOnUiThread {
+                    progressDialog.dismiss()
+
+                    val message = if (deletedCount > 0) {
+                        val freedSize = Formatter.formatFileSize(this, freedBytes)
+                        getString(R.string.orphaned_media_deleted, deletedCount, freedSize)
+                    } else {
+                        getString(R.string.no_orphaned_media)
+                    }
+
+                    AlertDialog.Builder(wrapper)
+                        .setTitle(R.string.delete_orphaned_media)
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progressDialog.dismiss()
+
+                    AlertDialog.Builder(wrapper)
+                        .setTitle(R.string.delete_orphaned_media)
+                        .setMessage(getString(R.string.error_deleting_orphaned_media, e.message))
                         .setPositiveButton(android.R.string.ok, null)
                         .show()
                 }

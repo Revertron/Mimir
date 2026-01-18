@@ -163,7 +163,12 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun deleteMessageByIdOrGuid(messageId: Long, guid: Long) {
-        getStorage().deleteMessage(messageId)
+        val attachmentFileName = getStorage().deleteMessage(messageId)
+        // Delete attachment files if present
+        if (attachmentFileName != null) {
+            File(File(filesDir, "files"), attachmentFileName).delete()
+            File(File(cacheDir, "files"), attachmentFileName).delete()
+        }
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
