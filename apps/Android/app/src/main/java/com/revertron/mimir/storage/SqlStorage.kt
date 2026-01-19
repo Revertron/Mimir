@@ -43,7 +43,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 16
+        const val DATABASE_VERSION = 17
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER, muted BOOL DEFAULT 0)"
@@ -904,8 +904,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             put("edit", editTime)
             put("type", type)
             put("message", message)
-            // Mark as read if: outgoing, call message (type 2), or reaction (type 10)
-            put("read", !incoming || type == 2 || type == MSG_TYPE_REACTION)
+            // Mark as read if: outgoing or call message (type 2)
+            // Reactions (type 10) are kept unread for separate unseen reactions tracking
+            put("read", !incoming || type == 2)
         }
         return this.writableDatabase.insert("messages", null, values).also {
             var processed = false
@@ -1321,11 +1322,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
      */
     fun getFirstUnreadMessageId(userId: Long): Long? {
         var result: Long? = null
+        // Exclude reactions (type=10) - scroll to actual messages, not reactions
         val cursor = readableDatabase.query(
             "messages",
             arrayOf("id"),
-            "contact = ? AND read = 0 AND incoming = 1",
-            arrayOf("$userId"),
+            "contact = ? AND read = 0 AND incoming = 1 AND type != ?",
+            arrayOf("$userId", MSG_TYPE_REACTION.toString()),
             null,
             null,
             "id ASC",
@@ -1347,11 +1349,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         var result: Long? = null
 
         try {
+            // Exclude reactions (type=10) - scroll to actual messages, not reactions
             val cursor = readableDatabase.query(
                 messagesTable,
                 arrayOf("id"),
-                "read = 0 AND incoming = 1",
-                null,
+                "read = 0 AND incoming = 1 AND type != ?",
+                arrayOf(MSG_TYPE_REACTION.toString()),
                 null,
                 null,
                 "id ASC",
@@ -1370,8 +1373,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
     private fun getUnreadCount(userId: Long): Int {
         val db = this.readableDatabase
+        // Exclude reactions (type=10) from unread count - they're tracked separately
         val cursor =
-            db.query("messages", arrayOf("count(read)"), "contact = ? AND read = 0", arrayOf("$userId"), null, null, null)
+            db.query("messages", arrayOf("count(read)"), "contact = ? AND read = 0 AND type != ?", arrayOf("$userId", MSG_TYPE_REACTION.toString()), null, null, null)
         val count = if (cursor.moveToNext()) {
             cursor.getInt(0)
         } else {
@@ -1379,6 +1383,176 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
         cursor.close()
         return count
+    }
+
+    /**
+     * Gets count of unseen reactions to user's outgoing messages for 1-on-1 chats.
+     * A reaction is "unseen" if it's unread (read=0), type=10, and targets an outgoing message.
+     */
+    fun getUnseenReactionsCount(contactId: Long): Int {
+        val db = this.readableDatabase
+        // Count unread reactions (type=10) that target user's outgoing messages
+        val cursor = db.rawQuery(
+            """
+            SELECT COUNT(*) FROM messages
+            WHERE contact = ? AND type = ? AND read = 0
+            AND replyTo IN (SELECT guid FROM messages WHERE contact = ? AND incoming = 0)
+            """.trimIndent(),
+            arrayOf(contactId.toString(), MSG_TYPE_REACTION.toString(), contactId.toString())
+        )
+        val count = if (cursor.moveToNext()) cursor.getInt(0) else 0
+        cursor.close()
+        return count
+    }
+
+    /**
+     * Gets count of unseen reactions to user's outgoing messages for group chats.
+     * Queries the messages table directly for accuracy.
+     */
+    fun getGroupUnseenReactionsCount(chatId: Long): Int {
+        val messagesTable = "messages_$chatId"
+        val db = this.readableDatabase
+        // Count unread reactions (type=10) that target user's outgoing messages (incoming=0)
+        return try {
+            val cursor = db.rawQuery(
+                """
+                SELECT COUNT(*) FROM $messagesTable
+                WHERE type = ? AND read = 0
+                AND replyTo IN (SELECT guid FROM $messagesTable WHERE incoming = 0)
+                """.trimIndent(),
+                arrayOf(MSG_TYPE_REACTION.toString())
+            )
+            val count = if (cursor.moveToNext()) cursor.getInt(0) else 0
+            cursor.close()
+            count
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting unseen reactions count for chat $chatId", e)
+            0
+        }
+    }
+
+    /**
+     * Marks a single reaction as seen (read) for 1-on-1 chats.
+     */
+    fun markReactionAsSeen(contactId: Long, reactionGuid: Long) {
+        val values = ContentValues().apply {
+            put("read", true)
+        }
+        writableDatabase.update(
+            "messages",
+            values,
+            "contact = ? AND guid = ? AND type = ?",
+            arrayOf(contactId.toString(), reactionGuid.toString(), MSG_TYPE_REACTION.toString())
+        )
+    }
+
+    /**
+     * Marks all unseen reactions targeting a specific message as seen (for 1-on-1 chats).
+     * @return The number of reactions marked as seen
+     */
+    fun markReactionsAsSeenForMessage(contactId: Long, targetGuid: Long): Int {
+        val values = ContentValues().apply {
+            put("read", true)
+        }
+        return writableDatabase.update(
+            "messages",
+            values,
+            "contact = ? AND type = ? AND read = 0 AND replyTo = ?",
+            arrayOf(contactId.toString(), MSG_TYPE_REACTION.toString(), targetGuid.toString())
+        )
+    }
+
+    /**
+     * Marks a single reaction as seen (read) for group chats.
+     */
+    fun markGroupReactionAsSeen(chatId: Long, reactionGuid: Long) {
+        val messagesTable = "messages_$chatId"
+        val values = ContentValues().apply {
+            put("read", true)
+        }
+        try {
+            writableDatabase.update(
+                messagesTable,
+                values,
+                "guid = ? AND type = ?",
+                arrayOf(reactionGuid.toString(), MSG_TYPE_REACTION.toString())
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking group reaction as seen for chat $chatId, guid $reactionGuid", e)
+        }
+    }
+
+    /**
+     * Marks all unseen reactions targeting a specific message as seen (for group chats).
+     * @return The number of reactions marked as seen
+     */
+    fun markGroupReactionsAsSeenForMessage(chatId: Long, targetGuid: Long): Int {
+        val messagesTable = "messages_$chatId"
+        val values = ContentValues().apply {
+            put("read", true)
+        }
+        return try {
+            writableDatabase.update(
+                messagesTable,
+                values,
+                "type = ? AND read = 0 AND replyTo = ?",
+                arrayOf(MSG_TYPE_REACTION.toString(), targetGuid.toString())
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking group reactions as seen for chat $chatId, targetGuid $targetGuid", e)
+            0
+        }
+    }
+
+    /**
+     * Gets the first unseen reaction for 1-on-1 chats.
+     * @return Pair of (reactionGuid, targetMessageGuid) or null if no unseen reactions
+     */
+    fun getFirstUnseenReaction(contactId: Long): Pair<Long, Long>? {
+        val db = this.readableDatabase
+        val cursor = db.rawQuery(
+            """
+            SELECT guid, replyTo FROM messages
+            WHERE contact = ? AND type = ? AND read = 0
+            AND replyTo IN (SELECT guid FROM messages WHERE contact = ? AND incoming = 0)
+            ORDER BY time ASC LIMIT 1
+            """.trimIndent(),
+            arrayOf(contactId.toString(), MSG_TYPE_REACTION.toString(), contactId.toString())
+        )
+        val result = if (cursor.moveToNext()) {
+            Pair(cursor.getLong(0), cursor.getLong(1))
+        } else {
+            null
+        }
+        cursor.close()
+        return result
+    }
+
+    /**
+     * Gets the first unseen reaction for group chats.
+     * @return Pair of (reactionGuid, targetMessageGuid) or null if no unseen reactions
+     */
+    fun getFirstUnseenGroupReaction(chatId: Long): Pair<Long, Long>? {
+        val messagesTable = "messages_$chatId"
+        val db = this.readableDatabase
+
+        // Find unread reactions that target outgoing messages (incoming=0)
+        val cursor = db.rawQuery(
+            """
+            SELECT guid, replyTo FROM $messagesTable
+            WHERE type = ? AND read = 0
+            AND replyTo IN (SELECT guid FROM $messagesTable WHERE incoming = 0)
+            ORDER BY timestamp ASC LIMIT 1
+            """.trimIndent(),
+            arrayOf(MSG_TYPE_REACTION.toString())
+        )
+        val result = if (cursor.moveToNext()) {
+            Pair(cursor.getLong(0), cursor.getLong(1))
+        } else {
+            null
+        }
+        cursor.close()
+        return result
     }
 
     private fun getLastMessageDelivered(userId: Long): Boolean? {
@@ -2939,8 +3113,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             // Incoming messages are always delivered
             // Outgoing messages: delivered if synced from server (already sent), pending if newly created locally
             put("delivered", incoming || fromSync)
-            // Mark as read if: outgoing, system message, or reaction (type 10)
-            put("read", !incoming || system || type == MSG_TYPE_REACTION)
+            // Mark as read if: outgoing or system message
+            // Reactions (type 10) are kept unread for separate unseen reactions tracking
+            put("read", !incoming || system)
             put("replyTo", replyTo)
         }
 

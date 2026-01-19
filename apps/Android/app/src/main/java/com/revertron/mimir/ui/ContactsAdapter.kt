@@ -37,6 +37,7 @@ class ContactsAdapter(
         val deliveredIcon: AppCompatImageView = view.findViewById(R.id.delivered_icon)
         val avatar: AppCompatImageView = view.findViewById(R.id.avatar)
         val groupChatIcon: AppCompatImageView = view.findViewById(R.id.group_chat_icon)
+        val reactionsIndicator: AppCompatImageView = view.findViewById(R.id.reactions_indicator)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -78,6 +79,9 @@ class ContactsAdapter(
         } else {
             holder.unreadCount.visibility = View.GONE
         }
+
+        // Set unseen reactions indicator
+        holder.reactionsIndicator.visibility = if (item.unseenReactions > 0) View.VISIBLE else View.GONE
 
         // Handle specific item types
         when (item) {

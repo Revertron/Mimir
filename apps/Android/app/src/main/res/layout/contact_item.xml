@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.appcompat.widget.LinearLayoutCompat
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    xmlns:tools="http://schemas.android.com/tools"
     android:orientation="horizontal"
     android:paddingHorizontal="8dp"
     android:paddingVertical="8dp"
@@ -76,6 +77,17 @@
                 android:textSize="16sp"
                 android:ellipsize="end"
                 android:lines="1" />
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/reactions_indicator"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/unread_badge"
+                android:src="@drawable/ic_heart"
+                android:layout_gravity="bottom"
+                android:visibility="gone"
+                tools:visibility="visible" />
 
             <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/unread_count"

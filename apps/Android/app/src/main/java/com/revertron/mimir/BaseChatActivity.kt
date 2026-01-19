@@ -99,7 +99,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     protected lateinit var adapter: MessageAdapter
     protected lateinit var recyclerView: RecyclerView
     protected var scrollToBottomFab: FloatingActionButton? = null
+    protected var scrollToReactionFab: FloatingActionButton? = null
     private var isFabShowing = false
+    private var isReactionFabShowing = false
 
     // State
     protected var isChatVisible: Boolean = false
@@ -210,6 +212,17 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
      * @return The emoji identifier if user has reacted, null otherwise
      */
     protected abstract fun getUserCurrentReaction(targetGuid: Long): String?
+
+    /**
+     * Gets the count of unseen reactions for this chat.
+     */
+    protected abstract fun getUnseenReactionsCount(): Int
+
+    /**
+     * Gets the first unseen reaction and scrolls to the target message.
+     * @return true if there was a reaction to scroll to, false otherwise
+     */
+    protected abstract fun scrollToFirstUnseenReaction(): Boolean
 
     // Shared UI Setup
 
@@ -371,6 +384,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         // Setup scroll-to-bottom FAB
         setupScrollToBottomFab()
 
+        // Setup scroll-to-reaction FAB
+        setupScrollToReactionFab()
+
         // Scroll to first unread message if any, otherwise scroll to end
         val firstUnreadId = getFirstUnreadMessageId()
         if (firstUnreadId != null) {
@@ -480,6 +496,63 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
                 .setDuration(300)
                 .withEndAction {
                     if (!isFabShowing) {
+                        fab.visibility = View.GONE
+                    }
+                }
+                .start()
+        }
+    }
+
+    // Reaction FAB Setup and Visibility
+
+    private fun setupScrollToReactionFab() {
+        scrollToReactionFab = findViewById(R.id.scroll_to_reaction_fab)
+        scrollToReactionFab?.setOnClickListener {
+            if (scrollToFirstUnseenReaction()) {
+                // After scrolling, update the FAB visibility
+                updateReactionFabVisibility()
+            }
+        }
+        // Initial visibility check
+        updateReactionFabVisibility()
+    }
+
+    /**
+     * Updates the visibility of the reaction FAB based on unseen reactions count.
+     */
+    protected fun updateReactionFabVisibility() {
+        val count = getUnseenReactionsCount()
+        if (count > 0 && !isReactionFabShowing) {
+            showReactionFab()
+        } else if (count == 0 && isReactionFabShowing) {
+            hideReactionFab()
+        }
+    }
+
+    private fun showReactionFab() {
+        if (isReactionFabShowing) return
+        scrollToReactionFab?.let { fab ->
+            isReactionFabShowing = true
+            fab.clearAnimation()
+            fab.visibility = View.VISIBLE
+            fab.alpha = 0f
+            fab.animate()
+                .alpha(1f)
+                .setDuration(300)
+                .start()
+        }
+    }
+
+    private fun hideReactionFab() {
+        if (!isReactionFabShowing) return
+        scrollToReactionFab?.let { fab ->
+            isReactionFabShowing = false
+            fab.clearAnimation()
+            fab.animate()
+                .alpha(0f)
+                .setDuration(300)
+                .withEndAction {
+                    if (!isReactionFabShowing) {
                         fab.visibility = View.GONE
                     }
                 }
@@ -1249,6 +1322,10 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     override fun onResume() {
         super.onResume()
         restoreDraft()
+        // Update reaction FAB visibility when resuming
+        if (::recyclerView.isInitialized) {
+            updateReactionFabVisibility()
+        }
     }
 
     override fun onDestroy() {

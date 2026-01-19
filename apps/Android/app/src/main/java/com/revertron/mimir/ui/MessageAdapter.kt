@@ -51,7 +51,8 @@ class MessageAdapter(
     private val onReplyClick: View.OnClickListener,
     private val onPictureClick: View.OnClickListener,
     private val fontSize: Int,
-    private val onAvatarClick: View.OnClickListener? = null
+    private val onAvatarClick: View.OnClickListener? = null,
+    private val onReactionsMarkedSeen: (() -> Unit)? = null
 ): RecyclerView.Adapter<MessageAdapter.ViewHolder>() {
 
     companion object {
@@ -617,6 +618,18 @@ class MessageAdapter(
         } else {
             storage.setGroupMessageRead(chatId, message.id, true)
         }
+
+        // Mark unseen reactions as seen for outgoing messages when they're displayed
+        if (!message.incoming && message.reactions.isNotEmpty()) {
+            val markedCount = if (!groupChat) {
+                storage.markReactionsAsSeenForMessage(chatId, message.guid)
+            } else {
+                storage.markGroupReactionsAsSeenForMessage(chatId, message.guid)
+            }
+            if (markedCount > 0) {
+                onReactionsMarkedSeen?.invoke()
+            }
+        }
     }
 
     /**
@@ -743,6 +756,23 @@ class MessageAdapter(
     fun getMessageIdPosition(id: Long): Int {
         for ((index, message) in messageIds.withIndex()) {
             if (message.first == id) {
+                return index
+            }
+        }
+        return -1
+    }
+
+    fun getMessageGuidPosition(guid: Long): Int {
+        // Look up the message ID from GUID using storage
+        val messageId = if (groupChat) {
+            storage.getGroupMessage(chatId, guid, byGuid = true)?.id
+        } else {
+            storage.getMessage(guid, byGuid = true)?.id
+        } ?: return -1
+
+        // Find position in messageIds list
+        for ((index, message) in messageIds.withIndex()) {
+            if (message.first == messageId) {
                 return index
             }
         }

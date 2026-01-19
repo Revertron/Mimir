@@ -227,7 +227,8 @@ class GroupChatActivity : BaseChatActivity() {
             onClickOnReply(),
             onClickOnPicture(),
             fontSize,
-            onClickOnAvatar()
+            onAvatarClick = onClickOnAvatar(),
+            onReactionsMarkedSeen = { updateReactionFabVisibility() }
         )
     }
 
@@ -346,6 +347,26 @@ class GroupChatActivity : BaseChatActivity() {
 
     override fun getUserCurrentReaction(targetGuid: Long): String? {
         return getStorage().getUserReactionForGroupMessage(groupChat.chatId, targetGuid)
+    }
+
+    override fun getUnseenReactionsCount(): Int {
+        return getStorage().getGroupUnseenReactionsCount(groupChat.chatId)
+    }
+
+    override fun scrollToFirstUnseenReaction(): Boolean {
+        val reaction = getStorage().getFirstUnseenGroupReaction(groupChat.chatId) ?: return false
+        val (reactionGuid, targetMessageGuid) = reaction
+
+        // Find position of the target message
+        val position = adapter.getMessageGuidPosition(targetMessageGuid)
+        if (position >= 0) {
+            recyclerView.smoothScrollToPosition(position)
+        }
+
+        // Mark the reaction as seen
+        getStorage().markGroupReactionAsSeen(groupChat.chatId, reactionGuid)
+
+        return true
     }
 
     override fun sendMessage(text: String, replyTo: Long) {

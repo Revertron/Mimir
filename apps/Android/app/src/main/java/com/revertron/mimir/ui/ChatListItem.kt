@@ -14,6 +14,7 @@ sealed class ChatListItem {
     abstract val lastMessageText: String?
     abstract val lastMessageTime: Long
     abstract val unreadCount: Int
+    abstract val unseenReactions: Int
     abstract val draft: SqlStorage.Draft?
 
     /**
@@ -26,6 +27,7 @@ sealed class ChatListItem {
         val lastMessage: SqlStorage.Message?,
         override val unreadCount: Int,
         override val avatar: Drawable?,
+        override val unseenReactions: Int = 0,
         override val draft: SqlStorage.Draft? = null
     ) : ChatListItem() {
         override val lastMessageText: String?
@@ -50,6 +52,7 @@ sealed class ChatListItem {
         override val lastMessageText: String?,
         override val lastMessageTime: Long,
         override val unreadCount: Int,
+        override val unseenReactions: Int = 0,
         override val draft: SqlStorage.Draft? = null
     ) : ChatListItem()
 
@@ -63,6 +66,7 @@ sealed class ChatListItem {
         override val lastMessageText: String?,
         override val lastMessageTime: Long,
         override val unreadCount: Int = 0,
+        override val unseenReactions: Int = 0,
         override val draft: SqlStorage.Draft? = null
     ) : ChatListItem()
 }

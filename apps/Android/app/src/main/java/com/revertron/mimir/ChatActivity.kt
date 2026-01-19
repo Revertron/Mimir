@@ -154,7 +154,9 @@ class ChatActivity : BaseChatActivity() {
             this,
             onClickOnReply(),
             onClickOnPicture(),
-            fontSize
+            fontSize,
+            onAvatarClick = null,
+            onReactionsMarkedSeen = { updateReactionFabVisibility() }
         )
     }
 
@@ -226,6 +228,26 @@ class ChatActivity : BaseChatActivity() {
 
     override fun getUserCurrentReaction(targetGuid: Long): String? {
         return getStorage().getUserReactionForMessage(contact.id, targetGuid)
+    }
+
+    override fun getUnseenReactionsCount(): Int {
+        return getStorage().getUnseenReactionsCount(contact.id)
+    }
+
+    override fun scrollToFirstUnseenReaction(): Boolean {
+        val reaction = getStorage().getFirstUnseenReaction(contact.id) ?: return false
+        val (reactionGuid, targetMessageGuid) = reaction
+
+        // Find position of the target message
+        val position = adapter.getMessageGuidPosition(targetMessageGuid)
+        if (position >= 0) {
+            recyclerView.smoothScrollToPosition(position)
+        }
+
+        // Mark the reaction as seen
+        getStorage().markReactionAsSeen(contact.id, reactionGuid)
+
+        return true
     }
 
     override fun sendMessage(text: String, replyTo: Long) {

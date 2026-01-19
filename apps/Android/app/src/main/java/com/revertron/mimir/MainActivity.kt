@@ -433,6 +433,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         chatItems.addAll(contacts.map { contact ->
             // Check if there's a draft for this contact
             val draft = storage.getDraft(SqlStorage.CHAT_TYPE_CONTACT, contact.id)
+            // Get unseen reactions count
+            val unseenReactions = storage.getUnseenReactionsCount(contact.id)
 
             ChatListItem.ContactItem(
                 id = contact.id,
@@ -441,6 +443,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 lastMessage = contact.lastMessage,
                 unreadCount = contact.unread,
                 avatar = contact.avatar,
+                unseenReactions = unseenReactions,
                 draft = draft
             )
         })
@@ -461,6 +464,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
             // Check if there's a draft for this group chat
             val draft = storage.getDraft(SqlStorage.CHAT_TYPE_GROUP, groupChat.chatId)
+            // Get unseen reactions count
+            val unseenReactions = storage.getGroupUnseenReactionsCount(groupChat.chatId)
 
             ChatListItem.GroupChatItem(
                 id = groupChat.chatId,
@@ -474,6 +479,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 lastMessageText = lastMessageText,
                 lastMessageTime = groupChat.lastMessageTime,
                 unreadCount = groupChat.unreadCount,
+                unseenReactions = unseenReactions,
                 draft = draft
             )
         })

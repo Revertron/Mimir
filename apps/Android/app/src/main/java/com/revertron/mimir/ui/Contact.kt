@@ -9,5 +9,6 @@ data class Contact(
     val name: String,
     var lastMessage: SqlStorage.Message?,
     var unread: Int,
-    var avatar: Drawable?
+    var avatar: Drawable?,
+    var unseenReactions: Int = 0
 )
