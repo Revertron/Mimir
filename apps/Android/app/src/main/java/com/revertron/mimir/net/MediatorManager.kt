@@ -667,8 +667,11 @@ class MediatorManager(
                         refreshMemberListFromMediator(chatId, address)
                     }
                     is SystemMessage.UserBanned -> {
-                        // User banned - refresh member list to get updated permissions/status
-                        Log.i(TAG, "User banned in chat $chatId, refreshing member list")
+                        // User banned - mark as gone in local database (same as UserLeft)
+                        storage.deleteGroupMember(chatId, sysMsg.targetUser)
+                        Log.i(TAG, "Removed member from chat $chatId due to UserBanned system message")
+
+                        // Refresh member list from mediator to ensure consistency
                         refreshMemberListFromMediator(chatId, address)
                     }
                     else -> {
