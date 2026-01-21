@@ -5,8 +5,12 @@
     <string name="channel_description_service">Сервис связи</string>
     <string name="channel_name_messages">Сообщения</string>
     <string name="channel_description_messages">Канал сообщений</string>
-    <string name="channel_name_messages_with_contact">Контакт %d</string>
-    <string name="channel_description_messages_with_contact">Сообщения от контакта %d</string>
+    <string name="channel_name_messages_from_user">Сообщения от %s</string>
+    <string name="channel_description_messages_from_user">Сообщения от %s</string>
+    <string name="channel_name_group_chat">Группа %s</string>
+    <string name="channel_description_group_chat">Сообщения из группы %s</string>
+    <string name="channel_group_direct_messages">Личные сообщения</string>
+    <string name="channel_group_groups">Групповые чаты</string>
     <string name="channel_name_calls">Аудио звонки</string>
     <string name="channel_description_calls">Канал звонков</string>
     <string name="state_offline">Не в сети</string>

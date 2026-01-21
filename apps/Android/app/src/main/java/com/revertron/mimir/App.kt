@@ -46,6 +46,7 @@ class App: Application() {
         }
 
         NotificationHelper.createCallChannels(this)
+        NotificationHelper.migrateNotificationChannels(this)
 
         storage = SqlStorage(this)
         storage.cleanUp()

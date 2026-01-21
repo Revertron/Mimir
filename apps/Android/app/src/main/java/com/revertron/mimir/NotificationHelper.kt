@@ -3,6 +3,7 @@ package com.revertron.mimir
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
+import android.app.NotificationChannelGroup
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -61,6 +62,28 @@ class NotificationHelper(private val context: Context) : StorageListener {
         private const val CHANNEL_ONGOING_CALLS = "Ongoing calls"
         private const val CHANNEL_GROUP_INVITES = "GroupInvites"
         private const val CHANNEL_MESSAGES = "Messages"
+
+        // Channel ID prefixes for per-contact/group channels
+        private const val CHANNEL_PREFIX_USER = "user_"
+        private const val CHANNEL_PREFIX_GROUP = "group_"
+
+        // Migration preferences
+        private const val PREFS_NAME = "notification_prefs"
+        private const val PREF_CHANNELS_MIGRATED = "channels_migrated_v2"
+
+        // Protected channels that should not be deleted during migration
+        private val PROTECTED_CHANNELS = setOf(
+            CHANNEL_SERVICE,
+            CHANNEL_UPDATES,
+            CHANNEL_CALLS,
+            CHANNEL_ONGOING_CALLS,
+            CHANNEL_GROUP_INVITES,
+            CHANNEL_MESSAGES
+        )
+
+        // Channel group IDs
+        private const val CHANNEL_GROUP_USERS = "users"
+        private const val CHANNEL_GROUP_GROUPS = "groups"
 
         // Message caching limits
         private const val MAX_MESSAGE_PREVIEW_LENGTH = 50
@@ -569,6 +592,76 @@ class NotificationHelper(private val context: Context) : StorageListener {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.cancel(getGroupChatNotificationId(chatId))
         }
+
+        // ============================================================================
+        // NOTIFICATION CHANNEL MIGRATION
+        // ============================================================================
+
+        /**
+         * Migrates notification channels to the new naming scheme.
+         * Deletes all existing per-contact/per-group channels (keeping system channels)
+         * so they will be recreated with proper names on first notification.
+         *
+         * Should be called once during app initialization.
+         *
+         * @param context Application context
+         */
+        fun migrateNotificationChannels(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                return
+            }
+
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(PREF_CHANNELS_MIGRATED, false)) {
+                return
+            }
+
+            Log.i(TAG, "Migrating notification channels to new naming scheme")
+
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channels = notificationManager.notificationChannels
+
+            var deletedCount = 0
+            for (channel in channels) {
+                val channelId = channel.id
+                // Keep protected system channels
+                if (channelId in PROTECTED_CHANNELS) {
+                    continue
+                }
+                // Keep channels that already use the new format
+                if (channelId.startsWith(CHANNEL_PREFIX_USER) || channelId.startsWith(CHANNEL_PREFIX_GROUP)) {
+                    continue
+                }
+                // Delete old per-contact/per-group channels
+                notificationManager.deleteNotificationChannel(channelId)
+                deletedCount++
+                Log.d(TAG, "Deleted old channel: $channelId")
+            }
+
+            Log.i(TAG, "Migration complete. Deleted $deletedCount old channels.")
+
+            prefs.edit().putBoolean(PREF_CHANNELS_MIGRATED, true).apply()
+        }
+
+        /**
+         * Gets channel ID for a user (1-on-1 chat).
+         *
+         * @param pubkey Contact public key
+         * @return Channel ID in format "user_{hex_pubkey}"
+         */
+        fun getUserChannelId(pubkey: ByteArray): String {
+            return "$CHANNEL_PREFIX_USER${Hex.toHexString(pubkey)}"
+        }
+
+        /**
+         * Gets channel ID for a group chat.
+         *
+         * @param chatId Group chat ID
+         * @return Channel ID in format "group_{chatId}"
+         */
+        fun getGroupChannelId(chatId: Long): String {
+            return "$CHANNEL_PREFIX_GROUP$chatId"
+        }
     }
 
     // ============================================================================
@@ -594,7 +687,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
      * @return Configured notification
      */
     private fun createMessageNotification(contactId: Long, name: String, pubkey: ByteArray, message: String): Notification {
-        createMessageChannels(pubkey, contactId)
+        createMessageChannels(pubkey, name)
 
         val intent = Intent(context, ChatActivity::class.java).apply {
             putExtra("pubkey", pubkey)
@@ -608,8 +701,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
         }
 
         val (uri, _) = createMessageAudioAttributes(context)
-        val hashCode = pubkey.contentHashCode()
-        val channelId = "$CHANNEL_MESSAGES $hashCode"
+        val channelId = getUserChannelId(pubkey)
 
         return NotificationCompat.Builder(context, channelId)
             .setShowWhen(true)
@@ -627,45 +719,29 @@ class NotificationHelper(private val context: Context) : StorageListener {
 
     /**
      * Creates notification channels for message notifications.
-     * Creates both parent "Messages" channel and per-contact child channel.
-     * On Android R+, uses conversation ID for better grouping.
+     * Creates a channel group for direct messages and per-contact channels within it.
+     *
+     * Channel ID format: "user_{hex_pubkey}"
+     * Channel name format: "Messages from {contact_name}"
      *
      * @param pubkey Contact public key
-     * @param contactId Contact database ID
+     * @param contactName Contact display name
      */
-    private fun createMessageChannels(pubkey: ByteArray, contactId: Long) {
+    private fun createMessageChannels(pubkey: ByteArray, contactName: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Clean up old channel format (used hex string)
-            val oldChannelId = Hex.toHexString(pubkey)
-            notificationManager.deleteNotificationChannel(oldChannelId)
-
             val (uri, audioAttributes) = createMessageAudioAttributes(context)
 
-            // Create parent channel
-            val parentChannelId = CHANNEL_MESSAGES
-            if (notificationManager.getNotificationChannel(parentChannelId) == null) {
-                val channelName = context.getString(R.string.channel_name_messages)
-                val descriptionText = context.getString(R.string.channel_description_messages)
-                val parentChannel = NotificationChannel(
-                    parentChannelId,
-                    channelName,
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = descriptionText
-                    setSound(uri, audioAttributes)
-                }
-                notificationManager.createNotificationChannel(parentChannel)
-            }
+            // Create channel group for direct messages (safe to call multiple times - it updates if exists)
+            val groupName = context.getString(R.string.channel_group_direct_messages)
+            val channelGroup = NotificationChannelGroup(CHANNEL_GROUP_USERS, groupName)
+            notificationManager.createNotificationChannelGroup(channelGroup)
 
-            // Create per-contact channel
-            val hashCode = pubkey.contentHashCode()
-            val channelId = "$CHANNEL_MESSAGES $hashCode"
-            val channelName = context.getString(R.string.channel_name_messages_with_contact, contactId)
+            // Create per-contact channel with user-friendly name, assigned to the group
+            val channelId = getUserChannelId(pubkey)
+            val channelName = context.getString(R.string.channel_name_messages_from_user, contactName)
             val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH).apply {
-                description = context.getString(R.string.channel_description_messages_with_contact, contactId)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    setConversationId(parentChannelId, channelId)
-                }
+                description = context.getString(R.string.channel_description_messages_from_user, contactName)
+                group = CHANNEL_GROUP_USERS
                 setSound(uri, audioAttributes)
             }
             notificationManager.createNotificationChannel(channel)
@@ -798,7 +874,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
      * @return Configured notification
      */
     private fun createGroupMessageNotification(chatId: Long, chatName: String, message: String): Notification {
-        createGroupMessageChannels(chatId)
+        createGroupMessageChannels(chatId, chatName)
 
         val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
 
@@ -815,7 +891,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
         }
 
         val (uri, _) = createMessageAudioAttributes(context)
-        val channelId = "${CHANNEL_MESSAGES}_GROUP_${chatId}"
+        val channelId = getGroupChannelId(chatId)
 
         return NotificationCompat.Builder(context, channelId)
             .setShowWhen(true)
@@ -833,39 +909,29 @@ class NotificationHelper(private val context: Context) : StorageListener {
 
     /**
      * Creates notification channels for group chat message notifications.
-     * Creates both parent "Messages" channel and per-group child channel.
-     * On Android R+, uses conversation ID for better grouping.
+     * Creates a channel group for group chats and per-group channels within it.
+     *
+     * Channel ID format: "group_{chatId}"
+     * Channel name format: "Group {group_name}"
      *
      * @param chatId Group chat ID
+     * @param groupName Group display name
      */
-    private fun createGroupMessageChannels(chatId: Long) {
+    private fun createGroupMessageChannels(chatId: Long, groupName: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val (uri, audioAttributes) = createMessageAudioAttributes(context)
 
-            // Create parent channel (reuses CHANNEL_MESSAGES)
-            val parentChannelId = CHANNEL_MESSAGES
-            if (notificationManager.getNotificationChannel(parentChannelId) == null) {
-                val channelName = context.getString(R.string.channel_name_messages)
-                val descriptionText = context.getString(R.string.channel_description_messages)
-                val parentChannel = NotificationChannel(
-                    parentChannelId,
-                    channelName,
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = descriptionText
-                    setSound(uri, audioAttributes)
-                }
-                notificationManager.createNotificationChannel(parentChannel)
-            }
+            // Create channel group for group chats (safe to call multiple times - it updates if exists)
+            val groupLabel = context.getString(R.string.channel_group_groups)
+            val channelGroup = NotificationChannelGroup(CHANNEL_GROUP_GROUPS, groupLabel)
+            notificationManager.createNotificationChannelGroup(channelGroup)
 
-            // Create per-group channel
-            val channelId = "${CHANNEL_MESSAGES}_GROUP_${chatId}"
-            val channelName = "Group Chat $chatId"
+            // Create per-group channel with user-friendly name, assigned to the group
+            val channelId = getGroupChannelId(chatId)
+            val channelName = context.getString(R.string.channel_name_group_chat, groupName)
             val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Group chat notifications for chat $chatId"
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    setConversationId(parentChannelId, channelId)
-                }
+                description = context.getString(R.string.channel_description_group_chat, groupName)
+                group = CHANNEL_GROUP_GROUPS
                 setSound(uri, audioAttributes)
             }
             notificationManager.createNotificationChannel(channel)
