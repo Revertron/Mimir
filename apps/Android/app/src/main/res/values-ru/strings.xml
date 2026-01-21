@@ -153,6 +153,7 @@
     <string name="select_resize_quality">Пересохранять с этим качеством:</string>
     <string name="mute_contact">Без звука</string>
     <string name="clear_history">Очистить историю</string>
+    <string name="error_clearing_history">Ошибка удаления истории</string>
     <string name="block_contact">Заблокировать</string>
     <string name="my_qr_code">Мой QR-код</string>
     <string name="copy_my_id">Скопировать мой ID</string>
@@ -194,6 +195,7 @@
     <string name="group_description">Описание группы:</string>
     <string name="group_description_hint">Какая-то информация о группе</string>
     <string name="create_chat_info">Помощь о создании группы, потом заполним.</string>
+    <string name="edit">Изменить</string>
     <string name="group_info">О группе</string>
     <string name="add_member">Добавить участника</string>
     <string name="mute_group">Выкл. звук</string>
@@ -316,4 +318,14 @@
     <string name="crash_report_description">Приложение упало.</string>
     <string name="crash_report_subject">Отчёт об ошибке в Мимире</string>
     <string name="close">Закрыть</string>
+    <string name="clear">Очистить</string>
+    <string name="clear_history_confirm_text">Вы уверены, что хотите удалить все сообщения? Это действие необратимо. Контакт/чат останутся.</string>
+    <string name="history_cleared">История удалена</string>
+    <string name="edit_group_info">Изменить данные группы</string>
+    <string name="edit_chat_info">Изменения увидят все участники.</string>
+    <string name="save_changes">Сохранить изменения</string>
+    <string name="saving_changes">Сохранение изменений…</string>
+    <string name="chat_info_updated">Данные чата изменены!</string>
+    <string name="failed_to_update_chat_info">Ошибка изменения данных чата</string>
+    <string name="no_changes_made">Данные не изменены</string>
 </resources>

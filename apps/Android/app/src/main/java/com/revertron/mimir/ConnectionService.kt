@@ -370,6 +370,17 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }.start()
                 }
             }
+            "mediator_update_chat_info" -> {
+                val chatId = intent.getLongExtra("chat_id", 0)
+                val name = intent.getStringExtra("name")
+                val description = intent.getStringExtra("description")
+                val avatar = intent.getByteArrayExtra("avatar")
+                if (chatId != 0L) {
+                    Thread {
+                        updateChatInfo(chatId, name, description, avatar)
+                    }.start()
+                }
+            }
             "mediator_subscribe" -> {
                 val chatId = intent.getLongExtra("chat_id", 0)
                 if (chatId != 0L) {
@@ -656,6 +667,37 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     putExtra("name", name)
                     putExtra("description", description)
                     putExtra("mediator_address", mediatorPubkey)
+                }
+                LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
+            },
+            errorBroadcaster = { operation, message ->
+                broadcastMediatorError(operation, message ?: "Unknown error")
+            }
+        )
+    }
+
+    private fun updateChatInfo(chatId: Long, name: String?, description: String?, avatar: ByteArray?) {
+        mediatorManager?.updateChatInfo(
+            chatId,
+            name,
+            description,
+            avatar,
+            successBroadcaster = {
+                // Update local database
+                val storage = App.app.storage
+                if (name != null) {
+                    storage.updateGroupChatName(chatId, name)
+                }
+                if (description != null) {
+                    storage.updateGroupChatDescription(chatId, description)
+                }
+                if (avatar != null) {
+                    storage.updateGroupChatAvatar(chatId, avatar)
+                }
+
+                // Broadcast success
+                val broadcastIntent = Intent("ACTION_MEDIATOR_CHAT_INFO_UPDATED").apply {
+                    putExtra("chat_id", chatId)
                 }
                 LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent)
             },

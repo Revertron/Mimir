@@ -139,7 +139,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 return true
             }
             R.id.create_chat -> {
-                val intent = Intent(this, NewChatActivity::class.java)
+                val intent = Intent(this, GroupChatEditActivity::class.java)
+                intent.putExtra(GroupChatEditActivity.EXTRA_MODE, GroupChatEditActivity.MODE_CREATE)
                 startActivity(intent, animFromRight.toBundle())
                 return true
             }

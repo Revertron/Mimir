@@ -182,6 +182,34 @@
                         android:textSize="12sp" />
                 </androidx.appcompat.widget.LinearLayoutCompat>
 
+                <!-- Edit Button (visible only for owner/admin) -->
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:id="@+id/btn_edit"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal|top"
+                    android:padding="12dp"
+                    android:visibility="gone"
+                    android:background="@drawable/button_rounded">
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:tint="?attr/iconColor"
+                        android:src="@drawable/ic_book_edit_outline" />
+
+                    <androidx.appcompat.widget.AppCompatTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center"
+                        android:text="@string/edit"
+                        android:textSize="12sp" />
+                </androidx.appcompat.widget.LinearLayoutCompat>
+
                 <!-- Leave Button -->
                 <androidx.appcompat.widget.LinearLayoutCompat
                     android:id="@+id/btn_leave_chat"

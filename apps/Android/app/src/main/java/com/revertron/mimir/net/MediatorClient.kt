@@ -67,6 +67,7 @@ class MediatorClient(
         private const val CMD_PING: Int = 0x03
         private const val CMD_CREATE_CHAT: Int = 0x10
         private const val CMD_DELETE_CHAT: Int = 0x11
+        private const val CMD_UPDATE_CHAT_INFO: Int = 0x12
         private const val CMD_ADD_USER: Int = 0x20
         private const val CMD_DELETE_USER: Int = 0x21
         private const val CMD_LEAVE_CHAT: Int = 0x22
@@ -325,6 +326,42 @@ class MediatorClient(
         if (resp.status != STATUS_OK) throw resp.asException("deleteChat failed")
         // server returns 1 byte 1 on success; we tolerate OK w/empty as well
         return true
+    }
+
+    /**
+     * Updates chat info (name, description, avatar).
+     * Only owner or admin can update chat info.
+     * At least one of name/description/avatar must be provided.
+     *
+     * @param chatId The chat ID to update
+     * @param name New chat name (null to keep unchanged, max 25 UTF-8 chars)
+     * @param description New chat description (null to keep unchanged, max 200 UTF-8 chars)
+     * @param avatar New chat avatar (null to keep unchanged, max 200KB)
+     */
+    fun updateChatInfo(chatId: Long, name: String? = null, description: String? = null, avatar: ByteArray? = null) {
+        require(name != null || description != null || avatar != null) { "At least one field must be provided" }
+        require(name == null || name.length <= 25) { "name too long (max 25 chars)" }
+        require(description == null || description.length <= 200) { "description too long (max 200 chars)" }
+        require(avatar == null || avatar.size <= 200 * 1024) { "avatar too large (max 200KB)" }
+
+        // Build TLV payload with only provided fields
+        val payload = ByteArrayOutputStream().apply {
+            writeTLVLong(TAG_CHAT_ID, chatId)
+            if (name != null) {
+                writeTLVString(TAG_CHAT_NAME, name)
+            }
+            if (description != null) {
+                writeTLVString(TAG_CHAT_DESC, description)
+            }
+            if (avatar != null) {
+                writeTLV(TAG_CHAT_AVATAR, avatar)
+            }
+        }.toByteArray()
+
+        val resp = request(CMD_UPDATE_CHAT_INFO, payload) ?: throw MediatorException("updateChatInfo timeout")
+        if (resp.status != STATUS_OK) throw resp.asException("updateChatInfo failed")
+
+        Log.i(TAG, "Chat info updated for chat $chatId")
     }
 
     fun addUser(chatId: Long, userPubKey: ByteArray) {
@@ -1288,7 +1325,7 @@ class MediatorClient(
          * - SYS_USER_LEFT (0x03): [user(32)][random(32)]
          * - SYS_USER_BANNED (0x04): [target_user(32)][actor(32)][random(32)]
          * - SYS_CHAT_DELETED (0x05): [actor(32)][random(32)]
-         * - SYS_CHAT_INFO_CHANGE (0x06): [actor(32)][random(32)]
+         * - SYS_CHAT_INFO_CHANGE (0x06): [TLV: TAG_PUBKEY(actor), TAG_CHAT_NAME?, TAG_CHAT_DESC?, TAG_CHAT_AVATAR?]
          * - SYS_PERMS_CHANGED (0x07): [target_user(32)][new_perms(1)][actor(32)][random(32)]
          *
          * @param chatId The group chat ID

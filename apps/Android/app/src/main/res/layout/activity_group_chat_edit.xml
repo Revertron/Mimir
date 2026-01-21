@@ -5,7 +5,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".NewChatActivity">
+    tools:context=".GroupChatEditActivity">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
@@ -24,7 +24,7 @@
         android:layout_height="0dp"
         android:fillViewport="true"
         app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintBottom_toTopOf="@id/create_button"
+        app:layout_constraintBottom_toTopOf="@id/action_button"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent">
 
@@ -81,7 +81,7 @@
                     android:layout_height="wrap_content"
                     android:hint="@string/group_name_hint"
                     android:inputType="textCapWords"
-                    android:maxLength="20"
+                    android:maxLength="25"
                     android:singleLine="true"
                     android:padding="12dp" />
 
@@ -90,7 +90,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="end"
-                    android:text="0/20"
+                    android:text="0/25"
                     android:textSize="12sp"
                     android:alpha="0.6"
                     android:layout_marginTop="4dp" />
@@ -138,6 +138,7 @@
 
             <!-- Info Text -->
             <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/info_text"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/create_chat_info"
@@ -149,9 +150,9 @@
 
     </ScrollView>
 
-    <!-- Create Button -->
+    <!-- Action Button -->
     <androidx.appcompat.widget.AppCompatButton
-        android:id="@+id/create_button"
+        android:id="@+id/action_button"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="@string/create_chat"

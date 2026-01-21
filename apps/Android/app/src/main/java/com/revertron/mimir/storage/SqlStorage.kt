@@ -2889,6 +2889,30 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
+     * Updates the name of a group chat
+     */
+    fun updateGroupChatName(chatId: Long, name: String): Boolean {
+        val values = ContentValues().apply {
+            put("name", name)
+            put("updated_at", getUtcTime())
+        }
+        val rows = writableDatabase.update("group_chats", values, "chat_id = ?", arrayOf(chatId.toString()))
+        return rows > 0
+    }
+
+    /**
+     * Updates the description of a group chat
+     */
+    fun updateGroupChatDescription(chatId: Long, description: String): Boolean {
+        val values = ContentValues().apply {
+            put("description", description)
+            put("updated_at", getUtcTime())
+        }
+        val rows = writableDatabase.update("group_chats", values, "chat_id = ?", arrayOf(chatId.toString()))
+        return rows > 0
+    }
+
+    /**
      * Updates or sets the avatar for a group chat
      */
     fun updateGroupChatAvatar(chatId: Long, avatar: ByteArray?): String? {

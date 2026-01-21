@@ -653,6 +653,23 @@ class MediatorManager(
 
             val lastMemberSync = storage.getGroupChatTimestamp(chatId)
 
+            // Handle chat info changes (always process, regardless of timestamp)
+            if (sysMsg is SystemMessage.ChatInfoChanged) {
+                Log.i(TAG, "Processing ChatInfoChanged for chat $chatId")
+                sysMsg.name?.let {
+                    storage.updateGroupChatName(chatId, it)
+                    Log.i(TAG, "Updated chat $chatId name to: $it")
+                }
+                sysMsg.description?.let {
+                    storage.updateGroupChatDescription(chatId, it)
+                    Log.i(TAG, "Updated chat $chatId description")
+                }
+                sysMsg.avatar?.let {
+                    storage.updateGroupChatAvatar(chatId, it)
+                    Log.i(TAG, "Updated chat $chatId avatar (${it.size} bytes)")
+                }
+            }
+
             // Only process member-affecting system messages that occurred after the last member sync
             // This prevents race conditions where old "user left" messages arrive during sync
             // and incorrectly remove recently re-added members
@@ -1228,6 +1245,48 @@ class MediatorManager(
             } catch (e: Exception) {
                 Log.e(TAG, "Error creating chat", e)
                 errorBroadcaster("create_chat", e.message ?: "Unknown error")
+            }
+        }.start()
+    }
+
+    /**
+     * Updates group chat info (name, description, avatar).
+     * Only owner or admin can update chat info.
+     * At least one of name/description/avatar must be provided.
+     */
+    fun updateChatInfo(
+        chatId: Long,
+        name: String?,
+        description: String?,
+        avatar: ByteArray?,
+        successBroadcaster: () -> Unit,
+        errorBroadcaster: (operation: String, message: String?) -> Unit
+    ) {
+        Thread {
+            try {
+                // Get chat info
+                val chatInfo = storage.getGroupChat(chatId)
+                if (chatInfo == null) {
+                    Log.e(TAG, "Chat $chatId not found")
+                    errorBroadcaster("update_chat_info", "Chat not found")
+                    return@Thread
+                }
+
+                // Get client for this mediator
+                val client = getOrCreateClient(chatInfo.mediatorPubkey)
+
+                // Update chat info on mediator
+                client.updateChatInfo(chatId, name, description, avatar)
+                Log.i(TAG, "Chat info updated on mediator for chat $chatId")
+
+                // Broadcast success
+                handler.post {
+                    successBroadcaster()
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating chat info", e)
+                errorBroadcaster("update_chat_info", e.message ?: "Unknown error")
             }
         }.start()
     }

@@ -491,6 +491,12 @@ const val SYS_CHAT_INFO_CHANGE: Byte = 0x06
 const val SYS_PERMS_CHANGED: Byte = 0x07
 const val SYS_MESSAGE_DELETED: Byte = 0x08
 
+// TLV tag constants for system message parsing
+private const val TLV_TAG_PUBKEY: Byte = 0x01
+private const val TLV_TAG_CHAT_NAME: Byte = 0x20
+private const val TLV_TAG_CHAT_DESC: Byte = 0x21
+private const val TLV_TAG_CHAT_AVATAR: Byte = 0x22
+
 /**
  * Represents a parsed system message from the mediator.
  * System messages are unencrypted and have a specific format:
@@ -547,11 +553,14 @@ sealed class SystemMessage {
 
     /**
      * Chat info (name, description, avatar) was changed.
-     * Format: [event_code(1)][actor(32)][random(32)]
+     * Format: [event_code(1)][TLV: TAG_PUBKEY(actor), TAG_CHAT_NAME?, TAG_CHAT_DESC?, TAG_CHAT_AVATAR?]
+     * Only changed fields are included in the TLV payload.
      */
     data class ChatInfoChanged(
         val actor: ByteArray,
-        val random: ByteArray
+        val name: String?,
+        val description: String?,
+        val avatar: ByteArray?
     ) : SystemMessage() {
         override val eventCode: Byte = SYS_CHAT_INFO_CHANGE
     }
@@ -587,6 +596,64 @@ sealed class SystemMessage {
         override val eventCode: Byte,
         val rawData: ByteArray
     ) : SystemMessage()
+}
+
+/**
+ * Parses TLV fields from a byte array starting at the given offset.
+ * TLV format: [tag(1)][length(varint)][value(length)]
+ *
+ * @param data The byte array containing TLV data
+ * @param startOffset Offset to start parsing from
+ * @return Map of tag to value
+ */
+private fun parseTLVFields(data: ByteArray, startOffset: Int): Map<Byte, ByteArray> {
+    val result = mutableMapOf<Byte, ByteArray>()
+    var offset = startOffset
+
+    while (offset < data.size) {
+        // Read tag
+        if (offset >= data.size) break
+        val tag = data[offset++]
+
+        // Read length (varint)
+        val (length, consumed) = readVarint(data, offset)
+        offset += consumed
+
+        // Read value
+        if (offset + length > data.size) {
+            Log.w(TAG, "TLV tag 0x${tag.toString(16)} length $length exceeds data bounds")
+            break
+        }
+        val value = data.copyOfRange(offset, offset + length)
+        offset += length
+
+        result[tag] = value
+    }
+
+    return result
+}
+
+/**
+ * Reads a varint from byte array at the given offset.
+ * Returns pair of (value, bytesConsumed).
+ */
+private fun readVarint(data: ByteArray, offset: Int): Pair<Int, Int> {
+    var result = 0
+    var shift = 0
+    var consumed = 0
+    var i = offset
+
+    for (byteIdx in 0 until 4) {
+        if (i >= data.size) throw IllegalArgumentException("Varint: unexpected end of data")
+        val b = data[i++].toInt() and 0xFF
+        consumed++
+        result = result or ((b and 0x7F) shl shift)
+        if ((b and 0x80) == 0) {
+            return Pair(result, consumed)
+        }
+        shift += 7
+    }
+    throw IllegalArgumentException("Varint overflow: more than 4 bytes")
 }
 
 /**
@@ -648,13 +715,26 @@ fun parseSystemMessage(data: ByteArray): SystemMessage? {
             }
 
             SYS_CHAT_INFO_CHANGE -> {
-                if (data.size < 65) { // 1 + 32 + 32
+                // New TLV format: [event_code(1)][TLV: TAG_PUBKEY(actor), TAG_CHAT_NAME?, TAG_CHAT_DESC?, TAG_CHAT_AVATAR?]
+                if (data.size < 2) {
                     Log.w(TAG, "SYS_CHAT_INFO_CHANGE message too short: ${data.size}")
                     return null
                 }
-                val actor = data.copyOfRange(1, 33)
-                val random = data.copyOfRange(33, 65)
-                SystemMessage.ChatInfoChanged(actor, random)
+
+                // Parse TLV fields starting after event code
+                val tlvs = parseTLVFields(data, 1)
+
+                val actor = tlvs[TLV_TAG_PUBKEY]
+                if (actor == null || actor.size != 32) {
+                    Log.w(TAG, "SYS_CHAT_INFO_CHANGE missing or invalid actor pubkey")
+                    return null
+                }
+
+                val name = tlvs[TLV_TAG_CHAT_NAME]?.toString(Charsets.UTF_8)
+                val description = tlvs[TLV_TAG_CHAT_DESC]?.toString(Charsets.UTF_8)
+                val avatar = tlvs[TLV_TAG_CHAT_AVATAR]
+
+                SystemMessage.ChatInfoChanged(actor, name, description, avatar)
             }
 
             SYS_PERMS_CHANGED -> {

@@ -214,6 +214,14 @@
     <string name="group_description">Group description:</string>
     <string name="group_description_hint">Some info about this group.</string>
     <string name="create_chat_info">Help about chat creation, tbd later.</string>
+    <string name="edit_group_info">Edit group info</string>
+    <string name="edit_chat_info">Changes will be visible to all group members.</string>
+    <string name="save_changes">Save changes</string>
+    <string name="saving_changes">Saving changes…</string>
+    <string name="chat_info_updated">Group info updated successfully!</string>
+    <string name="failed_to_update_chat_info">Failed to update group info</string>
+    <string name="no_changes_made">No changes to save</string>
+    <string name="edit">Edit</string>
     <string name="group_info">Group info</string>
     <string name="add_member">Add member</string>
     <string name="mute_group">Mute group</string>

@@ -37,6 +37,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         const val EXTRA_MEDIATOR_ADDRESS = "mediator_address"
 
         private const val REQUEST_SELECT_CONTACT = 100
+        private const val REQUEST_EDIT_CHAT_INFO = 101
     }
 
     private lateinit var chatName: String
@@ -216,7 +217,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         inviteLinkText.text = inviteLink
 
         // Setup click listeners
-        findViewById<LinearLayoutCompat>(R.id.btn_message).setOnClickListener {
+        val messageButton = findViewById<LinearLayoutCompat>(R.id.btn_message)
+        messageButton.setOnClickListener {
             // Close this activity to return to chat
             finish()
         }
@@ -270,6 +272,29 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                 Toast.makeText(this, "Only owner can add members", Toast.LENGTH_SHORT).show()
             }
         }
+
+        // Setup edit button (visible only for owner/admin)
+        val editButton = findViewById<LinearLayoutCompat>(R.id.btn_edit)
+        if (isOwner) {
+            editButton.visibility = View.VISIBLE
+            editButton.setOnClickListener {
+                openEditChatInfo()
+            }
+            messageButton.visibility = View.GONE
+        } else {
+            editButton.visibility = View.GONE
+        }
+    }
+
+    private fun openEditChatInfo() {
+        val intent = Intent(this, GroupChatEditActivity::class.java).apply {
+            putExtra(GroupChatEditActivity.EXTRA_MODE, GroupChatEditActivity.MODE_EDIT)
+            putExtra(GroupChatEditActivity.EXTRA_CHAT_ID, chatId)
+            putExtra(GroupChatEditActivity.EXTRA_CHAT_NAME, chatName)
+            putExtra(GroupChatEditActivity.EXTRA_CHAT_DESCRIPTION, chatDescription)
+            putExtra(GroupChatEditActivity.EXTRA_MEDIATOR_ADDRESS, mediatorAddress)
+        }
+        startActivityForResult(intent, REQUEST_EDIT_CHAT_INFO)
     }
 
     private fun updateMemberCount() {
@@ -386,6 +411,42 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                         sendInvite(pubkey, name ?: "Unknown")
                     }
                 }
+            }
+            REQUEST_EDIT_CHAT_INFO -> {
+                if (resultCode == RESULT_OK) {
+                    // Reload chat info from database
+                    refreshChatInfo()
+                }
+            }
+        }
+    }
+
+    private fun refreshChatInfo() {
+        val chatInfo = getStorage().getGroupChat(chatId)
+        if (chatInfo != null) {
+            chatName = chatInfo.name
+            chatDescription = chatInfo.description ?: ""
+
+            // Update UI
+            findViewById<AppCompatTextView>(R.id.group_name).text = chatName
+            findViewById<AppCompatTextView>(R.id.toolbar_title).text = chatName
+
+            // Update description section
+            val descriptionSection = findViewById<LinearLayoutCompat>(R.id.description_section)
+            val descriptionText = findViewById<AppCompatTextView>(R.id.description_text)
+            if (chatDescription.isNotEmpty()) {
+                descriptionSection.visibility = View.VISIBLE
+                descriptionText.text = chatDescription
+            } else {
+                descriptionSection.visibility = View.GONE
+            }
+
+            // Update avatar
+            val avatar = getStorage().getGroupChatAvatar(chatId, 128, 8)
+            val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
+            if (avatar != null) {
+                avatarView.clearColorFilter()
+                avatarView.setImageDrawable(avatar)
             }
         }
     }
