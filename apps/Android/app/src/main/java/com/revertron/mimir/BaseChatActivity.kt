@@ -481,23 +481,20 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     }
 
     private fun updateFabVisibility() {
-        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
-        val lastVisiblePosition = layoutManager.findLastVisibleItemPosition()
-        val itemCount = adapter.itemCount
-
-        if (itemCount == 0) {
+        if (adapter.itemCount == 0) {
             hideFab()
             return
         }
 
         // Use hysteresis to prevent flickering: show at higher threshold, hide at lower
-        val showThresholdPx = (600 * resources.displayMetrics.density).toInt()
-        val hideThresholdPx = (400 * resources.displayMetrics.density).toInt()
+        val showThresholdPx = (1600 * resources.displayMetrics.density).toInt()
+        val hideThresholdPx = (1400 * resources.displayMetrics.density).toInt()
 
-        // Use fixed item height estimate for stability
-        val avgItemHeight = (70 * resources.displayMetrics.density).toInt()
-        val itemsFromEnd = itemCount - 1 - lastVisiblePosition
-        val distanceFromEnd = itemsFromEnd * avgItemHeight
+        // Calculate actual pixel distance from bottom using RecyclerView's scroll computations
+        val scrollRange = recyclerView.computeVerticalScrollRange()
+        val scrollOffset = recyclerView.computeVerticalScrollOffset()
+        val scrollExtent = recyclerView.computeVerticalScrollExtent()
+        val distanceFromEnd = scrollRange - scrollOffset - scrollExtent
 
         if (!isFabShowing && distanceFromEnd > showThresholdPx) {
             showFab()
