@@ -659,7 +659,7 @@ class MessageAdapter(
 
             val textView = AppCompatTextView(context).apply {
                 text = displayText
-                textSize = 13f
+                textSize = fontSize.toFloat() - 2f
                 setPadding(
                     (8 * density).toInt(),
                     (4 * density).toInt(),
