@@ -815,73 +815,74 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
     private fun showContextMenuAtLocation(anchorView: View, x: Int, y: Int) {
         val inflater = LayoutInflater.from(this)
-        val popupView = inflater.inflate(R.layout.popup_message_context_menu, null)
         val elevation = 8f * resources.displayMetrics.density
-        popupView.findViewById<View>(R.id.reactions_card).elevation = elevation
-        popupView.findViewById<View>(R.id.menu_card).elevation = elevation
+        val margin = (4 * resources.displayMetrics.density).toInt()
+        val spacing = (6 * resources.displayMetrics.density).toInt()
 
-        val popupWindow = PopupWindow(
-            popupView,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            true
-        )
-
-        // Enable elevation/shadow - use transparent background to allow CardView shadow to show
-        //popupWindow.elevation = 8f * resources.displayMetrics.density
-        popupWindow.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
-        // Tell the popup to not interact with input method (keeps keyboard stable)
-        popupWindow.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
-
-        // **Measure the popup view to get its dimensions**
-        popupView.measure(
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        val popupWidth = popupView.measuredWidth
-        val popupHeight = popupView.measuredHeight
-
-        // **Get screen dimensions**
+        // Get screen dimensions
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         val screenHeight = displayMetrics.heightPixels
 
-        // **Adjust position based on screen location**
-        var adjustedX = x
-        var adjustedY = y
-
-        // Shift left if in right half of screen
-        if (x > screenWidth / 2) {
-            adjustedX = x - popupWidth
-        }
-
-        // Shift up if in bottom half of screen
-        if (y > screenHeight / 2) {
-            adjustedY = y - popupHeight
-        }
-
-        // **Optional: Add padding/margin**
-        val margin = (4 * resources.displayMetrics.density).toInt()
-
-        // Ensure popup stays within screen bounds (handle cases where popup is larger than screen)
-        val maxX = maxOf(margin, screenWidth - popupWidth - margin)
-        val maxY = maxOf(margin, screenHeight - popupHeight - margin)
-        adjustedX = adjustedX.coerceIn(margin, maxX)
-        adjustedY = adjustedY.coerceIn(margin, maxY)
-
-        // Get message type from tag to determine which menu items to show
+        // Get message type from tag to determine which elements to show
         val tag = anchorView.tag as? MessageTag
         val messageType = tag?.messageType ?: 0
+        val showReactions = messageType != 1000  // Don't show reactions for system messages
+
+        // === Create menu popup ===
+        val menuView = inflater.inflate(R.layout.popup_message_context_menu, null)
+        menuView.findViewById<View>(R.id.menu_card).elevation = elevation
+
+        val menuPopup = PopupWindow(
+            menuView,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        )
+        menuPopup.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+        menuPopup.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
+        menuPopup.elevation = 8f * resources.displayMetrics.density
 
         // Hide "Save" menu item for messages without file attachments (type != 1 and type != 3)
         if (messageType != 1 && messageType != 3) {
-            popupView.findViewById<View>(R.id.menu_save).visibility = View.GONE
+            menuView.findViewById<View>(R.id.menu_save).visibility = View.GONE
         }
 
-        // Hide emoji row for system messages
-        if (messageType == 1000) {
-            popupView.findViewById<View>(R.id.emoji_row).visibility = View.GONE
-        } else {
+        // Measure menu popup
+        menuView.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val menuWidth = menuView.measuredWidth
+        val menuHeight = menuView.measuredHeight
+
+        // === Create reactions popup (if needed) ===
+        var reactionsPopup: PopupWindow? = null
+        var reactionsWidth = 0
+        var reactionsHeight = 0
+
+        if (showReactions) {
+            val reactionsView = inflater.inflate(R.layout.popup_reactions, null)
+            reactionsView.findViewById<View>(R.id.reactions_card).elevation = elevation
+
+            reactionsPopup = PopupWindow(
+                reactionsView,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                false  // Not focusable - menu popup handles focus
+            )
+            reactionsPopup.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+            reactionsPopup.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
+            reactionsPopup.elevation = 8f * resources.displayMetrics.density
+
+            // Measure reactions popup
+            reactionsView.measure(
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            reactionsWidth = reactionsView.measuredWidth
+            reactionsHeight = reactionsView.measuredHeight
+
             // Set up emoji reaction click handlers
             val targetGuid = tag?.guid ?: 0L
             val currentEmoji = getUserCurrentReaction(targetGuid)
@@ -898,49 +899,110 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             )
 
             for ((viewId, emojiId) in emojiButtons) {
-                popupView.findViewById<View>(viewId).setOnClickListener {
+                reactionsView.findViewById<View>(viewId).setOnClickListener {
                     handleReaction(targetGuid, emojiId, currentEmoji)
-                    popupWindow.dismiss()
+                    reactionsPopup.dismiss()
+                    menuPopup.dismiss()
                 }
             }
         }
 
-        popupView.setOnClickListener {
-            popupWindow.dismiss()
+        // === Calculate positions ===
+        // Total height of both popups combined (for positioning)
+        val totalHeight = if (showReactions) menuHeight + reactionsHeight + spacing else menuHeight
+
+        // Calculate menu position (this is the "anchor" position)
+        var menuX = x
+        var menuY = y
+
+        // Shift left if in right half of screen
+        if (x > screenWidth / 2) {
+            menuX = x - menuWidth
         }
 
-        // Set up menu item click handlers
-        popupView.findViewById<View>(R.id.menu_reply).setOnClickListener {
+        // Shift up if in bottom half of screen
+        if (y > screenHeight / 2) {
+            menuY = y - totalHeight
+            if (showReactions) {
+                menuY += reactionsHeight + spacing  // Adjust so menu is at the bottom
+            }
+        }
+
+        // Ensure menu stays within screen bounds
+        val menuMaxX = maxOf(margin, screenWidth - menuWidth - margin)
+        val menuMaxY = maxOf(margin, screenHeight - menuHeight - margin)
+        menuX = menuX.coerceIn(margin, menuMaxX)
+        menuY = menuY.coerceIn(margin, menuMaxY)
+
+        // Calculate reactions position (above the menu)
+        var reactionsX = menuX + (menuWidth - reactionsWidth) / 2  // Center horizontally relative to menu
+        var reactionsY = menuY - reactionsHeight - spacing
+
+        // Ensure reactions stays within screen bounds
+        if (showReactions) {
+            val reactionsMaxX = maxOf(margin, screenWidth - reactionsWidth - margin)
+            reactionsX = reactionsX.coerceIn(margin, reactionsMaxX)
+            // If reactions would go above screen, place it below the menu instead
+            if (reactionsY < margin) {
+                reactionsY = menuY + menuHeight + spacing
+            }
+        }
+
+        // === Set up menu click handlers ===
+        menuView.setOnClickListener {
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
+        }
+
+        menuView.findViewById<View>(R.id.menu_reply).setOnClickListener {
             handleReply(anchorView)
-            popupWindow.dismiss()
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
         }
 
-        popupView.findViewById<View>(R.id.menu_copy).setOnClickListener {
+        menuView.findViewById<View>(R.id.menu_copy).setOnClickListener {
             handleCopy(anchorView)
-            popupWindow.dismiss()
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
         }
 
-        popupView.findViewById<View>(R.id.menu_forward).setOnClickListener {
+        menuView.findViewById<View>(R.id.menu_forward).setOnClickListener {
             handleForward(anchorView)
-            popupWindow.dismiss()
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
         }
 
-        popupView.findViewById<View>(R.id.menu_delete).setOnClickListener {
+        menuView.findViewById<View>(R.id.menu_delete).setOnClickListener {
             handleDelete(anchorView)
-            popupWindow.dismiss()
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
         }
 
-        popupView.findViewById<View>(R.id.menu_save).setOnClickListener {
+        menuView.findViewById<View>(R.id.menu_save).setOnClickListener {
             handleSave(anchorView)
-            popupWindow.dismiss()
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
         }
 
-        // Make popup dismissable by touching outside
-        popupWindow.isOutsideTouchable = true
-        popupWindow.isFocusable = true
+        // Dismiss reactions when menu is dismissed
+        menuPopup.setOnDismissListener {
+            reactionsPopup?.dismiss()
+        }
 
-        // Show popup at touch location
-        popupWindow.showAtLocation(recyclerView, Gravity.NO_GRAVITY, adjustedX, adjustedY)
+        // Make menu popup dismissable by touching outside
+        menuPopup.isOutsideTouchable = true
+        menuPopup.isFocusable = true
+
+        // === Show popups ===
+        // Show menu popup first
+        menuPopup.showAtLocation(recyclerView, Gravity.NO_GRAVITY, menuX, menuY)
+
+        // Show reactions popup above menu (if needed)
+        reactionsPopup?.let {
+            it.isOutsideTouchable = true
+            it.isFocusable = false
+            it.showAtLocation(recyclerView, Gravity.NO_GRAVITY, reactionsX, reactionsY)
+        }
     }
 
     private fun handleCopy(view: View): Boolean {
