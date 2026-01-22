@@ -11,91 +11,17 @@
     android:background="?attr/colorSurface">
 
     <HorizontalScrollView
-        android:layout_width="210dp"
+        android:layout_width="248dp"
         android:layout_height="wrap_content"
         android:scrollbars="none"
         android:fillViewport="true">
 
-        <!-- Emoji reaction row -->
         <LinearLayout
             android:id="@+id/emoji_row"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
             android:orientation="horizontal"
-            android:gravity="center">
-
-            <TextView
-                android:id="@+id/emoji_thumbsup"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="👍"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-
-            <TextView
-                android:id="@+id/emoji_heart"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="❤️"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-
-            <TextView
-                android:id="@+id/emoji_fire"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="🔥"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-
-            <TextView
-                android:id="@+id/emoji_laugh"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="😂"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-
-            <TextView
-                android:id="@+id/emoji_surprised"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="😮"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-
-            <TextView
-                android:id="@+id/emoji_sad"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="😢"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-
-            <TextView
-                android:id="@+id/emoji_angry"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="😡"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-
-            <TextView
-                android:id="@+id/emoji_crap"
-                android:layout_width="38dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="💩"
-                android:textSize="22sp"
-                android:background="@drawable/contact_background" />
-        </LinearLayout>
+            android:gravity="center" />
 
     </HorizontalScrollView>
 

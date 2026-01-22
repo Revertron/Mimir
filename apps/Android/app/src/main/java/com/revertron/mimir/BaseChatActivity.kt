@@ -22,7 +22,9 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatEditText
@@ -77,6 +79,36 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         const val TAKE_PHOTO_REQUEST_CODE = 124
         const val PICK_FILE_REQUEST_CODE = 125
         const val REQUEST_FORWARD_MESSAGE = 126
+        private const val PREF_EMOJI_USAGE = "emoji_usage_counts"
+
+        val REACTION_EMOJIS = listOf(
+            "\uD83D\uDC4D",  // 👍
+            "❤\uFE0F",       // ❤️
+            "\uD83D\uDD25",  // 🔥
+            "\uD83D\uDE02",  // 😂
+            "\uD83D\uDE2E",  // 😮
+            "\uD83D\uDE22",  // 😢
+            "\uD83D\uDE21",  // 😡
+            "\uD83D\uDCA9",  // 💩
+            "\uD83D\uDE31",  // 😱
+            "\uD83E\uDD37\u200D\u2642\uFE0F",  // 🤷‍♂️
+            "\uD83E\uDD37\u200D\u2640\uFE0F",  // 🤷‍♀️
+            "\uD83E\uDD17",  // 🤗
+            "\uD83D\uDE18",  // 😘
+            "\uD83D\uDE0D",  // 😍
+            "\uD83D\uDCAA",  // 💪🏻
+            "\uD83E\uDD74",  // 🥴
+            "\uD83E\uDD14",  // 🤔
+            "\uD83E\uDD2E",  // 🤮
+            "\uD83D\uDC4C",  // 👌🏻
+            "\uD83C\uDF46",  // 🍆
+            "\uD83C\uDF4C",  // 🍌
+            "\uD83C\uDF51",  // 🍑
+            "\uD83D\uDC8A",  // 💊
+            "❤\uFE0F\u200D\uD83D\uDD25",  // ❤️‍🔥
+            "\uD83D\uDCAF",  // 💯
+            "\u2705"         // ✅
+        )
     }
 
     // UI Components - Reply Panel
@@ -107,6 +139,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     protected var isChatVisible: Boolean = false
     protected var lastSoundTime = 0L
 
+    // Emoji usage counts (loaded from prefs in onCreate)
+    private val emojiUsageCounts = mutableMapOf<String, Int>()
+
     // Permission launchers
     protected val cameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -127,6 +162,50 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         setupMessageInput()
 
         getStorage().listeners.add(this)
+        loadEmojiUsageCounts()
+    }
+
+    // Emoji Usage Tracking
+
+    private fun loadEmojiUsageCounts() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val json = prefs.getString(PREF_EMOJI_USAGE, null)
+        emojiUsageCounts.clear()
+        if (json != null) {
+            try {
+                val jsonObject = JSONObject(json)
+                for (emoji in REACTION_EMOJIS) {
+                    if (jsonObject.has(emoji)) {
+                        emojiUsageCounts[emoji] = jsonObject.getInt(emoji)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse emoji usage counts: ${e.message}")
+            }
+        }
+    }
+
+    private fun saveEmojiUsageCounts() {
+        val jsonObject = JSONObject()
+        for ((emoji, count) in emojiUsageCounts) {
+            if (count > 0) {
+                jsonObject.put(emoji, count)
+            }
+        }
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        prefs.edit().putString(PREF_EMOJI_USAGE, jsonObject.toString()).apply()
+    }
+
+    private fun incrementEmojiUsage(emoji: String) {
+        val currentCount = emojiUsageCounts[emoji] ?: 0
+        if (currentCount < Int.MAX_VALUE) {
+            emojiUsageCounts[emoji] = currentCount + 1
+            saveEmojiUsageCounts()
+        }
+    }
+
+    private fun getSortedReactionEmojis(): List<String> {
+        return REACTION_EMOJIS.sortedByDescending { emojiUsageCounts[it] ?: 0 }
     }
 
     // Abstract methods to be implemented by subclasses
@@ -817,7 +896,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val inflater = LayoutInflater.from(this)
         val elevation = 8f * resources.displayMetrics.density
         val margin = (4 * resources.displayMetrics.density).toInt()
-        val spacing = (6 * resources.displayMetrics.density).toInt()
+        val spacing = (8 * resources.displayMetrics.density).toInt()
 
         // Get screen dimensions
         val displayMetrics = resources.displayMetrics
@@ -875,6 +954,30 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             reactionsPopup.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
             reactionsPopup.elevation = 8f * resources.displayMetrics.density
 
+            // Set up emoji reaction buttons
+            val targetGuid = tag?.guid ?: 0L
+            val currentEmoji = getUserCurrentReaction(targetGuid)
+
+            val emojiRow = reactionsView.findViewById<LinearLayout>(R.id.emoji_row)
+            val emojiSize = (38 * resources.displayMetrics.density).toInt()
+
+            for (emoji in getSortedReactionEmojis()) {
+                val emojiView = TextView(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(emojiSize, LinearLayout.LayoutParams.MATCH_PARENT)
+                    gravity = Gravity.CENTER
+                    text = emoji
+                    textSize = 22f
+                    setBackgroundResource(R.drawable.contact_background)
+                    setOnClickListener {
+                        incrementEmojiUsage(emoji)
+                        handleReaction(targetGuid, emoji, currentEmoji)
+                        reactionsPopup.dismiss()
+                        menuPopup.dismiss()
+                    }
+                }
+                emojiRow.addView(emojiView)
+            }
+
             // Measure reactions popup
             reactionsView.measure(
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
@@ -882,29 +985,6 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             )
             reactionsWidth = reactionsView.measuredWidth
             reactionsHeight = reactionsView.measuredHeight
-
-            // Set up emoji reaction click handlers
-            val targetGuid = tag?.guid ?: 0L
-            val currentEmoji = getUserCurrentReaction(targetGuid)
-
-            val emojiButtons = listOf(
-                R.id.emoji_thumbsup to "\uD83D\uDC4D",
-                R.id.emoji_heart to "❤\uFE0F",
-                R.id.emoji_fire to "\uD83D\uDD25",
-                R.id.emoji_laugh to "\uD83D\uDE02",
-                R.id.emoji_surprised to "\uD83D\uDE2E",
-                R.id.emoji_sad to "\uD83D\uDE22",
-                R.id.emoji_angry to "\uD83D\uDE21",
-                R.id.emoji_crap to "\uD83D\uDCA9"
-            )
-
-            for ((viewId, emojiId) in emojiButtons) {
-                reactionsView.findViewById<View>(viewId).setOnClickListener {
-                    handleReaction(targetGuid, emojiId, currentEmoji)
-                    reactionsPopup.dismiss()
-                    menuPopup.dismiss()
-                }
-            }
         }
 
         // === Calculate positions ===
