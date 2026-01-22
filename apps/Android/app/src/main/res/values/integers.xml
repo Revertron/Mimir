@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <integer name="activityAnimationTime">250</integer>
+    <integer name="maxMessageLength">5000</integer>
 </resources>

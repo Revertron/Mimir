@@ -272,6 +272,7 @@
                 android:layout_gravity="top"
                 android:inputType="textCapSentences|textMultiLine"
                 android:maxLines="5"
+                android:maxLength="@integer/maxMessageLength"
                 android:hint="@string/message" />
 
             <androidx.appcompat.widget.AppCompatImageButton
