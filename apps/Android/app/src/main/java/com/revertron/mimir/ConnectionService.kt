@@ -36,6 +36,7 @@ import com.revertron.mimir.sec.GroupChatCrypto
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.SettingsData
+import com.revertron.mimir.yggmobile.Logger
 import com.revertron.mimir.yggmobile.Yggmobile
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
@@ -104,7 +105,8 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                         val peers = peerProvider.getPeers()
                         val initialPeer = peers.random()
                         Log.i(TAG, "Creating Messenger with initial peer: $initialPeer")
-                        val messenger = Yggmobile.newMessenger(initialPeer)
+                        val yggLogger = YggdrasilLogger()
+                        val messenger = Yggmobile.newMessenger(initialPeer, yggLogger)
                         for (peer in peers) {
                             if (peer.contentEquals(initialPeer)) continue
                             messenger.addPeer(peer)
@@ -157,6 +159,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                                 mimirServer?.let { server ->
                                     if (server.isPeerManagerInitialized()) {
                                         mediatorManager?.setPeerManager(server.peerManager)
+                                        yggLogger.onConnectionChange = { server.peerManager.signalNetworkChange() }
                                         Log.i(TAG, "PeerManager reference set in MediatorManager")
                                         return@Thread
                                     }
@@ -330,7 +333,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                 }
             }
             "offline" -> {
-
+                mimirServer?.peerManager?.signalNetworkChange()
             }
             "peer_statuses" -> {
                 Log.i(TAG, "Have statuses of $peerStatuses")
@@ -1012,4 +1015,27 @@ fun fetchStatus(context: Context, pubkey: ByteArray) {
     intent.putExtra("command", "peer_statuses")
     intent.putExtra("contact", pubkey)
     context.startService(intent)
+}
+
+private class YggdrasilLogger : Logger {
+    companion object {
+        const val TAG = "Yggdrasil"
+    }
+
+    var onConnectionChange: (() -> Unit)? = null
+
+    override fun log(level: Long, msg: String) {
+        val message = msg.trimEnd()
+        when (level.toInt()) {
+            0 -> Log.i(TAG, message) // Info
+            1 -> Log.w(TAG, message) // Warn
+            2 -> Log.e(TAG, message) // Error
+            3 -> Log.d(TAG, message) // Debug
+            4 -> Log.v(TAG, message) // Trace
+            else -> Log.v(TAG, message)
+        }
+        if (message.startsWith("Connected") || message.startsWith("Disconnected")) {
+            onConnectionChange?.invoke()
+        }
+    }
 }

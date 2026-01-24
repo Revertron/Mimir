@@ -45,7 +45,7 @@ class PeerManager(
         private const val PEER_DOWN_GRACE_PERIOD_MS = 12000L  // Wait 12s before declaring peer dead
         private const val MIN_JUMP_INTERVAL_MS = 10000L  // Don't jump more often than every 10s
         private const val NETWORK_CHANGE_GRACE_MS = 5000L  // Grace period after network change
-        private const val ONLINE_CHECK_INTERVAL_MS = 3000L  // Check peer health every 3s
+        private const val ONLINE_CHECK_INTERVAL_MS = 30000L  // Check peer health every 30s
     }
 
     // Public state (thread-safe)
@@ -277,7 +277,11 @@ class PeerManager(
         var waitingForBestPeer = false
 
         while (working.get()) {
-            sleep(ONLINE_CHECK_INTERVAL_MS)
+            synchronized(onlineStateLock) {
+                try {
+                    onlineStateLock.wait(ONLINE_CHECK_INTERVAL_MS)
+                } catch (_: InterruptedException) {}
+            }
             val networkOnline = NetState.haveNetwork()
             val now = System.currentTimeMillis()
             //Log.d(TAG, "pathsJSON: " + messenger.pathsJSON)
@@ -343,6 +347,7 @@ class PeerManager(
             val currentPeerObj = peers.getJSONObject(0)
             val peerUp = currentPeerObj.getBoolean("Up")
             val networkChanged = NetState.networkChangedRecently()
+            val networkType = getNetworkType(context)
             val timeSinceCurrentPeer = now - currentPeerTime
 
             // Handle online state change
@@ -436,10 +441,14 @@ class PeerManager(
                     waitingForBestPeer = true
                 }
             } else if (networkOnline && peerUp && timeSinceCurrentPeer >= PEER_SELECTION_DELAY_MS &&
-                       peersCount == 1) {
+                       !networkChanged && peersCount == 1) {
+                var highCost = 500
+                if (networkType == NetType.CELLULAR) {
+                    highCost = 4500
+                }
                 // Only one peer - check if cost is too high
                 val cost = currentPeerObj.optInt("Cost", 500)
-                if (cost > 500 && now - lastJumpTime >= MIN_JUMP_INTERVAL_MS) {
+                if (cost > highCost && now - lastJumpTime >= MIN_JUMP_INTERVAL_MS) {
                     Log.i(TAG, "High cost $cost on current peer, jumping to better one")
                     jumpPeer()
                     lastJumpTime = now
