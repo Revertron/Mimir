@@ -11,6 +11,7 @@ import com.revertron.mimir.getNetworkType
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.yggmobile.Messenger
 import org.json.JSONArray
+import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -40,12 +41,12 @@ class PeerManager(
         const val TAG = "PeerManager"
 
         // Configuration constants for peer management
-        private const val PEER_COST_SAMPLES = 5
+        private const val PEER_COST_SAMPLES = 2
         private const val PEER_SELECTION_DELAY_MS = 15000L  // Wait 15s before selecting best peer
         private const val PEER_DOWN_GRACE_PERIOD_MS = 12000L  // Wait 12s before declaring peer dead
         private const val MIN_JUMP_INTERVAL_MS = 10000L  // Don't jump more often than every 10s
         private const val NETWORK_CHANGE_GRACE_MS = 5000L  // Grace period after network change
-        private const val ONLINE_CHECK_INTERVAL_MS = 30000L  // Check peer health every 30s
+        private const val ONLINE_CHECK_INTERVAL_MS = 15000L  // Check peer health every 15s
     }
 
     // Public state (thread-safe)
@@ -58,6 +59,7 @@ class PeerManager(
 
     // Private state
     private var currentPeerTime = 0L
+    private var currentCost = 0
     private val peerStats = HashMap<String, PeerStats>()
     private val working = AtomicBoolean(true)
     private val onlineStateLock = Object()
@@ -385,6 +387,10 @@ class PeerManager(
                                 this.cost = cost
                             }
                         }
+                        if (cost != currentCost) {
+                            currentCost = cost
+                            notifyListeners()
+                        }
                     }
                     costSampleCount = 0
                 }
@@ -492,23 +498,40 @@ class PeerManager(
     }
 
     /**
+     * Extract host from a peer URI like "tls://1.2.3.4:5678".
+     */
+    private fun extractHost(peerUri: String): String {
+        return try {
+            URI(peerUri).host ?: peerUri
+        } catch (_: Exception) {
+            peerUri
+        }
+    }
+
+    /**
      * Notify all listeners of an online state change.
      * Also updates App.app.online for backward compatibility.
      */
     private fun notifyStateChange(newState: Boolean) {
         if (online != newState) {
             online = newState
-
-            // Phase 1: Update global variable for backward compatibility
             App.app.online = newState
+            if (!newState) currentCost = 0
+            notifyListeners()
+        }
+    }
 
-            // Notify all registered listeners
-            listeners.values.forEach { listener ->
-                try {
-                    listener.onPeerStateChanged(newState)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error notifying listener", e)
-                }
+    /**
+     * Notify all listeners with current peer info.
+     * Called on state changes and when cost info updates.
+     */
+    private fun notifyListeners() {
+        val host = if (online) extractHost(currentPeer) else ""
+        listeners.values.forEach { listener ->
+            try {
+                listener.onPeerStateChanged(online, host, currentCost)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error notifying listener", e)
             }
         }
     }
@@ -527,9 +550,11 @@ data class PeerStats(var fails: Int, var cost: Int)
  */
 fun interface PeerStateListener {
     /**
-     * Called when the peer online state changes.
+     * Called when the peer state or info changes.
      *
      * @param online True if peer is online, false if offline
+     * @param peerHost The host part of the current peer URI (empty if offline)
+     * @param cost The network cost metric of the current peer (0 if unknown)
      */
-    fun onPeerStateChanged(online: Boolean)
+    fun onPeerStateChanged(online: Boolean, peerHost: String, cost: Int)
 }

@@ -101,7 +101,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
          * @param state Current connection state (Online/Offline)
          * @return Configured notification for foreground service
          */
-        fun createForegroundServiceNotification(context: Context, state: State): Notification {
+        fun createForegroundServiceNotification(context: Context, state: State, peerHost: String, cost: Int): Notification {
             createServiceChannel(context)
 
             val intent = Intent(context, MainActivity::class.java).apply {
@@ -117,14 +117,21 @@ class NotificationHelper(private val context: Context) : StorageListener {
                 State.Online -> context.getText(R.string.state_online)
             }
 
-            return NotificationCompat.Builder(context, CHANNEL_SERVICE)
+            val builder = NotificationCompat.Builder(context, CHANNEL_SERVICE)
                 .setShowWhen(false)
                 .setContentTitle(text)
                 .setSmallIcon(R.drawable.ic_mannaz_notification)
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
-                .build()
+            if (peerHost.isNotEmpty()) {
+                if (cost > 0) {
+                    builder.setContentText("$peerHost ($cost)")
+                } else {
+                    builder.setContentText(peerHost)
+                }
+            }
+            return builder.build()
         }
 
         /**

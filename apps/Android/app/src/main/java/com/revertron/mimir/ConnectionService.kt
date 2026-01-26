@@ -177,7 +177,7 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                             }.start()
                         }
 
-                        val n = NotificationHelper.createForegroundServiceNotification(this, State.Offline)
+                        val n = NotificationHelper.createForegroundServiceNotification(this, State.Offline, "", 0)
                         startForeground(1, n)
                     }
 
@@ -816,12 +816,12 @@ class ConnectionService : Service(), EventListener, InfoProvider {
         super.onDestroy()
     }
 
-    override fun onServerStateChanged(online: Boolean) {
+    override fun onServerStateChanged(online: Boolean, peerHost: String, cost: Int) {
         val state = when(online) {
             true -> State.Online
             false -> State.Offline
         }
-        val n = NotificationHelper.createForegroundServiceNotification(this, state)
+        val n = NotificationHelper.createForegroundServiceNotification(this, state, peerHost, cost)
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(1, n)
     }

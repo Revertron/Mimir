@@ -82,8 +82,8 @@ class MimirServer(
         peerManager.initializeCurrentPeer()
 
         // Register as listener to receive state changes
-        peerManager.addListener("MimirServer") { online ->
-            onServerStateChanged(online)
+        peerManager.addListener("MimirServer") { online, peerHost, cost ->
+            onServerStateChanged(online, peerHost, cost)
         }
 
         // Set callback for force announce
@@ -400,8 +400,8 @@ class MimirServer(
         return null
     }
 
-    override fun onServerStateChanged(online: Boolean) {
-        listener.onServerStateChanged(online)
+    override fun onServerStateChanged(online: Boolean, peerHost: String, cost: Int) {
+        listener.onServerStateChanged(online, peerHost, cost)
     }
 
     override fun onTrackerPing(online: Boolean) {
@@ -599,7 +599,7 @@ enum class PeerStatus {
 }
 
 interface EventListener {
-    fun onServerStateChanged(online: Boolean)
+    fun onServerStateChanged(online: Boolean, peerHost: String, cost: Int)
     fun onTrackerPing(online: Boolean)
     fun onClientIPChanged(old: String, new: String) {}
     fun onClientConnected(from: ByteArray, address: String, clientId: Int)
