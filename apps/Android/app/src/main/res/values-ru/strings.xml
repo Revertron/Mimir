@@ -275,6 +275,7 @@
     <string name="backup_import_restart_title">Нужен перезапуск</string>
     <string name="backup_import_restart_message">Бэкап восстановлен успешно. Приложение должно быть перезапущено для загрузки новых данных.</string>
     <string name="backup_restart_now">Перезапустить</string>
+    <string name="backup_importing">Импорт бэкапа…</string>
     <string name="send_image">Картинка</string>
     <string name="send_photo">Фото</string>
     <string name="send_file">Файл</string>
@@ -332,4 +333,5 @@
     <string name="chat_info_updated">Данные чата изменены!</string>
     <string name="failed_to_update_chat_info">Ошибка изменения данных чата</string>
     <string name="no_changes_made">Данные не изменены</string>
+    <string name="backup_exporting">Экспорт бэкапа…</string>
 </resources>

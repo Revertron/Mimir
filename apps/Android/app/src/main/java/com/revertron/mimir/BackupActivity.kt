@@ -2,12 +2,18 @@ package com.revertron.mimir
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.MenuItem
 import android.view.View
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
@@ -22,6 +28,7 @@ import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlin.system.exitProcess
 
 class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
@@ -29,6 +36,10 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         private const val TAG = "BackupActivity"
         private const val BACKUP_FILE_PREFIX = "mimir_backup_"
     }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var progressDialog: AlertDialog? = null
+    private var savedOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
     private val exportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         uri?.let { exportData(it) }
@@ -87,6 +98,52 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         // No switches in backup activity
     }
 
+    private fun lockOrientation() {
+        savedOrientation = requestedOrientation
+        val currentOrientation = resources.configuration.orientation
+        requestedOrientation = if (currentOrientation == Configuration.ORIENTATION_LANDSCAPE) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
+    }
+
+    private fun unlockOrientation() {
+        requestedOrientation = savedOrientation
+    }
+
+    private fun showProgressDialog(messageResId: Int) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val builder = AlertDialog.Builder(wrapper)
+
+        // Create a simple layout with progress bar and text
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(48, 32, 48, 32)
+
+            val progressBar = ProgressBar(context).apply {
+                isIndeterminate = true
+            }
+            addView(progressBar)
+
+            val textView = TextView(context).apply {
+                text = getString(messageResId)
+                setPadding(32, 0, 0, 0)
+            }
+            addView(textView)
+        }
+
+        builder.setView(layout)
+        builder.setCancelable(false)
+        progressDialog = builder.show()
+    }
+
+    private fun dismissProgressDialog() {
+        progressDialog?.dismiss()
+        progressDialog = null
+    }
+
     override fun onItemClicked(id: Int) {
         when (id) {
             R.string.backup_export -> {
@@ -100,48 +157,88 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
     }
 
     private fun exportData(uri: Uri) {
-        try {
-            val outputStream = contentResolver.openOutputStream(uri)
-            if (outputStream == null) {
-                Toast.makeText(this, R.string.backup_export_failed, Toast.LENGTH_LONG).show()
-                return
-            }
+        val outputStream = contentResolver.openOutputStream(uri)
+        if (outputStream == null) {
+            Toast.makeText(this, R.string.backup_export_failed, Toast.LENGTH_LONG).show()
+            return
+        }
 
-            ZipOutputStream(outputStream).use { zipOut ->
-                // Export database
-                val dbFile = getDatabasePath(SqlStorage.DATABASE_NAME)
-                if (dbFile.exists()) {
-                    addFileToZip(zipOut, dbFile, SqlStorage.DATABASE_NAME)
+        // Lock orientation and show progress
+        lockOrientation()
+        showProgressDialog(R.string.backup_exporting)
+
+        // Capture paths on main thread before background work
+        val dbFile = getDatabasePath(SqlStorage.DATABASE_NAME)
+        val avatarsDir = File(filesDir, "avatars")
+        val mediaFilesDir = File(filesDir, "files")
+        val appFilesDir = filesDir
+        val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
+
+        Thread {
+            var success = false
+            var errorMessage: String? = null
+
+            try {
+                // Checkpoint the WAL to ensure all data is written to the main database file
+                try {
+                    App.app.storage.writableDatabase.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor ->
+                        cursor.moveToFirst()
+                        Log.i(TAG, "WAL checkpoint completed")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "WAL checkpoint failed, continuing with export", e)
                 }
 
-                // Export avatars directory
-                val avatarsDir = File(filesDir, "avatars")
-                if (avatarsDir.exists()) {
-                    addDirectoryToZip(zipOut, avatarsDir, "avatars")
-                }
+                ZipOutputStream(outputStream).use { zipOut ->
+                    // Export database
+                    if (dbFile.exists()) {
+                        addFileToZip(zipOut, dbFile, SqlStorage.DATABASE_NAME)
+                    }
 
-                // Export files directory
-                val filesDir = File(filesDir, "files")
-                if (filesDir.exists()) {
-                    addDirectoryToZip(zipOut, filesDir, "files")
-                }
+                    // Export avatars directory
+                    if (avatarsDir.exists()) {
+                        addDirectoryToZip(zipOut, avatarsDir, "avatars")
+                    }
 
-                // Export group chat avatars directories (avatars_*)
-                val appFilesDir = getFilesDir()
-                appFilesDir.listFiles()?.forEach { file ->
-                    if (file.isDirectory && file.name.startsWith("avatars_")) {
-                        addDirectoryToZip(zipOut, file, file.name)
+                    // Export files directory
+                    if (mediaFilesDir.exists()) {
+                        addDirectoryToZip(zipOut, mediaFilesDir, "files")
+                    }
+
+                    // Export group chat avatars directories (avatars_*)
+                    appFilesDir.listFiles()?.forEach { file ->
+                        if (file.isDirectory && file.name.startsWith("avatars_")) {
+                            addDirectoryToZip(zipOut, file, file.name)
+                        }
+                    }
+
+                    // Export shared preferences
+                    if (prefsDir.exists()) {
+                        addDirectoryToZip(zipOut, prefsDir, "shared_prefs")
+                        Log.i(TAG, "Exported shared preferences")
                     }
                 }
+
+                success = true
+                Log.i(TAG, "Backup exported successfully to $uri")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error exporting backup", e)
+                errorMessage = e.message
             }
 
-            Toast.makeText(this, R.string.backup_export_success, Toast.LENGTH_LONG).show()
-            Log.i(TAG, "Backup exported successfully to $uri")
+            // Post results back to main thread
+            mainHandler.post {
+                dismissProgressDialog()
+                unlockOrientation()
 
-        } catch (e: Exception) {
-            Log.e(TAG, "Error exporting backup", e)
-            Toast.makeText(this, getString(R.string.backup_export_failed_with_error, e.message), Toast.LENGTH_LONG).show()
-        }
+                if (success) {
+                    Toast.makeText(this, R.string.backup_export_success, Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, getString(R.string.backup_export_failed_with_error, errorMessage), Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun importData(uri: Uri) {
@@ -164,95 +261,141 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
     }
 
     private fun performImport(uri: Uri) {
-        try {
-            // First, validate the backup file
-            if (!isValidBackupFile(uri)) {
-                Toast.makeText(this, R.string.backup_import_invalid_file, Toast.LENGTH_LONG).show()
-                Log.w(TAG, "Invalid backup file selected: $uri")
-                return
-            }
+        // Lock orientation and show progress
+        lockOrientation()
+        showProgressDialog(R.string.backup_importing)
 
-            val inputStream = contentResolver.openInputStream(uri)
-            if (inputStream == null) {
-                Toast.makeText(this, R.string.backup_import_failed, Toast.LENGTH_LONG).show()
-                return
-            }
+        // Capture paths on main thread before background work
+        val dbPath = getDatabasePath(SqlStorage.DATABASE_NAME)
+        val appFilesDir = filesDir
+        val appDataDir = applicationInfo.dataDir
 
-            // Close database before importing
-            val storage = SqlStorage(this)
-            storage.close()
+        Thread {
+            var success = false
+            var errorMessage: String? = null
+            var isInvalidFile = false
 
-            // Delete existing files before importing
-            deleteExistingData()
+            try {
+                // Validate the backup file
+                if (!isValidBackupFile(uri)) {
+                    Log.w(TAG, "Invalid backup file selected: $uri")
+                    isInvalidFile = true
+                    throw Exception("Invalid backup file")
+                }
 
-            ZipInputStream(inputStream).use { zipIn ->
-                var entry = zipIn.nextEntry
-                while (entry != null) {
-                    val entryName = entry.name
+                val inputStream = contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    throw Exception("Cannot open backup file")
+                }
 
-                    if (entry.isDirectory) {
-                        // Create directory
-                        val dir = if (entryName.startsWith("avatars") || entryName.startsWith("files")) {
-                            File(filesDir, entryName)
+                // Stop ConnectionService before import to release database connections
+                Log.i(TAG, "Stopping ConnectionService before import")
+                mainHandler.post {
+                    stopService(Intent(this, ConnectionService::class.java))
+                }
+                // Give service time to stop
+                Thread.sleep(500)
+
+                // Close the application's database connection (not a new instance!)
+                Log.i(TAG, "Closing application database connection")
+                App.app.storage.close()
+
+                // Delete existing files before importing
+                deleteExistingData()
+
+                ZipInputStream(inputStream).use { zipIn ->
+                    var entry = zipIn.nextEntry
+                    while (entry != null) {
+                        val entryName = entry.name
+
+                        if (entry.isDirectory) {
+                            // Create directory
+                            val dir = if (entryName.startsWith("avatars") || entryName.startsWith("files")) {
+                                File(appFilesDir, entryName)
+                            } else {
+                                File(appFilesDir, entryName)
+                            }
+                            dir.mkdirs()
                         } else {
-                            File(filesDir, entryName)
-                        }
-                        dir.mkdirs()
-                    } else {
-                        // Extract file
-                        val targetFile = when {
-                            entryName == SqlStorage.DATABASE_NAME -> {
-                                getDatabasePath(SqlStorage.DATABASE_NAME)
+                            // Extract file
+                            val targetFile = when {
+                                entryName == SqlStorage.DATABASE_NAME -> {
+                                    dbPath
+                                }
+                                entryName.startsWith("avatars/") ||
+                                entryName.startsWith("files/") ||
+                                entryName.startsWith("avatars_") -> {
+                                    val file = File(appFilesDir, entryName)
+                                    file.parentFile?.mkdirs()
+                                    file
+                                }
+                                entryName.startsWith("shared_prefs/") -> {
+                                    val file = File(appDataDir, entryName)
+                                    file.parentFile?.mkdirs()
+                                    file
+                                }
+                                else -> {
+                                    Log.w(TAG, "Skipping unknown file: $entryName")
+                                    zipIn.closeEntry()
+                                    entry = zipIn.nextEntry
+                                    continue
+                                }
                             }
-                            entryName.startsWith("avatars/") ||
-                            entryName.startsWith("files/") ||
-                            entryName.startsWith("avatars_") -> {
-                                val file = File(filesDir, entryName)
-                                file.parentFile?.mkdirs()
-                                file
-                            }
-                            else -> {
-                                Log.w(TAG, "Skipping unknown file: $entryName")
-                                zipIn.closeEntry()
-                                entry = zipIn.nextEntry
-                                continue
+
+                            // Write file
+                            FileOutputStream(targetFile).use { output ->
+                                zipIn.copyTo(output)
                             }
                         }
 
-                        // Write file
-                        FileOutputStream(targetFile).use { output ->
-                            zipIn.copyTo(output)
-                        }
+                        zipIn.closeEntry()
+                        entry = zipIn.nextEntry
                     }
+                }
 
-                    zipIn.closeEntry()
-                    entry = zipIn.nextEntry
+                success = true
+                Log.i(TAG, "Backup imported successfully from $uri")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error importing backup", e)
+                errorMessage = e.message
+            }
+
+            // Post results back to main thread
+            mainHandler.post {
+                dismissProgressDialog()
+                unlockOrientation()
+
+                if (success) {
+                    Toast.makeText(this, R.string.backup_import_success, Toast.LENGTH_LONG).show()
+
+                    // Restart the app after import
+                    val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+                    val builder = AlertDialog.Builder(wrapper)
+                    builder.setTitle(R.string.backup_import_restart_title)
+                    builder.setMessage(R.string.backup_import_restart_message)
+                    builder.setPositiveButton(R.string.backup_restart_now) { _, _ ->
+                        // Restart app by scheduling launch and killing the process
+                        // This ensures clean restart with fresh Application instance
+                        val intent = packageManager.getLaunchIntentForPackage(packageName)
+                        intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+
+                        // Kill the process to force complete restart
+                        // This clears App singleton and all database connections
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                        exitProcess(0)
+                    }
+                    builder.setCancelable(false)
+                    builder.show()
+                } else if (isInvalidFile) {
+                    Toast.makeText(this, R.string.backup_import_invalid_file, Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, getString(R.string.backup_import_failed_with_error, errorMessage), Toast.LENGTH_LONG).show()
                 }
             }
-
-            Toast.makeText(this, R.string.backup_import_success, Toast.LENGTH_LONG).show()
-            Log.i(TAG, "Backup imported successfully from $uri")
-
-            // Restart the app after import
-            val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-            val builder = AlertDialog.Builder(wrapper)
-            builder.setTitle(R.string.backup_import_restart_title)
-            builder.setMessage(R.string.backup_import_restart_message)
-            builder.setPositiveButton(R.string.backup_restart_now) { _, _ ->
-                // Restart app
-                val intent = packageManager.getLaunchIntentForPackage(packageName)
-                intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(intent)
-                finishAffinity()
-            }
-            builder.setCancelable(false)
-            builder.show()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error importing backup", e)
-            Toast.makeText(this, getString(R.string.backup_import_failed_with_error, e.message), Toast.LENGTH_LONG).show()
-        }
+        }.start()
     }
 
     private fun isValidBackupFile(uri: Uri): Boolean {
@@ -278,8 +421,10 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                             entryName.startsWith("avatars/") ||
                             entryName.startsWith("files/") ||
                             entryName.startsWith("avatars_") ||
+                            entryName.startsWith("shared_prefs/") ||
                             entryName == "avatars" ||
-                            entryName == "files"
+                            entryName == "files" ||
+                            entryName == "shared_prefs"
 
                     if (!isValidEntry) {
                         Log.w(TAG, "Invalid entry found in backup: $entryName")
@@ -315,6 +460,18 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                 Log.i(TAG, "Database file deleted: $deleted")
             }
 
+            // Delete SQLite WAL and SHM files (Write-Ahead Log)
+            val walFile = File(dbFile.absolutePath + "-wal")
+            if (walFile.exists()) {
+                val deleted = walFile.delete()
+                Log.i(TAG, "WAL file deleted: $deleted")
+            }
+            val shmFile = File(dbFile.absolutePath + "-shm")
+            if (shmFile.exists()) {
+                val deleted = shmFile.delete()
+                Log.i(TAG, "SHM file deleted: $deleted")
+            }
+
             // Delete avatars directory
             val avatarsDir = File(filesDir, "avatars")
             if (avatarsDir.exists()) {
@@ -336,6 +493,13 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                     val deleted = file.deleteRecursively()
                     Log.i(TAG, "Group avatars directory ${file.name} deleted: $deleted")
                 }
+            }
+
+            // Delete shared preferences directory
+            val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
+            if (prefsDir.exists()) {
+                val deleted = prefsDir.deleteRecursively()
+                Log.i(TAG, "Shared preferences directory deleted: $deleted")
             }
 
             Log.i(TAG, "All existing data deleted successfully")
