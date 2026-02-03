@@ -2,6 +2,11 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_save"
+        android:icon="@drawable/ic_folder_download_outline"
+        android:title="@string/menu_save"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/action_share"
         android:icon="@drawable/ic_share_outlined"
         android:title="@string/share"

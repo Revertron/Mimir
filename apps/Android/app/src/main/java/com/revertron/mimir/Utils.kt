@@ -14,7 +14,9 @@ import android.net.NetworkCapabilities
 import android.net.TrafficStats
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import android.util.Log
 import android.util.TypedValue
 import android.util.TypedValue.COMPLEX_UNIT_DIP
@@ -728,6 +730,66 @@ fun getMimeTypeFromFilename(filename: String): String {
         "mp4" -> "video/mp4"
         "mp3" -> "audio/mpeg"
         else -> "application/octet-stream"
+    }
+}
+
+/**
+ * Saves a file to the Downloads/Mimir directory.
+ * Uses MediaStore API on Android 10+ and classic file path on older versions.
+ *
+ * @param context Android context
+ * @param sourceFile The source file to save
+ * @param targetName The target filename (used in Downloads/Mimir)
+ * @param mimeType Optional MIME type, if null it will be inferred from filename
+ * @return true if file was saved successfully, false otherwise
+ */
+fun saveFileToDownloads(context: Context, sourceFile: File, targetName: String, mimeType: String? = null): Boolean {
+    val tag = "saveFileToDownloads"
+    val resolvedMimeType = mimeType ?: getMimeTypeFromFilename(targetName)
+
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10+ (API 29+): Use MediaStore API
+            val values = android.content.ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, targetName)
+                put(MediaStore.Downloads.MIME_TYPE, resolvedMimeType)
+                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Mimir")
+            }
+
+            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    sourceFile.inputStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+                Toast.makeText(context, context.getString(R.string.file_saved_to_downloads), Toast.LENGTH_SHORT).show()
+                return true
+            } else {
+                Toast.makeText(context, "Failed to create file in Downloads", Toast.LENGTH_SHORT).show()
+                return false
+            }
+        } else {
+            // Android 9 and below (API 21-28): Use classic file path
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val mimirDir = File(downloadsDir, "Mimir")
+            if (!mimirDir.exists()) {
+                mimirDir.mkdirs()
+            }
+
+            val destFile = File(mimirDir, targetName)
+            sourceFile.inputStream().use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            Toast.makeText(context, context.getString(R.string.file_saved_to_downloads), Toast.LENGTH_SHORT).show()
+            return true
+        }
+    } catch (e: Exception) {
+        Log.e(tag, "Error saving file to Downloads", e)
+        Toast.makeText(context, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
+        return false
     }
 }
 

@@ -52,11 +52,17 @@ class PictureActivity : BaseActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.action_share) {
-            shareImage()
-            return true
+        return when (item.itemId) {
+            R.id.action_save -> {
+                saveImage()
+                true
+            }
+            R.id.action_share -> {
+                shareImage()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
-        return super.onOptionsItemSelected(item)
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -66,7 +72,7 @@ class PictureActivity : BaseActivity() {
 
     private fun shareImage() {
         intent?.data?.let { oldUri ->
-                        val file = File(oldUri.path!!)
+            val file = File(oldUri.path!!)
 
             val shareUri = FileProvider.getUriForFile(
                 this,
@@ -86,6 +92,18 @@ class PictureActivity : BaseActivity() {
                 e.printStackTrace()
                 Toast.makeText(this, R.string.activity_not_found, Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun saveImage() {
+        intent?.data?.let { uri ->
+            val sourceFile = File(uri.path!!)
+            if (!sourceFile.exists()) {
+                Toast.makeText(this, R.string.file_not_found_in_storage, Toast.LENGTH_SHORT).show()
+                return
+            }
+            val mimeType = contentResolver.getType(uri) ?: "image/*"
+            saveFileToDownloads(this, sourceFile, sourceFile.name, mimeType)
         }
     }
 }
