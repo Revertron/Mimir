@@ -1058,6 +1058,26 @@ fun getNetworkType(context: Context): NetType {
     return NetType.GOOD
 }
 
+enum class NetworkQuality { EXCELLENT, GOOD, POOR, VERY_POOR, OFFLINE }
+
+fun getNetworkQuality(context: Context): NetworkQuality {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return NetworkQuality.VERY_POOR
+
+    if (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
+        return NetworkQuality.OFFLINE
+    }
+
+    val bandwidth = min(caps.linkDownstreamBandwidthKbps, caps.linkUpstreamBandwidthKbps)
+    //Log.d("Utils", "Bandwidth: $bandwidth kbps")
+    return when {
+        bandwidth >= 5000 -> NetworkQuality.EXCELLENT
+        bandwidth >= 1000 -> NetworkQuality.GOOD
+        bandwidth >= 150 -> NetworkQuality.POOR
+        else -> NetworkQuality.VERY_POOR
+    }
+}
+
 /**
  * Formats last_seen timestamp for display.
  * Returns hybrid format: relative for today, absolute for older.

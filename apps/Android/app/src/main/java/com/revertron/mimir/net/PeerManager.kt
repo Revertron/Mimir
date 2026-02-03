@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.revertron.mimir.App
 import com.revertron.mimir.BuildConfig
-import com.revertron.mimir.ConnectionService
 import com.revertron.mimir.NetState
 import com.revertron.mimir.NetType
 import com.revertron.mimir.getNetworkType
@@ -42,7 +41,7 @@ class PeerManager(
 
         // Configuration constants for peer management
         private const val PEER_COST_SAMPLES = 2
-        private const val PEER_SELECTION_DELAY_MS = 15000L  // Wait 15s before selecting best peer
+        private const val PEER_SELECTION_DELAY_MS = 30000L  // Wait 30s before selecting best peer
         private const val PEER_DOWN_GRACE_PERIOD_MS = 12000L  // Wait 12s before declaring peer dead
         private const val MIN_JUMP_INTERVAL_MS = 10000L  // Don't jump more often than every 10s
         private const val NETWORK_CHANGE_GRACE_MS = 5000L  // Grace period after network change
@@ -60,6 +59,7 @@ class PeerManager(
     // Private state
     private var currentPeerTime = 0L
     private var currentCost = 0
+    private var currentPeerFails = 0
     private val peerStats = HashMap<String, PeerStats>()
     private val working = AtomicBoolean(true)
     private val onlineStateLock = Object()
@@ -176,6 +176,7 @@ class PeerManager(
         }
         currentPeer = newPeer
         currentPeerTime = System.currentTimeMillis()
+        currentPeerFails = 0
         onForceAnnounce?.invoke()
     }
 
@@ -241,6 +242,7 @@ class PeerManager(
         if (!newPeers.contains(currentPeer)) {
             currentPeer = newPeers.random()
             currentPeerTime = System.currentTimeMillis()
+            currentPeerFails = 0
             Log.i(TAG, "Current peer was removed, selected new random peer: $currentPeer")
         }
 
@@ -364,7 +366,6 @@ class PeerManager(
                 notifyStateChange(peerUp)
 
                 if (peerUp) {
-                    // Peer came back up
                     onForceAnnounce?.invoke()
                     peerDownStartTime = 0L
                     costSampleCount = 0
@@ -372,7 +373,18 @@ class PeerManager(
                     // Peer went down - start grace period timer
                     if (peerDownStartTime == 0L) {
                         peerDownStartTime = now
-                        Log.i(TAG, "Peer went down, starting grace period of ${PEER_DOWN_GRACE_PERIOD_MS}ms")
+                        peerStats.getOrPut(currentPeer) { PeerStats(0, -1) }.apply {
+                            fails += 1
+                            Log.i(TAG, "Peer $currentPeer went down, fails=$fails, starting grace period")
+                        }
+                    }
+                    currentPeerFails += 1
+                    // Peer came back up - check if we should jump to a more stable peer
+                    if (currentPeerFails >= 3 && timeSinceCurrentPeer >= MIN_JUMP_INTERVAL_MS * 3) {
+                        if (timeSinceCurrentPeer / currentPeerFails <= MIN_JUMP_INTERVAL_MS * 3) {
+                            jumpPeer()
+                            lastJumpTime = now
+                        }
                     }
                 }
             } else if (peerUp) {
@@ -383,7 +395,7 @@ class PeerManager(
                     if (cost > 0) {
                         peerStats.getOrPut(currentPeer, { PeerStats(0, -1) }).apply {
                             if (this.cost !in 0..cost) {
-                                Log.i(TAG, "Updating cost: $cost (was ${this.cost})")
+                                Log.i(TAG, "Updating cost for $currentPeer: $cost (was ${this.cost})")
                                 this.cost = cost
                             }
                         }

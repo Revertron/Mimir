@@ -4,9 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.PowerManager
 import android.util.Log
-import com.revertron.mimir.App
-import com.revertron.mimir.BuildConfig
-import com.revertron.mimir.NetState
 import com.revertron.mimir.getUtcTime
 import com.revertron.mimir.haveNetwork
 import com.revertron.mimir.storage.Peer
@@ -17,7 +14,6 @@ import org.bouncycastle.crypto.AsymmetricCipherKeyPair
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
-import org.json.JSONArray
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -167,13 +163,14 @@ class MimirServer(
                     val expiredTtl = getUtcTime() >= lastAnnounceTime + announceTtl
                     if (::peerManager.isInitialized && peerManager.isOnline() && online && (expiredTtl || forceAnnounce)) {
                         if (forceAnnounce) sleep(2000)
+                        forceAnnounce = false
                         resolver.announce(pubkey, privkey, peer, receiver)
                         listener.onTrackerPing(false)
-                        forceAnnounce = false
                     }
                 } catch (e: SocketTimeoutException) {
                     Log.e(TAG, "Error announcing our address: $e")
                     lastAnnounceTime = 0L
+                    sleep(25000)
                 }
             }
         }.start()
