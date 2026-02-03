@@ -390,9 +390,12 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun openContactSelector() {
+        val members = getStorage().getGroupMembers(chatId)
+        val memberPubkeys = members.map { it.pubkey }.toTypedArray()
+
         val intent = Intent(this, ContactSelectorActivity::class.java).apply {
             putExtra(ContactSelectorActivity.EXTRA_TITLE, getString(R.string.add_member))
-            // TODO: Filter out contacts who are already members
+            putExtra(ContactSelectorActivity.EXTRA_FILTER_PUBKEYS, memberPubkeys)
         }
         startActivityForResult(intent, REQUEST_SELECT_CONTACT)
     }
