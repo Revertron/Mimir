@@ -67,6 +67,10 @@ class NotificationHelper(private val context: Context) : StorageListener {
         private const val CHANNEL_PREFIX_USER = "user_"
         private const val CHANNEL_PREFIX_GROUP = "group_"
 
+        // Notification group keys (for visual bundling separation)
+        private const val GROUP_KEY_SERVICE = "com.revertron.mimir.SERVICE"
+        private const val GROUP_KEY_GROUP_INVITES = "com.revertron.mimir.GROUP_INVITES"
+
         // Migration preferences
         private const val PREFS_NAME = "notification_prefs"
         private const val PREF_CHANNELS_MIGRATED = "channels_migrated_v2"
@@ -124,6 +128,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setGroup(GROUP_KEY_SERVICE)
             if (peerHost.isNotEmpty()) {
                 if (cost > 0) {
                     builder.setContentText("$peerHost ($cost)")
@@ -477,6 +482,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
                 .setDefaults(Notification.DEFAULT_ALL)
+                .setGroup(GROUP_KEY_GROUP_INVITES)
                 .build()
 
             if (!hasPostNotificationsPermission(context)) {
