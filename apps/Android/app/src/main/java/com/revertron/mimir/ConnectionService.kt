@@ -430,6 +430,15 @@ class ConnectionService : Service(), EventListener, InfoProvider {
                     }.start()
                 }
             }
+            "mediator_accept_invite" -> {
+                val inviteId = intent.getLongExtra("invite_id", 0)
+                val chatId = intent.getLongExtra("chat_id", 0)
+                if (inviteId != 0L && chatId != 0L) {
+                    Thread {
+                        acceptInviteAndSubscribe(inviteId, chatId, storage)
+                    }.start()
+                }
+            }
             "mediator_ban_user" -> {
                 val chatId = intent.getLongExtra("chat_id", 0)
                 val userPubkey = intent.getByteArrayExtra("user_pubkey")
@@ -630,6 +639,97 @@ class ConnectionService : Service(), EventListener, InfoProvider {
             mediatorManager?.markChatUnsubscribed(chatId)
             broadcastGroupChatStatus(chatId, storage)
             broadcastMediatorError("subscribe", e.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * Accepts an invite and subscribes to the chat with retry logic.
+     * This handles the case where the network is slow and the initial accept/subscribe might timeout.
+     * The chat should already be saved to DB before calling this.
+     *
+     * @param inviteId The invite ID to accept
+     * @param chatId The chat ID to subscribe to after acceptance
+     * @param storage SqlStorage instance for database operations
+     */
+    private fun acceptInviteAndSubscribe(inviteId: Long, chatId: Long, storage: SqlStorage) {
+        val maxRetries = 3
+        var acceptanceSucceeded = false
+        var lastError: Exception? = null
+
+        val chatInfo = storage.getGroupChat(chatId)
+        if (chatInfo == null) {
+            Log.e(TAG, "Chat $chatId not found in storage for invite acceptance")
+            broadcastMediatorError("add_user", "Chat not found")
+            return
+        }
+
+        // Try to accept the invite with retries
+        for (attempt in 1..maxRetries) {
+            try {
+                val client = mediatorManager!!.getOrCreateClient(chatInfo.mediatorPubkey)
+
+                // Try to accept the invite
+                Log.i(TAG, "Accepting invite $inviteId (attempt $attempt/$maxRetries)")
+                client.respondToInvite(inviteId, 1) // 1 = accept
+                Log.i(TAG, "Invite $inviteId accepted successfully")
+
+                // Mark invite as accepted in database
+                storage.updateGroupInviteStatus(inviteId, 1) // 1 = accepted
+                acceptanceSucceeded = true
+                break
+
+            } catch (e: Exception) {
+                lastError = e
+                val errorMsg = e.message?.lowercase() ?: ""
+                val isTimeout = errorMsg.contains("timeout")
+                val isAlreadyMember = errorMsg.contains("already") || errorMsg.contains("not found")
+
+                if (isAlreadyMember) {
+                    // Invite was already processed or user is already a member
+                    // This can happen if we timed out but mediator got our acceptance
+                    Log.i(TAG, "Invite $inviteId already processed or user already member, proceeding to subscribe")
+                    storage.updateGroupInviteStatus(inviteId, 1) // 1 = accepted
+                    acceptanceSucceeded = true
+                    break
+                } else if (isTimeout && attempt < maxRetries) {
+                    Log.w(TAG, "Invite acceptance timeout (attempt $attempt), retrying in 2s...")
+                    Thread.sleep(2000)
+                } else if (!isTimeout) {
+                    // Non-timeout, non-already-member error - don't retry
+                    Log.e(TAG, "Error accepting invite: ${e.message}")
+                    break
+                }
+            }
+        }
+
+        if (acceptanceSucceeded) {
+            // Now subscribe to the chat
+            subscribeToChat(chatId, storage)
+
+            // Broadcast success
+            val successIntent = Intent("ACTION_INVITE_ACCEPTED").apply {
+                putExtra("chat_id", chatId)
+                putExtra("invite_id", inviteId)
+            }
+            LocalBroadcastManager.getInstance(this).sendBroadcast(successIntent)
+        } else {
+            // Acceptance failed, but still try to subscribe
+            // The user might already be a member from a previous attempt
+            Log.w(TAG, "Invite acceptance failed, attempting to subscribe anyway")
+            try {
+                subscribeToChat(chatId, storage)
+                // If subscribe succeeded, we're a member - mark invite as accepted
+                storage.updateGroupInviteStatus(inviteId, 1)
+                val successIntent = Intent("ACTION_INVITE_ACCEPTED").apply {
+                    putExtra("chat_id", chatId)
+                    putExtra("invite_id", inviteId)
+                }
+                LocalBroadcastManager.getInstance(this).sendBroadcast(successIntent)
+            } catch (e: Exception) {
+                // Both acceptance and subscribe failed
+                Log.e(TAG, "Failed to accept invite and subscribe after $maxRetries attempts", lastError)
+                broadcastMediatorError("add_user", lastError?.message ?: "Unknown error")
+            }
         }
     }
 

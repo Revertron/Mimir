@@ -175,58 +175,42 @@ class GroupInviteActivity : BaseActivity() {
 
                 Log.i(TAG, "Decrypted shared key for chat $chatId")
 
-                // Save chat to database
                 val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
 
                 // Determine owner pubkey from invite (for now, use the sender as a placeholder)
                 // TODO: The mediator should send the actual owner pubkey in the invite
                 val ownerPubkey = fromPubkey
 
-                // Tell mediator we're accepting the invite
-                // This will cause mediator to add us to members table and ask for our info
-                val mediatorClient = (application as? App)?.mediatorManager?.getOrCreateClient(mediatorPubkey)
-                if (mediatorClient != null) {
-                    try {
-                        mediatorClient.respondToInvite(inviteId, 1) // 1 = accept
-                        Log.i(TAG, "Sent acceptance to mediator for invite $inviteId")
-
-                        // Save chat to database (avatar is already saved as file from invite)
-                        storage.saveGroupChat(
-                            chatId,
-                            chatName,
-                            chatDescription,
-                            chatAvatarPath, // Use the file path from the invite
-                            mediatorPubkey,
-                            ownerPubkey,
-                            sharedKey
-                        )
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to send invite acceptance to mediator", e)
-                        throw e
-                    }
-                } else {
-                    Log.e(TAG, "Could not get mediator client to send acceptance")
-                    throw Exception("Mediator client not available")
-                }
-
-                // Subscribe to the chat to receive messages
-                // (User should already be in members table at this point)
-                val intent = Intent(this, ConnectionService::class.java).apply {
-                    putExtra("command", "mediator_subscribe")
-                    putExtra("chat_id", chatId)
-                }
-                startService(intent)
-
-                // Mark invite as accepted
-                storage.updateGroupInviteStatus(inviteId, 1) // 1 = accepted
+                // Save chat to database FIRST (optimistic approach)
+                // This ensures the user can enter the group even if mediator is slow
+                storage.saveGroupChat(
+                    chatId,
+                    chatName,
+                    chatDescription,
+                    chatAvatarPath, // Use the file path from the invite
+                    mediatorPubkey,
+                    ownerPubkey,
+                    sharedKey
+                )
+                Log.i(TAG, "Saved chat $chatId to database")
 
                 // Cancel the notification for this invite
                 NotificationHelper.cancelGroupInviteNotification(this, inviteId)
 
+                // Delegate invite acceptance and subscription to ConnectionService
+                // This handles retries in case of slow network/timeouts
+                val intent = Intent(this, ConnectionService::class.java).apply {
+                    putExtra("command", "mediator_accept_invite")
+                    putExtra("invite_id", inviteId)
+                    putExtra("chat_id", chatId)
+                }
+                startService(intent)
+
                 runOnUiThread {
                     Toast.makeText(this, R.string.invite_accepted, Toast.LENGTH_SHORT).show()
 
-                    // Open the group chat
+                    // Open the group chat immediately
+                    // Connection status will show "connecting" until subscription succeeds
                     val chatIntent = Intent(this, GroupChatActivity::class.java).apply {
                         putExtra(GroupChatActivity.EXTRA_CHAT_ID, chatId)
                         putExtra(GroupChatActivity.EXTRA_CHAT_NAME, chatName)
