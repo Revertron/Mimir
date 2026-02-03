@@ -220,6 +220,9 @@ class GroupInviteActivity : BaseActivity() {
                 // Mark invite as accepted
                 storage.updateGroupInviteStatus(inviteId, 1) // 1 = accepted
 
+                // Cancel the notification for this invite
+                NotificationHelper.cancelGroupInviteNotification(this, inviteId)
+
                 runOnUiThread {
                     Toast.makeText(this, R.string.invite_accepted, Toast.LENGTH_SHORT).show()
 
@@ -269,6 +272,9 @@ class GroupInviteActivity : BaseActivity() {
 
                 // Delete locally
                 storage.deleteGroupInvite(inviteId)
+
+                // Cancel the notification for this invite
+                NotificationHelper.cancelGroupInviteNotification(this, inviteId)
 
                 runOnUiThread {
                     Toast.makeText(this, R.string.invite_rejected, Toast.LENGTH_SHORT).show()

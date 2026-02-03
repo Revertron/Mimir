@@ -495,6 +495,18 @@ class NotificationHelper(private val context: Context) : StorageListener {
         }
 
         /**
+         * Cancels group invite notification for a specific invite.
+         *
+         * @param context Application context
+         * @param inviteId Invite database ID
+         */
+        fun cancelGroupInviteNotification(context: Context, inviteId: Long) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationId = GROUP_INVITE_BASE_ID + (inviteId % 1000).toInt()
+            notificationManager.cancel(notificationId)
+        }
+
+        /**
          * Creates notification channel for group invites.
          */
         private fun createGroupInvitesChannel(context: Context) {
