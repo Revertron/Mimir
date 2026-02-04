@@ -61,6 +61,7 @@
             android:layout_height="wrap_content"
             android:autoLink="all"
             android:gravity="left"
+            android:textColorLink="@color/outgoing_link_color"
             android:textSize="15sp"
             app:layout_constrainedWidth="true"
             app:layout_constraintLeft_toLeftOf="parent"

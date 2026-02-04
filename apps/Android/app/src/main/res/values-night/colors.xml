@@ -9,4 +9,6 @@
     <color name="bg_message_outgoing_simple">@color/message_outgoing_normal</color>
 
     <color name="transparent">#00000000</color>
+
+    <color name="outgoing_link_color">@color/mimir_dark</color>
 </resources>
