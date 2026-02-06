@@ -2,6 +2,7 @@ package com.revertron.mimir
 
 import android.content.ComponentName
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
@@ -176,9 +177,13 @@ class AudioPlaybackService : MediaSessionService() {
             return
         }
 
+        val (title, artist, album, albumArt) = extractMediaMetadata(file)
+
         val metadata = MediaMetadata.Builder()
-            .setTitle(fileName)
-            .setArtist(getString(R.string.app_name))
+            .setTitle(title ?: fileName)
+            .setArtist(artist)
+            .setAlbumTitle(album)
+            .setArtworkData(albumArt, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
             .build()
 
         val mediaItem = MediaItem.Builder()
@@ -203,6 +208,37 @@ class AudioPlaybackService : MediaSessionService() {
         }
         mediaSession = null
         super.onDestroy()
+    }
+
+    private data class AudioMetadata(
+        val title: String?,
+        val artist: String?,
+        val album: String?,
+        val albumArt: ByteArray?
+    )
+
+    private fun extractMediaMetadata(file: File): AudioMetadata {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.absolutePath)
+
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+            val albumArt = retriever.embeddedPicture
+
+            AudioMetadata(title, artist, album, albumArt)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to extract metadata from ${file.name}", e)
+            AudioMetadata(null, null, null, null)
+        } finally {
+            try {
+                retriever.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to release MediaMetadataRetriever", e)
+            }
+        }
     }
 
     private fun broadcastPlaybackState(isPlaying: Boolean) {
