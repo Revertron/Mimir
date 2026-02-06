@@ -171,8 +171,13 @@
 
         <service android:name=".AudioPlaybackService"
             android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
 
         <receiver android:name=".BootUpReceiver" android:exported="true">
             <intent-filter>
@@ -183,12 +188,6 @@
         <receiver android:name=".calls.MediaButtonsReceiver" android:exported="false">
             <intent-filter android:priority="999999">
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
-
-        <receiver android:name=".NotificationDismissedReceiver" android:exported="false">
-            <intent-filter>
-                <action android:name="com.revertron.mimir.ACTION_NOTIFICATION_DISMISSED" />
             </intent-filter>
         </receiver>
 
