@@ -140,6 +140,16 @@ class GroupChatActivity : BaseChatActivity() {
         }
     }
 
+    private val audioPlaybackReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioPlaybackService.ACTION_PLAYBACK_STATE_CHANGED) {
+                val isPlaying = intent.getBooleanExtra(AudioPlaybackService.EXTRA_IS_PLAYING, false)
+                val messageId = intent.getLongExtra(AudioPlaybackService.EXTRA_CURRENT_MESSAGE_ID, -1)
+                adapter.updateAudioPlaybackState(isPlaying, messageId)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Extract group chat info before calling super.onCreate()
         val chatId = intent.getLongExtra(EXTRA_CHAT_ID, 0)
@@ -445,6 +455,12 @@ class GroupChatActivity : BaseChatActivity() {
         // Register status receiver for connection badge updates
         val statusFilter = IntentFilter("ACTION_GROUP_CHAT_STATUS")
         LocalBroadcastManager.getInstance(this).registerReceiver(groupChatStatusReceiver, statusFilter)
+
+        // Register audio playback state receiver
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            audioPlaybackReceiver,
+            IntentFilter(AudioPlaybackService.ACTION_PLAYBACK_STATE_CHANGED)
+        )
     }
 
     override fun onToolbarClick() {
@@ -980,6 +996,7 @@ class GroupChatActivity : BaseChatActivity() {
     override fun onDestroy() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(groupChatStatusReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(audioPlaybackReceiver)
         super.onDestroy()
     }
 }

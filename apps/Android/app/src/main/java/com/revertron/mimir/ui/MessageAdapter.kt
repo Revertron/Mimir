@@ -30,6 +30,7 @@ import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.FileProvider
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.AudioPlaybackService
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.storage.SqlStorage
@@ -227,6 +228,10 @@ class MessageAdapter(
 
     private val timeFormatter = SimpleDateFormat.getTimeInstance(DateFormat.SHORT)
     private val dateFormatter = SimpleDateFormat.getDateInstance(DateFormat.SHORT)
+
+    // Audio playback state tracking
+    private var currentPlayingMessageId: Long = -1
+    private var isAudioPlaying: Boolean = false
 
     private val messageIds = if (groupChat) {
         storage.getGroupMessageIds(chatId).toMutableList()
@@ -504,7 +509,19 @@ class MessageAdapter(
 
                         // Get file icon based on MIME type
                         val mimeType = json.optString("mimeType", "application/octet-stream")
-                        holder.fileIcon.setImageResource(getFileIconForMimeType(mimeType))
+                        val isAudio = mimeType.startsWith("audio/")
+
+                        // Set file icon - for audio, show play/pause based on state
+                        if (isAudio) {
+                            val isThisPlaying = currentPlayingMessageId == message.id && isAudioPlaying
+                            if (isThisPlaying) {
+                                holder.fileIcon.setImageResource(R.drawable.ic_pause_outline)
+                            } else {
+                                holder.fileIcon.setImageResource(R.drawable.ic_play_outline)
+                            }
+                        } else {
+                            holder.fileIcon.setImageResource(getFileIconForMimeType(mimeType))
+                        }
 
                         // Set file name and size
                         holder.fileName.text = original
@@ -516,13 +533,29 @@ class MessageAdapter(
                             holder.message.visibility = View.GONE
                         }
 
-                        // Set click listener to open file
+                        // Set click listener
                         if (file.exists()) {
+                            if (isAudio) {
+                                // Audio file - toggle playback in AudioPlaybackService
+                                holder.fileIcon.setOnClickListener {
+                                    val context = holder.itemView.context
+                                    val intent = Intent(context, AudioPlaybackService::class.java).apply {
+                                        action = AudioPlaybackService.ACTION_TOGGLE
+                                        putExtra(AudioPlaybackService.EXTRA_FILE_PATH, file.absolutePath)
+                                        putExtra(AudioPlaybackService.EXTRA_FILE_NAME, original)
+                                        putExtra(AudioPlaybackService.EXTRA_MESSAGE_ID, message.id)
+                                        putExtra(AudioPlaybackService.EXTRA_CHAT_ID, chatId)
+                                        putExtra(AudioPlaybackService.EXTRA_IS_GROUP_CHAT, groupChat)
+                                    }
+                                    context.startService(intent)
+                                }
+                            }
+                            // Every file - open with external app
                             holder.filePanel.setOnClickListener {
                                 openFile(holder.itemView.context, file, mimeType)
                             }
                         }
-                    } catch (e: JSONException) {
+                    } catch (_: JSONException) {
                         val text = "Unable to format message of type ${message.type}:\n" + String(message.data)
                         holder.message.text = text
                         holder.picture.setImageDrawable(null)
@@ -806,12 +839,39 @@ class MessageAdapter(
         }
     }
 
+    /**
+     * Updates audio playback state and refreshes affected message items.
+     */
+    fun updateAudioPlaybackState(isPlaying: Boolean, messageId: Long) {
+        val previousMessageId = currentPlayingMessageId
+        val wasPlaying = isAudioPlaying
+
+        currentPlayingMessageId = messageId
+        isAudioPlaying = isPlaying
+
+        // Refresh the previously playing message if it changed
+        if (previousMessageId != -1L && previousMessageId != messageId) {
+            val position = getMessageIdPosition(previousMessageId)
+            if (position >= 0) {
+                notifyItemChanged(position)
+            }
+        }
+
+        // Refresh the current message
+        if (messageId != -1L) {
+            val position = getMessageIdPosition(messageId)
+            if (position >= 0) {
+                notifyItemChanged(position)
+            }
+        }
+    }
+
     private fun getFileIconForMimeType(mimeType: String): Int {
         return when {
             mimeType.startsWith("application/pdf") -> R.drawable.ic_file_document_outline
             mimeType.startsWith("application/zip") || mimeType.startsWith("application/x-") -> R.drawable.ic_file_document_outline
             mimeType.startsWith("text/") -> R.drawable.ic_file_document_outline
-            mimeType.startsWith("audio/") -> R.drawable.ic_file_document_outline
+            mimeType.startsWith("audio/") -> R.drawable.ic_music_note_outline
             mimeType.startsWith("video/") -> R.drawable.ic_file_document_outline
             else -> R.drawable.ic_file_document_outline
         }

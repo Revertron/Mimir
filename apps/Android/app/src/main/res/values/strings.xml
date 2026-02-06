@@ -339,5 +339,11 @@
     <string name="crash_report_description">The app crashed unexpectedly. You can share this report with the developer to help fix the issue.</string>
     <string name="crash_report_subject">Mimir Crash Report</string>
     <string name="close">Close</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop</string>
+    <string name="audio_playback">Audio playback</string>
+    <string name="channel_name_audio_playback">Audio playback</string>
+    <string name="channel_description_audio_playback">Audio file playback controls</string>
 
 </resources>

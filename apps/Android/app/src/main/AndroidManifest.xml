@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
@@ -168,6 +169,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <service android:name=".AudioPlaybackService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <receiver android:name=".BootUpReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -177,6 +183,12 @@
         <receiver android:name=".calls.MediaButtonsReceiver" android:exported="false">
             <intent-filter android:priority="999999">
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
+        <receiver android:name=".NotificationDismissedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="com.revertron.mimir.ACTION_NOTIFICATION_DISMISSED" />
             </intent-filter>
         </receiver>
 

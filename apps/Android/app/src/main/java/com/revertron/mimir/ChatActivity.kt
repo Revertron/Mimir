@@ -52,6 +52,16 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
+    private val audioPlaybackReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            if (intent.action == AudioPlaybackService.ACTION_PLAYBACK_STATE_CHANGED) {
+                val isPlaying = intent.getBooleanExtra(AudioPlaybackService.EXTRA_IS_PLAYING, false)
+                val messageId = intent.getLongExtra(AudioPlaybackService.EXTRA_CURRENT_MESSAGE_ID, -1)
+                adapter.updateAudioPlaybackState(isPlaying, messageId)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Check if this is saved messages
         isSavedMessages = intent.getBooleanExtra("savedMessages", false)
@@ -270,6 +280,10 @@ class ChatActivity : BaseChatActivity() {
         LocalBroadcastManager.getInstance(this).registerReceiver(
             peerStatusReceiver,
             IntentFilter("ACTION_PEER_STATUS")
+        )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            audioPlaybackReceiver,
+            IntentFilter(AudioPlaybackService.ACTION_PLAYBACK_STATE_CHANGED)
         )
     }
 
@@ -646,6 +660,7 @@ class ChatActivity : BaseChatActivity() {
 
     override fun onDestroy() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(audioPlaybackReceiver)
         super.onDestroy()
     }
 }
