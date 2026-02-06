@@ -250,6 +250,7 @@ class MessageAdapter(
         val picture: AppCompatImageView = view.findViewById(R.id.picture)
         val picturePanel: FrameLayout = view.findViewById(R.id.picture_panel)
         val filePanel: View = view.findViewById(R.id.file_panel)
+        val fileIconContainer: View = view.findViewById(R.id.file_icon_container)
         val fileIcon: AppCompatImageView = view.findViewById(R.id.file_icon)
         val fileName: AppCompatTextView = view.findViewById(R.id.file_name)
         val fileSize: AppCompatTextView = view.findViewById(R.id.file_size)
@@ -537,7 +538,7 @@ class MessageAdapter(
                         if (file.exists()) {
                             if (isAudio) {
                                 // Audio file - toggle playback in AudioPlaybackService
-                                holder.fileIcon.setOnClickListener {
+                                holder.fileIconContainer.setOnClickListener {
                                     val context = holder.itemView.context
                                     val intent = Intent(context, AudioPlaybackService::class.java).apply {
                                         action = AudioPlaybackService.ACTION_TOGGLE
